@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
-import { Fragment, memo, useEffect, useMemo, useRef, useState,
-  type ComponentProps, type ReactNode } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState,
+  type ComponentProps } from "react";
+import { useRecyclingState } from "@shopify/flash-list";
+import type { ASTNode } from "react-native-markdown-display";
+import { sameConversationRow, type ConversationRow } from "./conversationRows";
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Muted } from "@/components/ui";
 import type { MobileTurn, UserInputResponseItem } from "@/app-server/types";
@@ -10,83 +13,73 @@ import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useTheme } from "@/theme/ThemeProvider";
-import { isToolGroupExpanded, isTurnActivityCollapsed,
-  toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { projectUserMessage, type UserAttachment } from "./userMessagePresentation";
-import { projectTurnPresentation, streamingTextItemId, toolOperationLines, turnActivitySummary,
+import { turnActivitySummary,
   type ToolGroup, type TurnBlock } from "./turnPresentation";
 
-type OfficialTurnProps = {
+type ContentRow = Exclude<ConversationRow, { kind: "request" }>;
+
+export const ConversationContentRow = memo(function ConversationContentRow({ row, profileId,
+  threadId, expandedTool, onToggleTurn, onLoadDetails, onToggleTool, onDisclosureChange }: {
+  row: ContentRow;
   profileId: string;
   threadId: string;
-  turn: MobileTurn;
-  canToggleActivity: () => boolean;
-  onDisclosureChange?: () => void;
-};
-const turnPresentations = new WeakMap<MobileTurn, ReturnType<typeof projectTurnPresentation>>();
-
-export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
-  turn, canToggleActivity, onDisclosureChange }: OfficialTurnProps) {
+  expandedTool: boolean;
+  onToggleTurn: (turnId: string) => void;
+  onLoadDetails: (turnId: string) => void;
+  onToggleTool: (key: string) => void;
+  onDisclosureChange: () => void;
+}) {
   const theme = useTheme();
-  const presentation = useMemo(() => presentationForTurn(turn), [turn]);
-  const [, redraw] = useState(0);
-  const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
-  const memoryKey = `${profileId}:${threadId}:${turn.id}`;
-  const liveItemId = streamingTextItemId(turn);
-  const collapsed = isTurnActivityCollapsed(memoryKey, presentation.canCollapseActivity);
-  let activityHeaderRendered = false;
-
-  return <View testID={`turn:${turn.id}`} style={styles.turn}>
-    {presentation.blocks.map((block) => {
-      const activity = isActivityBlock(block);
-      let header: ReactNode = null;
-      if (activity && !activityHeaderRendered && presentation.canCollapseActivity) {
-        activityHeaderRendered = true;
-        header = <ActivityHeader turnId={turn.id} collapsed={collapsed}
-          summary={turnActivitySummary(turn, nowMs)}
-          onPress={() => {
-            if (!canToggleActivity()) return;
-            onDisclosureChange?.();
-            toggleTurnActivity(memoryKey, presentation.canCollapseActivity);
-            redraw((value) => value + 1);
-          }} />;
-      }
-      return <Fragment key={block.key}>
-        {header}
-        {activity && collapsed ? null
-          : <TurnBlockView block={block} memoryKey={memoryKey} profileId={profileId}
-          threadId={threadId} turnId={turn.id} live={block.key === liveItemId}
-          onDisclosureChange={() => {
-            onDisclosureChange?.();
-            redraw((value) => value + 1);
-          }} />}
-      </Fragment>;
-    })}
-    {presentation.showThinking
-      ? <View testID="turn:thinking" style={styles.thinking}>
-        <ThinkingShimmer active color={theme.colors.textMuted}
-          highlightColor={theme.colors.text} style={styles.thinkingText}>
-          {presentation.thinkingLabel ?? "正在思考"}
-        </ThinkingShimmer>
-      </View> : null}
-    {turn.status === "failed" && turn.error ? <View testID="turn:error" style={styles.error}>
-      <Text selectable style={[styles.errorText, { color: theme.colors.danger }]}>
-        {turn.error.message || "本轮执行失败"}
-      </Text>
-    </View> : null}
+  const toggleTool = useCallback(() => onToggleTool(row.key), [onToggleTool, row.key]);
+  if (row.kind === "activity") return <TurnActivityRow row={row} onToggle={onToggleTurn} />;
+  if (row.kind === "detailPage") return <Pressable testID={`turn:${row.turnId}:load-details`}
+    disabled={row.detail?.loading} onPress={() => onLoadDetails(row.turnId)}
+    style={styles.detailPage} accessibilityRole="button">
+    {row.detail?.loading ? <ActivityIndicator color={theme.colors.textMuted} /> : null}
+    <Text style={{ color: row.detail?.error ? theme.colors.danger : theme.colors.accent }}>
+      {row.detail?.loading ? "正在加载本轮内容…" : row.detail?.error
+        ? "加载失败，点按重试" : !row.detail?.loaded ? "加载本轮内容"
+          : row.detail.direction === "desc" ? "加载更早过程" : "加载更多过程"}
+    </Text>
+  </Pressable>;
+  if (row.kind === "operation") return <View style={styles.operationRow}
+    testID={`item:${row.item.type}:${encodeURIComponent(row.item.id)}`}>
+    <Ionicons name={row.operation.failed ? "close-circle-outline" : row.operation.running
+      ? "ellipsis-horizontal-circle-outline" : "checkmark-circle-outline"} size={15}
+      color={row.operation.failed ? theme.colors.danger : theme.colors.textMuted} />
+    <Text selectable numberOfLines={2} style={[styles.toolOperationText,
+      { color: row.operation.failed ? theme.colors.danger : theme.colors.textMuted }]}>
+      {row.operation.text}
+    </Text>
   </View>;
-}, (left, right) => left.profileId === right.profileId && left.threadId === right.threadId &&
-  left.turn === right.turn && left.canToggleActivity === right.canToggleActivity &&
+  if (row.kind === "status") return <View style={styles.thinking}>
+    {row.thinking ? <ThinkingShimmer active color={theme.colors.textMuted}
+      highlightColor={theme.colors.text} style={styles.thinkingText}>正在思考</ThinkingShimmer> : null}
+    {row.turn.status === "failed" || row.turn.status === "interrupted"
+      ? <Text selectable testID="turn:error" style={{ color: theme.colors.danger }}>
+        {row.turn.error?.message || (row.turn.status === "interrupted" ? "本轮已中断" : "本轮执行失败")}
+      </Text> : null}
+  </View>;
+  return <TurnBlockView block={row.block} profileId={profileId} threadId={threadId}
+    turnId={row.turnId} live={row.live} ast={row.ast} resolveAst={row.resolveAst} expandedTool={expandedTool}
+    onToggleTool={toggleTool} onDisclosureChange={onDisclosureChange} />;
+}, (left, right) => sameConversationRow(left.row, right.row) &&
+  left.profileId === right.profileId && left.threadId === right.threadId &&
+  left.expandedTool === right.expandedTool && left.onToggleTurn === right.onToggleTurn &&
+  left.onLoadDetails === right.onLoadDetails && left.onToggleTool === right.onToggleTool &&
   left.onDisclosureChange === right.onDisclosureChange);
 
-function presentationForTurn(turn: MobileTurn): ReturnType<typeof projectTurnPresentation> {
-  const cached = turnPresentations.get(turn);
-  if (cached) return cached;
-  const presentation = projectTurnPresentation(turn);
-  turnPresentations.set(turn, presentation);
-  return presentation;
+function TurnActivityRow({ row, onToggle }: {
+  row: Extract<ConversationRow, { kind: "activity" }>;
+  onToggle: (turnId: string) => void;
+}) {
+  const now = useElapsedClock(row.turn, row.turn.status === "inProgress");
+  return <ActivityHeader turnId={row.turnId} collapsed={!row.expanded}
+    summary={row.noFinal ? "本轮无最终回答 · 查看本轮内容" : turnActivitySummary(row.turn, now)}
+    onPress={() => onToggle(row.turnId)} />;
 }
 
 function ActivityHeader({ turnId, collapsed, summary, onPress }: {
@@ -107,30 +100,33 @@ function ActivityHeader({ turnId, collapsed, summary, onPress }: {
   </View>;
 }
 
-function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, live,
-  onDisclosureChange }: {
+function TurnBlockView({ block, profileId, threadId, turnId, live, ast, resolveAst, expandedTool,
+  onToggleTool, onDisclosureChange }: {
   block: TurnBlock;
-  memoryKey: string;
   profileId: string;
   threadId: string;
   turnId: string;
   live: boolean;
+  ast: ASTNode[] | undefined;
+  resolveAst: (() => ASTNode[]) | undefined;
+  expandedTool: boolean;
+  onToggleTool: () => void;
   onDisclosureChange: () => void;
 }) {
   if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
   if (block.kind === "commentary") return block.item.text.trim()
-    ? <View testID="message:phase:commentary" style={styles.commentary}>
+    ? <View testID="message:phase:commentary" style={[styles.commentary, ast && styles.markdownSegment]}>
       {live ? <LiveTextContent compact>{block.item.text}</LiveTextContent>
-        : <MarkdownContent compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
+        : <MarkdownContent astOverride={ast} resolveAst={resolveAst} compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
           {block.item.text}
         </MarkdownContent>}
     </View> : null;
   if (block.kind === "tools") return <ToolGroupView group={block}
-    memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
-  if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={styles.plan}>
+    expanded={expandedTool} onToggle={onToggleTool} />;
+  if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={[styles.plan, ast && styles.markdownSegment]}>
     <Muted>计划</Muted>
     {live ? <LiveTextContent>{block.item.text}</LiveTextContent>
-      : <MarkdownContent profileId={profileId} cacheKey={`plan:${block.item.id}`}>
+      : <MarkdownContent astOverride={ast} resolveAst={resolveAst} profileId={profileId} cacheKey={`plan:${block.item.id}`}>
         {block.item.text}
       </MarkdownContent>}
   </View>;
@@ -146,9 +142,9 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, live,
         cacheKey={`turn:${threadId}:${turnId}:${block.image.id}`}
         testID={`generated-image:${block.image.id}`} />}
   </View>;
-  return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
+  return block.item.text.trim() ? <View testID="message:role:agent" style={[styles.agentRow, ast && styles.markdownSegment]}>
     {live ? <LiveTextContent>{block.item.text}</LiveTextContent>
-      : <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
+      : <MarkdownContent astOverride={ast} resolveAst={resolveAst} profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
         {block.item.text}
       </MarkdownContent>}
   </View> : null;
@@ -170,7 +166,7 @@ function UserInputResponse({ item, onDisclosureChange }: {
   onDisclosureChange: () => void;
 }) {
   const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useRecyclingState(false, [item.id]);
   const count = item.questions.length;
   return <View testID={`user-input-response:${item.requestId}`} style={styles.userInputResponse}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
@@ -242,47 +238,25 @@ function imageFilename(path: string): string {
   return path.split("/").at(-1) || "生成的图片";
 }
 
-function ToolGroupView({ group, memoryKey, onDisclosureChange }: {
+function ToolGroupView({ group, expanded, onToggle }: {
   group: ToolGroup;
-  memoryKey: string;
-  onDisclosureChange: () => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const theme = useTheme();
-  const expanded = isToolGroupExpanded(memoryKey);
-  const icon = toolIcon(group.category);
-  const operations = useMemo(() => group.items.flatMap((item) =>
-    toolOperationLines(item, group.inferredRunning).map((operation) => ({ item, operation }))),
-  [group.inferredRunning, group.items]);
   return <View testID={`tool-group:${group.key}`} style={styles.toolGroup}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
       accessibilityLabel={`${group.title}，${expanded ? "收起" : "展开"}操作`}
       testID={`tool-group:${group.key}:toggle`} hitSlop={8} style={styles.toolHeader}
-      onPress={() => { toggleToolGroup(memoryKey); onDisclosureChange(); }}>
-      <Ionicons name={icon} size={17}
-        color={theme.colors.textMuted} />
+      onPress={onToggle}>
+      <Ionicons name={toolIcon(group.category)} size={17} color={theme.colors.textMuted} />
       <View style={styles.toolTitle}>
         <ThinkingShimmer active={group.running} color={theme.colors.textMuted}
           highlightColor={theme.colors.text} style={styles.toolTitleText}
-          testID={group.running ? "tool-group:shimmer" : undefined}>
-          {group.title}
-        </ThinkingShimmer>
+          testID={group.running ? "tool-group:shimmer" : undefined}>{group.title}</ThinkingShimmer>
       </View>
       <DisclosureChevron expanded={expanded} color={theme.colors.textMuted} />
     </Pressable>
-    {expanded ? <View style={[styles.toolOperations, { borderLeftColor: theme.colors.border }]}>
-      {operations.map(({ item, operation }) =>
-        <View key={operation.key}
-          testID={`item:${item.type}:${encodeURIComponent(item.id)}`}
-          style={styles.toolOperation}>
-          <Ionicons name={operation.failed ? "close-circle-outline" : operation.running
-            ? "ellipsis-horizontal-circle-outline" : "checkmark-circle-outline"} size={15}
-            color={operation.failed ? theme.colors.danger : theme.colors.textMuted} />
-          <Text selectable numberOfLines={2} ellipsizeMode="tail" style={[styles.toolOperationText,
-            { color: operation.failed ? theme.colors.danger : theme.colors.textMuted }]}>
-            {operation.text}
-          </Text>
-        </View>)}
-    </View> : null}
   </View>;
 }
 
@@ -317,10 +291,6 @@ function DisclosureChevron({ expanded, color }: { expanded: boolean; color: stri
   </Animated.View>;
 }
 
-function isActivityBlock(block: TurnBlock): boolean {
-  return block.kind === "commentary" || block.kind === "tools";
-}
-
 function toolIcon(category: ToolGroup["category"]): ComponentProps<typeof Ionicons>["name"] {
   switch (category) {
   case "command": return "terminal-outline";
@@ -338,7 +308,9 @@ function toolIcon(category: ToolGroup["category"]): ComponentProps<typeof Ionico
 }
 
 const styles = StyleSheet.create({
-  turn: { paddingBottom: 12 },
+  markdownSegment: { paddingTop: 0, paddingBottom: 0 },
+  detailPage: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", gap: 8 },
+  operationRow: { marginHorizontal: 24, paddingVertical: 4, flexDirection: "row", gap: 7 },
   userRow: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 12,
     paddingBottom: 8, paddingTop: 5 },
   userBubble: { maxWidth: "88%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },

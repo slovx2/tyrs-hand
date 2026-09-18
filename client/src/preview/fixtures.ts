@@ -5,7 +5,7 @@ import type { Turn } from "@codex-app-server/v2/Turn";
 
 import type { Connection } from "@/db/connections";
 import type { MobileProject } from "@/app-server/types";
-import { primaryPreviewServerId, secondaryPreviewServerId } from "./config";
+import { isPreviewStressMode, primaryPreviewServerId, secondaryPreviewServerId } from "./config";
 
 export type PreviewControlSeed = {
   projects: MobileProject[];
@@ -134,6 +134,7 @@ export function createPreviewSeed(): PreviewSeed {
   });
   const long = thread(previewSessionIds.long, "/preview/workspaces/tyrs-hand",
     "长会话：32 个 Turn 分页与锚点", longTurns, now - 50);
+  long.historyMode = "paginated";
   const archived = thread(previewSessionIds.archived, "/preview/workspaces/tyrs-hand",
     "已归档：旧版通知链路", [turn("turn-archived", "completed", [
       user("user-archived", "preview-archived", "归档这个历史会话"),
@@ -144,13 +145,14 @@ export function createPreviewSeed(): PreviewSeed {
       user("user-secondary", "preview-secondary", "验证 profile 隔离"),
       agent("agent-secondary", "这个会话只存在于第二个 Control profile。", "final_answer"),
     ])], now - 70);
+  const stress = isPreviewStressMode ? stressThreads(now) : [];
   return {
     connections: [controlConnection(primaryPreviewServerId, "本机服务 · 官方协议", true),
       controlConnection(secondaryPreviewServerId, "远程服务 · 数据隔离", false)],
     controls: {
       [primaryPreviewServerId]: { projects: [project(primaryWorkspaceId, primaryProjectId,
         "Tyrs Hand", "/preview/workspaces/tyrs-hand")],
-      threads: [running, planned, interactive, failed, markdown, long, archived],
+      threads: [running, planned, interactive, failed, markdown, long, ...stress, archived],
       archivedThreadIds: [archived.id], requests: [{ id: "preview-question",
         method: "item/tool/requestUserInput", params: { threadId: interactive.id,
           turnId: "turn-interactive", itemId: "question-preview", isBlocking: true,
@@ -171,6 +173,28 @@ export function createPreviewSeed(): PreviewSeed {
       additionalSpeedTiers: [], serviceTiers: [{ id: "priority", name: "快速",
         description: "优先处理" }], defaultServiceTier: null, isDefault: true }],
   };
+}
+
+function stressThreads(now: number): Thread[] {
+  const cwd = "/preview/workspaces/tyrs-hand";
+  const manyTurns = thread("30000000-0000-4000-8000-000000000011", cwd, "性能：500 轮摘要分页",
+    Array.from({ length: 500 }, (_, i) => turn(`stress-turn-${i}`, "completed", [
+      user(`stress-user-${i}`, `stress-client-${i}`, `历史问题 ${i + 1}`),
+      agent(`stress-answer-${i}`, `第 ${i + 1} 轮最终回答`, "final_answer"),
+    ])), now - 51);
+  const tools = thread("30000000-0000-4000-8000-000000000012", cwd, "性能：单轮 1000 个工具",
+    [turn("stress-tools", "completed", [user("stress-tools-user", "stress-tools-client", "检查大量工具"),
+      ...Array.from({ length: 1000 }, (_, i) => command(`stress-tool-${i}`, "completed", "")),
+      agent("stress-tools-final", "1000 个工具处理完成", "final_answer"),
+    ])], now - 52);
+  const section = "## 完整回答\n\n这是带有 **格式** 和 [链接](https://example.com) 的正文。\n\n" +
+    "1. 第一项\n2. 第二项\n\n```ts\nconst answer = 42;\n```\n\n| 列一 | 列二 |\n| --- | --- |\n| 数据 | 完整 |\n\n";
+  const markdown = thread("30000000-0000-4000-8000-000000000013", cwd, "性能：10 万字符最终回答",
+    [turn("stress-markdown", "completed", [user("stress-markdown-user", "stress-markdown-client", "输出长文档"),
+      agent("stress-markdown-final", section.repeat(Math.ceil(100000 / section.length)) +
+        "\n\nLONG_MARKDOWN_END", "final_answer"),
+    ])], now - 53);
+  return [manyTurns, tools, markdown].map((value) => ({ ...value, historyMode: "paginated" }));
 }
 
 function controlConnection(serverId: string, name: string, active: boolean): Connection {

@@ -7,6 +7,7 @@ import type { AppServerSocket, SocketMessageEvent } from "@/app-server/jsonRpc";
 import type { Connection } from "@/db/connections";
 import type { SSHProject } from "@/db/sshProjects";
 import { createPreviewSeed, previewSessionIds, type PreviewControlSeed } from "./fixtures";
+import { previewPerf } from "./perf";
 
 let state = createPreviewSeed();
 let idCounter = 1;
@@ -101,6 +102,12 @@ class PreviewSocket implements AppServerSocket {
 
   private async handleRequest(id: string | number, method: string, rawParams: unknown): Promise<void> {
     const params = (rawParams ?? {}) as Record<string, unknown>;
+    if (method === "thread/resume" || method === "thread/turns/list" || method === "thread/items/list") {
+      previewPerf("history.request", { method, threadId: String(params.threadId),
+        turnId: String(params.turnId ?? ""), cursor: String(params.cursor ?? ""),
+        itemsView: String(params.itemsView ?? (params.initialTurnsPage as Record<string, unknown>)?.itemsView ?? ""),
+        limit: Number(params.limit ?? 0) });
+    }
     const value = control(this.serverId);
     if (method === "initialize") { this.emit({ id, result: { userAgent: "preview/0.147.0",
       platformFamily: "unix", platformOs: "preview" } }); return; }
@@ -122,6 +129,8 @@ class PreviewSocket implements AppServerSocket {
       const pageParams = params.initialTurnsPage as Record<string, unknown> | null | undefined;
       this.emit({ id, result: {
         thread: threadResult(thread, params.excludeTurns !== true),
+        model: state.models[0]!.model, modelProvider: "openai", reasoningEffort: "low",
+        serviceTier: null, sandbox: { type: "dangerFullAccess" }, activePermissionProfile: null,
         initialTurnsPage: pageParams ? turnsPage(thread, pageParams) : null,
       } });
       setTimeout(() => this.emitPending(thread.id), 0);
@@ -376,7 +385,14 @@ function turnsPage(thread: Thread, params: Record<string, unknown>): {
   const match = cursor?.match(/^preview-turns:(asc|desc):(\d+)$/);
   const offset = match?.[1] === direction ? Number(match[2]) : 0;
   const ordered = direction === "desc" ? [...thread.turns].reverse() : [...thread.turns];
-  const data = ordered.slice(offset, offset + limit);
+  const data = ordered.slice(offset, offset + limit).map((turn) => {
+    if (params.itemsView === "notLoaded") return { ...turn, items: [], itemsView: "notLoaded" as const };
+    if (params.itemsView !== "summary") return turn;
+    const first = turn.items.find((item) => item.type === "userMessage");
+    const last = [...turn.items].reverse().find((item) => item.type === "agentMessage");
+    return { ...turn, items: [first, last].filter((item): item is NonNullable<typeof item> => !!item),
+      itemsView: "summary" as const };
+  });
   const nextOffset = offset + data.length;
   return {
     data: structuredClone(data),

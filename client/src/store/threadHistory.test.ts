@@ -217,6 +217,17 @@ describe("官方 Turn 分页合并", () => {
   });
 });
 
+it("summary 更新保留已收到的 commentary 和工具，不把部分历史标成 full", () => {
+  const previous = turn("partial");
+  previous.itemsView = "summary";
+  previous.items = [agent("progress", "实时过程", "commentary"), command("tool", "completed")];
+  const incoming = turn("partial");
+  incoming.itemsView = "summary";
+  const merged = mergeTurnSnapshot(previous, incoming);
+  expect(merged.items.map((item) => item.id)).toEqual(["progress", "tool", "item:partial"]);
+  expect(merged.itemsView).toBe("summary");
+});
+
 function page(turns: Turn[], nextCursor: string | null): OfficialTurnPage {
   return { turns, nextCursor, backwardsCursor: null };
 }

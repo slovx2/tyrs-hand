@@ -5,6 +5,10 @@ import { loadCachedProjects } from "@/db/cache";
 import { listConnections, type Connection } from "@/db/connections";
 import { loadSelectedProjectId, saveSelectedProjectId } from "@/db/settings";
 import { useAppStore } from "./appStore";
+import { officialClientFor } from "@/app-server/registry";
+import { createPreviewSeed } from "@/preview/fixtures";
+import { primaryPreviewServerId } from "@/preview/config";
+import type { OfficialAppServerClient, OfficialItemPage } from "@/app-server/officialClient";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("@/app-server/registry", () => ({ officialClientFor: vi.fn() }));
@@ -29,6 +33,22 @@ beforeEach(() => {
 });
 
 describe("会话导航状态", () => {
+  it("详情请求按连接、会话、Turn 和游标去重，切换连接后丢弃返回页", async () => {
+    const pending = deferred<OfficialItemPage>();
+    const listTurnItems = vi.fn(() => pending.promise);
+    vi.mocked(officialClientFor).mockReturnValue({ connect: async () => undefined,
+      onClose: vi.fn(), subscribe: vi.fn(), listTurnItems } as unknown as OfficialAppServerClient);
+    const thread = createPreviewSeed().controls[primaryPreviewServerId]!.threads[0]!;
+    useAppStore.setState({ activeConnection: connection("detail-profile"),
+      threads: [{ thread, workspaceId: null, projectId: null, archived: false, history: { kind: "summary" } }] });
+    const first = useAppStore.getState().loadTurnItems(thread.id, "turn", null, "asc");
+    const second = useAppStore.getState().loadTurnItems(thread.id, "turn", null, "asc");
+    const results = Promise.allSettled([first, second]);
+    await vi.waitFor(() => expect(listTurnItems).toHaveBeenCalledTimes(1));
+    useAppStore.setState({ activeConnection: connection("other-profile") });
+    pending.resolve({ items: [], nextCursor: null });
+    expect((await results).map((result) => result.status)).toEqual(["rejected", "rejected"]);
+  });
   it("冷启动恢复当前机器上次选择的项目", async () => {
     vi.mocked(listConnections).mockResolvedValue([connection("machine-a")]);
     vi.mocked(loadCachedProjects).mockResolvedValue([project("first"), project("remembered")]);

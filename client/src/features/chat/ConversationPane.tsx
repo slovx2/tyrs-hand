@@ -1,9 +1,9 @@
 import type { Model } from "@codex-app-server/v2/Model";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable,
-  StyleSheet, Text, View } from "react-native";
+  StyleSheet, Text, View, type ViewProps } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalAttachment } from "@/app-server/attachments";
@@ -11,28 +11,35 @@ import { latestExecutablePlan, type TurnPreferences } from "@/app-server/officia
 import { defaultTurnPreferences, normalizeTurnPreferences, turnPreferencesSummary } from "@/app-server/preferences";
 import { targetKey } from "@/app-server/types";
 import { Button, EmptyState } from "@/components/ui";
-import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { createImageLoadGate, ImageLoadGateContext } from "@/features/images/ImageLoadGate";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
+import { previewPerf } from "@/preview/perf";
 import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
-import { ChatComposer } from "./ChatComposer";
+import { ConversationComposer } from "./ConversationComposer";
 import { PendingMessagePreviews } from "./PendingMessagePreviews";
 import { createFollowState, latestTurnPhase, reduceFollowState,
   shouldFollowLatest, type FollowEvent } from "./conversationFollow";
 import { beginUserScroll, updateUserScroll, type UserScrollGesture }
   from "./conversationUserScroll";
-import { OfficialTurn } from "./OfficialTurn";
+import { ConversationContentRow } from "./OfficialTurn";
+import { markdownBlocks } from "./MarkdownContent";
+import { TurnDetails, turnWithDetails } from "./turnDetails";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
 import { ACTIVITY_TOGGLE_SCROLL_SETTLE_MS, activityToggleAllowed } from "./activityDisclosure";
-import { conversationRows, type ConversationRow } from "./conversationRows";
+import { createConversationRowProjector, type ConversationRow } from "./conversationRows";
 import { anchorViewOffset, conversationScrollState,
   resolveConversationPosition, saveConversationPosition, visibleRowTop } from "./conversationPosition";
 
 const rowKey = (row: ConversationRow) => row.key;
-const rowType = (row: ConversationRow) => row.kind;
+const rowType = (row: ConversationRow) => row.kind !== "block" ? row.kind : row.sizeHint === undefined
+  ? row.block.kind : `${row.block.kind}:markdown:${row.sizeHint >= 400 ? "long" : "short"}`;
+const ConversationCell = forwardRef<View, ViewProps>(function ConversationCell(props, ref) {
+  // Android 需要真实 Cell 容器维护绝对定位长列表的可访问性边界。
+  return <View {...props} ref={ref} collapsable={false} />;
+});
 
 const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
@@ -56,6 +63,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const requests = useAppStore((state) => state.pendingRequests[sessionId] ?? EMPTY_REQUESTS);
   const loadThread = useAppStore((state) => state.loadThread);
   const loadOlderThread = useAppStore((state) => state.loadOlderThread);
+  const loadTurnItems = useAppStore((state) => state.loadTurnItems);
   const submitMessage = useAppStore((state) => state.submitMessage);
   const setThreadVisible = useAppStore((state) => state.setThreadVisible);
   const pendingMessages = useAppStore((state) => state.pendingMessages);
@@ -64,16 +72,44 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const interruptThread = useAppStore((state) => state.interruptThread);
   const answerRequest = useAppStore((state) => state.answerRequest);
   const profileId = connection?.profileId ?? null;
+  const details = useMemo(() => new TurnDetails((turnId, cursor, direction) => {
+    if (useAppStore.getState().activeConnection?.profileId !== profileId) {
+      return Promise.reject(new Error("会话所属连接已切换"));
+    }
+    return loadTurnItems(sessionId, turnId, cursor, direction);
+  }), [loadTurnItems, profileId, sessionId]);
+  const detailState = useSyncExternalStore(details.subscribe, details.snapshot);
+  const projectRows = useMemo(() => ({ sessionId, profileId, project: createConversationRowProjector() }),
+    [profileId, sessionId]).project;
+  useEffect(() => () => details.dispose(), [details]);
+  const [expandedTools, setExpandedTools] = useState<ReadonlySet<string>>(new Set());
+  const [visibleStartId, setVisibleStartId] = useState<string | null>(null);
+  const visibleTurns = useMemo(() => {
+    const turns = record?.thread.turns ?? [];
+    const start = visibleStartId ? turns.findIndex((turn) => turn.id === visibleStartId) : -1;
+    return turns.slice(start < 0 ? -5 : start);
+  }, [record?.thread.turns, visibleStartId]);
+  useEffect(() => {
+    if (visibleStartId === null && visibleTurns[0]) setVisibleStartId(visibleTurns[0].id);
+  }, [visibleStartId, visibleTurns]);
+  const paginated = record?.thread.historyMode === "paginated";
+  const turnsRef = useRef(record?.thread.turns ?? []);
+  turnsRef.current = record?.thread.turns ?? [];
+  useEffect(() => {
+    if (!paginated) return;
+    for (const turn of visibleTurns) {
+      if (turn.status === "inProgress" && !detailState.has(turn.id)) void details.load(turn);
+    }
+  }, [detailState, details, paginated, visibleTurns]);
   const workspaceId = record?.workspaceId ?? null;
   const positionKey = profileId ? `${profileId}:${sessionId}` : null;
+  const followFrame = useRef<number | null>(null);
+  const followRequest = useRef({ animated: false, force: false });
   // 官方从会话列表进入详情时总是落到最新消息；阅读锚点只在当前详情实例内
   // 由 FlashList 维护，不跨离开/重进会话恢复。
-  const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [preferences, setPreferences] = useState<TurnPreferences | null>(null);
   const [beforeSheet, setBeforeSheet] = useState<TurnPreferences | null>(null);
   const [showParameters, setShowParameters] = useState(false);
-  const [draftReady, setDraftReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -98,6 +134,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const olderLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionId = useRef(sessionId);
   const scrollOffset = useRef(0);
+  const touchStartY = useRef<number | null>(null);
   const userScrollGesture = useRef<UserScrollGesture | null>(null);
   activeSessionId.current = sessionId;
   const models = profileId
@@ -108,7 +145,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     const current = preferences ?? record?.preferences ?? fallbackPreferences;
     return current ? normalizeTurnPreferences(current) : current;
   })();
-  const draftScope = `thread:${sessionId}`;
   const activeTurnId = [...(record?.thread.turns ?? [])].reverse()
     .find((turn) => turn.status === "inProgress")?.id ?? null;
   const activeTurn = [...(record?.thread.turns ?? [])].reverse()
@@ -125,6 +161,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, []);
 
   useEffect(() => {
+    setVisibleStartId(null);
+    setExpandedTools(new Set());
     let canceled = false;
     setLoading(true);
     setError(null);
@@ -132,7 +170,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       if (!canceled) setError(cause instanceof Error ? cause.message : "无法读取官方会话历史");
     }).finally(() => { if (!canceled) setLoading(false); });
     return () => { canceled = true; };
-  }, [loadThread, sessionId]);
+  }, [loadThread, profileId, sessionId]);
 
   useEffect(() => {
     if (!record) return;
@@ -197,54 +235,36 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [imageLoadGate, positionKey, setScrollToLatestVisible]);
 
   useEffect(() => () => {
+    if (followFrame.current !== null) cancelAnimationFrame(followFrame.current);
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
     if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
     if (disclosureSettleTimer.current) clearTimeout(disclosureSettleTimer.current);
   }, []);
 
-  useEffect(() => {
-    if (!profileId) return;
-    let canceled = false;
-    setDraftReady(false);
-    setText("");
-    setAttachments([]);
-    setPreferences(null);
-    void loadDraft(profileId, draftScope).then((draft) => {
-      if (canceled) return;
-      if (draft) {
-        setText(draft.text);
-        setAttachments(draft.attachments);
-        setPreferences(draft.settings);
-      }
-      setDraftReady(true);
-    });
-    return () => { canceled = true; };
-  }, [draftScope, profileId]);
-
-  useEffect(() => {
-    if (!profileId || !draftReady) return;
-    const timer = setTimeout(() => void saveDraft(profileId, draftScope,
-      { text, attachments, settings: preferences }), 150);
-    return () => clearTimeout(timer);
-  }, [attachments, draftReady, draftScope, preferences, profileId, text]);
-
-  const rows = useMemo(() => conversationRows(record?.thread.turns ?? [], requests),
-    [record?.thread.turns, requests]);
+  const paintMeasurement = useMemo(() => ({ key: positionKey, readyAt: null as number | null }), [positionKey]);
+  if (paintMeasurement.readyAt === null && visibleTurns.length > 0) paintMeasurement.readyAt = performance.now();
+  const rows = useMemo(() => projectRows(visibleTurns, requests,
+    { details: detailState, expandedTools, paginated, splitMarkdown: markdownBlocks }),
+  [detailState, expandedTools, paginated, projectRows, requests, visibleTurns]);
   rowsRef.current = rows;
   const restorePosition = useMemo(() => resolveConversationPosition(null,
     rows.map((row) => row.key)), [rows]);
   const hasRestorableAnchor = restorePosition.kind === "anchor";
-  const hasMoreHistory = record?.history.kind === "loaded" &&
+  const hasCachedHistory = (record?.thread.turns.length ?? 0) > visibleTurns.length;
+  const hasMoreHistory = hasCachedHistory || record?.history.kind === "loaded" &&
     !record.history.hasLoadedOldest && record.history.olderCursor !== null;
 
   const scheduleFollowLatest = useCallback((animated = false, force = false) => {
-    const follow = () => {
-      if ((!force && !positionRestored) || (!force && interactionBlocked.current) ||
-        (!force && !shouldFollowLatest(followState.current))) return;
-      list.current?.scrollToEnd({ animated });
-    };
-    list.current?.scrollToEnd({ animated });
-    requestAnimationFrame(() => requestAnimationFrame(follow));
+    followRequest.current = { animated, force: followRequest.current.force || force };
+    if (followFrame.current !== null) return;
+    followFrame.current = requestAnimationFrame(() => {
+      followFrame.current = null;
+      const request = followRequest.current;
+      followRequest.current = { animated: false, force: false };
+      if ((!request.force && !positionRestored) || (!request.force && interactionBlocked.current) ||
+        (!request.force && !shouldFollowLatest(followState.current))) return;
+      list.current?.scrollToEnd({ animated: request.animated });
+    });
   }, [positionRestored]);
 
   useEffect(() => {
@@ -288,6 +308,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [dispatchFollow, positionKey, scheduleFollowLatest, setScrollToLatestVisible]);
 
   const handleDisclosureChange = useCallback(() => {
+    pinnedToLatest.current = false;
+    dispatchFollow({ type: "scroll_distance_changed", distanceFromBottomPx: 100,
+      latestTurnPhase: latestPhase.current });
     interactionBlocked.current = true;
     if (disclosureSettleTimer.current) clearTimeout(disclosureSettleTimer.current);
     disclosureSettleTimer.current = setTimeout(() => {
@@ -295,7 +318,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       interactionBlocked.current = false;
       if (shouldFollowLatest(followState.current)) scheduleFollowLatest();
     }, ACTIVITY_TOGGLE_SCROLL_SETTLE_MS);
-  }, [scheduleFollowLatest]);
+  }, [dispatchFollow, scheduleFollowLatest]);
 
   const finishUserInteraction = useCallback(() => {
     interactionBlocked.current = false;
@@ -326,13 +349,17 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setLoadingOlder(true);
     setOlderError(null);
     try {
-      await loadOlderThread(sessionId);
+      const first = visibleTurns[0]?.id;
+      if (!hasCachedHistory) await loadOlderThread(sessionId);
+      const turns = useAppStore.getState().threads.find((item) => item.thread.id === sessionId)?.thread.turns ?? [];
+      const index = turns.findIndex((turn) => turn.id === first);
+      if (activeSessionId.current === sessionId) setVisibleStartId(turns[Math.max(0, index - 5)]?.id ?? null);
     } catch (cause) {
       setOlderError(cause instanceof Error ? cause.message : "无法加载更早历史");
     } finally {
       setLoadingOlder(false);
     }
-  }, [hasMoreHistory, loadOlderThread, loadingOlder, sessionId]);
+  }, [hasCachedHistory, hasMoreHistory, loadOlderThread, loadingOlder, sessionId, visibleTurns]);
 
   const requestOlderLoad = useCallback(() => {
     if (!historyPagingReady.current || !hasMoreHistory || loadingOlder) return;
@@ -354,27 +381,21 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     }, OLDER_LOAD_SETTLE_MS);
   }, [flushOlderLoad]);
 
-  const send = useCallback(async () => {
-    if (!resolvedPreferences || (!text.trim() && attachments.length === 0)) return;
-    const message = text;
-    const files = attachments;
+  const send = useCallback(async (text: string, attachments: LocalAttachment[]): Promise<boolean> => {
+    if (!resolvedPreferences || (!text.trim() && attachments.length === 0)) return false;
     setSending(true);
     try {
-      const sent = await submitMessage(sessionId, message, files, resolvedPreferences);
-      if (profileId) await clearDraft(profileId, draftScope);
-      setText("");
-      setAttachments([]);
-      followLatest(false);
+      const sent = await submitMessage(sessionId, text, attachments, resolvedPreferences);
       if (!sent) throw new Error("服务器未确认发送");
+      followLatest(false);
+      return true;
     } catch (cause) {
-      setText(message);
-      setAttachments(files);
       Alert.alert("发送失败", cause instanceof Error ? cause.message : "请检查连接后重试");
+      return false;
     } finally {
       setSending(false);
     }
-  }, [attachments, draftScope, followLatest, profileId, resolvedPreferences, sessionId,
-    submitMessage, text]);
+  }, [followLatest, resolvedPreferences, sessionId, submitMessage]);
 
   const stop = useCallback(async () => {
     if (!activeTurnId || stopping) return;
@@ -388,18 +409,42 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     }
   }, [activeTurnId, interruptThread, sessionId, stopping]);
 
-  const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "turn"
-    ? <OfficialTurn profileId={profileId ?? "unavailable"} threadId={sessionId} turn={item.turn}
-      canToggleActivity={canToggleActivity} onDisclosureChange={handleDisclosureChange} />
-    : item.kind === "request"
+  const toggleTurn = useCallback((turnId: string) => {
+    if (!canToggleActivity()) return;
+    const turn = turnsRef.current.find((item) => item.id === turnId);
+    if (!turn) return;
+    handleDisclosureChange();
+    details.toggle(turn, paginated);
+  }, [canToggleActivity, details, handleDisclosureChange, paginated]);
+  const loadDetails = useCallback((turnId: string) => {
+    const turn = turnsRef.current.find((item) => item.id === turnId);
+    if (!turn) return;
+    handleDisclosureChange();
+    void details.load(turn);
+  }, [details, handleDisclosureChange]);
+  const toggleTool = useCallback((key: string) => {
+    if (!canToggleActivity()) return;
+    handleDisclosureChange();
+    setExpandedTools((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, [canToggleActivity, handleDisclosureChange]);
+
+  const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         if (!answerRequest(sessionId, item.request.id, result)) {
           Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
           void loadThread(sessionId);
         }
       }} />
-      : null, [answerRequest, canToggleActivity, handleDisclosureChange, loadThread, profileId,
-        sessionId]);
+      : <ConversationContentRow row={item} profileId={profileId ?? "unavailable"}
+        threadId={sessionId} expandedTool={expandedTools.has(item.key)}
+        onToggleTurn={toggleTurn} onLoadDetails={loadDetails} onToggleTool={toggleTool}
+        onDisclosureChange={handleDisclosureChange} />,
+    [answerRequest, expandedTools, handleDisclosureChange, loadDetails, loadThread, profileId,
+      sessionId, toggleTool, toggleTurn]);
 
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
@@ -409,12 +454,14 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       action={<Button title="重试" onPress={retryLoad} />} />;
   }
 
-  const plan = latestExecutablePlan(record.thread);
+  const plan = latestExecutablePlan({ ...record.thread,
+    turns: visibleTurns.map((turn) => paginated
+      ? turnWithDetails(turn, detailState.get(turn.id)) : turn) });
   return <ImageLoadGateContext.Provider value={imageLoadGate}>
     <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.container}>
     <View style={styles.messageArea}>
-      <FlashList key={sessionId} ref={list} testID="messages:list" data={rows}
+      <FlashList key={positionKey} ref={list} testID="messages:list" data={rows}
         style={[styles.messageList, { opacity: hasRestorableAnchor && !positionRestored ? 0 : 1 }]}
         drawDistance={LIST_DRAW_DISTANCE}
         maxItemsInRecyclePool={LIST_RECYCLE_POOL_SIZE}
@@ -423,9 +470,28 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         getItemType={rowType}
         keyboardShouldPersistTaps="handled"
         renderItem={renderRow}
+        CellRendererComponent={ConversationCell}
         contentContainerStyle={styles.list}
         maintainVisibleContentPosition={LIST_POSITIONING}
         scrollEventThrottle={100}
+        onLayout={() => {
+          // Composer 完成首次布局或键盘改变可视高度时，内容高度可能不变。
+          if (positionRestored && pinnedToLatest.current && !interactionBlocked.current) {
+            scheduleFollowLatest();
+          }
+        }}
+        onTouchStart={({ nativeEvent }) => { touchStartY.current = nativeEvent.pageY; }}
+        onTouchEnd={({ nativeEvent }) => {
+          // 短摘要不足一屏时原生 ScrollView 不产生拖动事件，也必须支持下拉旧页。
+          if (touchStartY.current !== null && nativeEvent.pageY - touchStartY.current > 40 &&
+            scrollOffset.current <= 8 && hasMoreHistory && !loadingOlder) {
+            pinnedToLatest.current = false;
+            dispatchFollow({ type: "scroll_distance_changed", distanceFromBottomPx: 100,
+              latestTurnPhase: latestPhase.current });
+            void loadOlder();
+          }
+          touchStartY.current = null;
+        }}
         onContentSizeChange={() => {
           // 数据更新和披露展开会先触发 React 更新，随后 FlashList 才完成真实高度测量。
           // 跟随态在这个布局时点补滚到底，避免多行命令的最后一行卡在 composer 上沿。
@@ -497,7 +563,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           requestOlderLoad();
         }}
         onStartReachedThreshold={0.2}
-        onLoad={() => {
+        onLoad={({ elapsedTimeInMs }) => {
+          previewPerf("conversation.firstPaint", { sessionId, elapsedTimeInMs,
+            readyToListLoadMs: paintMeasurement.readyAt === null ? null : performance.now() - paintMeasurement.readyAt,
+            rows: rowsRef.current.length, turns: visibleTurns.length });
           if (activeSessionId.current !== sessionId) return;
           if (restorePosition.kind !== "anchor") {
             setPositionRestored(true);
@@ -521,6 +590,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           : olderError ? <Pressable testID="history:retry" style={styles.historyStatus}
             onPress={() => void loadOlder()}>
             <Text style={{ color: theme.colors.danger }}>加载更早消息失败，点按重试</Text>
+          </Pressable> : hasMoreHistory ? <Pressable testID="history:load-older"
+            style={styles.historyStatus} onPress={() => void loadOlder()}>
+            <Text style={{ color: theme.colors.textMuted }}>加载更早消息</Text>
           </Pressable> : null}
         ListFooterComponent={<>
           {plan && <View style={styles.planAction}>
@@ -530,7 +602,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
                 if (!resolvedPreferences) return;
                 setSending(true);
                 try {
-                  await executePlan(sessionId, resolvedPreferences);
+                  await executePlan(sessionId, resolvedPreferences, plan);
                   followLatest(false);
                 } catch (cause) { Alert.alert("无法执行计划",
                   cause instanceof Error ? cause.message : "请刷新后重试"); }
@@ -558,14 +630,15 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       </Pressable>}
     </View>
     <PendingMessagePreviews items={pendingMessages.filter((item) => item.threadId === sessionId)} />
-    <ChatComposer value={text} onChange={setText} attachments={attachments}
-      onAttachmentsChange={setAttachments} onParameters={() => {
+    <ConversationComposer key={`${profileId}:${sessionId}`} profileId={profileId!}
+      sessionId={sessionId} preferences={preferences} onDraftPreferences={setPreferences}
+      onSendMessage={send} onParameters={() => {
         if (!resolvedPreferences) {
           Alert.alert("参数暂不可用", "Codex App Server 没有返回可用模型。");
           return;
         }
         setBeforeSheet(preferences); setPreferences(resolvedPreferences); setShowParameters(true);
-      }} onSend={() => void send()} onStop={() => void stop()} active={activeTurnId !== null}
+      }} onStop={() => void stop()} active={activeTurnId !== null}
       sending={sending} stopping={stopping}
       parameterLabel={resolvedPreferences
         ? turnPreferencesSummary(resolvedPreferences)

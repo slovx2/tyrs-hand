@@ -624,6 +624,40 @@ describe("OfficialAppServerClient", () => {
   });
 });
 
+describe("移动端摘要与详情请求边界", () => {
+  it("summary 首次恢复和旧页读取不触发任何 Item 请求", async () => {
+    const turns = [officialTurn("turn-1", "completed", [])];
+    const thread = { ...officialThread(turns), historyMode: "paginated" as const };
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "thread/resume") {
+        expect(params).toMatchObject({ initialTurnsPage: { limit: 5, itemsView: "summary" } });
+        return resumeResult(thread);
+      }
+      if (method === "thread/turns/list") {
+        expect(params).toMatchObject({ itemsView: "summary", limit: 5 });
+        return turnPage(turns);
+      }
+      throw new Error(`禁止首屏详情请求 ${method}`);
+    });
+    const client = new OfficialAppServerClient("profile", rpc, new MemoryJournal());
+    await client.resumeThreadPage("thread-1", "summary", 5, "paginated");
+    await client.listTurnPage("thread-1", "older", 5, "summary", "paginated");
+    expect(rpc.calls.map((call) => call.method)).toEqual(["thread/resume", "thread/turns/list"]);
+  });
+
+  it("指定 Turn 只取 50 条；倒序响应转换为时间正序，不自动继续取页", async () => {
+    const rpc = new FakeRpc(() => ({ data: ["new", "old"].map((id) => ({ turnId: "target",
+      item: { type: "agentMessage", id, text: id, phase: "commentary", memoryCitation: null } })),
+    nextCursor: "more", backwardsCursor: null }));
+    const client = new OfficialAppServerClient("profile", rpc, new MemoryJournal());
+    const page = await client.listTurnItems("thread-1", "target", null, "desc");
+    expect(rpc.calls).toEqual([{ method: "thread/items/list", params: {
+      threadId: "thread-1", turnId: "target", cursor: null, limit: 50, sortDirection: "desc" } }]);
+    expect(page.items.map((item) => item.id)).toEqual(["old", "new"]);
+    expect(page.nextCursor).toBe("more");
+  });
+});
+
 function officialThread(turns: Thread["turns"]): Thread {
   return { id: "thread-1", sessionId: "session-1", forkedFromId: null, parentThreadId: null,
     preview: "thread", ephemeral: false, section: null, sectionEnteredAt: null, modelProvider: "openai",

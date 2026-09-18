@@ -1,7 +1,7 @@
 import { router, Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { threadTitle } from "@/app-server/types";
@@ -32,13 +32,21 @@ export default function SessionsScreen() {
   const setSelectedProject = useAppStore((state) => state.setSelectedProject);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [liveProjectStatus, setLiveProjectStatus] = useState<
-    "idle" | "loading" | "matched" | "unmatched" | "ambiguous"
-  >("idle");
-  const [liveProjectMessage, setLiveProjectMessage] = useState("");
+  const [liveProjectResult, setLiveProjectResult] = useState<{
+    key: string; message: string;
+  } | null>(null);
   const sshConnections = useMemo(() => connections.filter((item) => item.kind === "ssh"), [connections]);
   const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null;
   const machineBinding = useMemo(() => resolveMachineControlBinding(connection), [connection]);
+  const controlLink = machineBinding.status === "bound" ? machineBinding.link : null;
+  const serverId = controlLink?.serverId;
+  const baseUrl = controlLink?.baseUrl;
+  const workerId = controlLink?.workerId;
+  const workerName = controlLink?.workerName;
+  const deviceId = controlLink?.deviceId;
+  const projectPath = selectedProject?.cwd;
+  const liveProjectKey = JSON.stringify([connection?.profileId, selectedProjectId, projectPath,
+    serverId, baseUrl, workerId, deviceId]);
   const sessions = useMemo(() => selectedProjectId
     ? allSessions.filter((item) => item.projectId === selectedProjectId) : [],
   [allSessions, selectedProjectId]);
@@ -62,28 +70,33 @@ export default function SessionsScreen() {
     openLive();
   };
   useEffect(() => {
-    if (machineBinding.status !== "bound" || !selectedProject) {
-      setLiveProjectStatus("idle");
-      setLiveProjectMessage(!selectedProject ? "请先选择 Codex 项目" : machineBinding.message ?? "");
-      return;
-    }
+    if (!serverId || !baseUrl || !workerId || !deviceId || !projectPath) return;
     let cancelled = false;
-    setLiveProjectStatus("loading");
-    setLiveProjectMessage("");
-    void listLiveWorkerProjects(machineBinding.link, machineBinding.workerId)
-      .then(({ projects: controlProjects }) => {
+    let pending = false;
+    const check = async () => {
+      if (pending) return;
+      pending = true;
+      // 后台复查保留上次结果，不插入会改变列表高度的瞬时加载文字。
+      try {
+        const { projects: controlProjects } = await listLiveWorkerProjects({ serverId, baseUrl,
+          workerId, deviceId, workerName: workerName ?? "" }, workerId);
         if (cancelled) return;
-        const resolution = resolveLiveProjectForSSHProject(selectedProject, controlProjects);
-        setLiveProjectStatus(resolution.status);
-        setLiveProjectMessage(resolution.status === "matched" ? "" : resolution.message);
-      })
-      .catch((reason: unknown) => {
-        if (cancelled) return;
-        setLiveProjectStatus("unmatched");
-        setLiveProjectMessage(reason instanceof Error ? reason.message : "无法读取 Control 项目");
+        const resolution = resolveLiveProjectForSSHProject({ cwd: projectPath }, controlProjects);
+        const message = resolution.status === "matched" ? "" : resolution.message;
+        setLiveProjectResult((current) => current?.key === liveProjectKey && current.message === message
+          ? current : { key: liveProjectKey, message });
+      } catch (reason: unknown) {
+        if (!cancelled) setLiveProjectResult({ key: liveProjectKey,
+          message: reason instanceof Error ? reason.message : "无法读取 Control 项目" });
+      } finally { pending = false; }
+    };
+    void check();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void check();
     });
-    return () => { cancelled = true; };
-  }, [machineBinding, selectedProject]);
+    return () => { cancelled = true; subscription.remove(); };
+    // 目录同步会重建项目对象；匹配只依赖稳定身份和路径。
+  }, [baseUrl, deviceId, liveProjectKey, projectPath, serverId, workerId, workerName]);
   const navigation = <Tabs.Screen options={{
     title: selectedId ? (() => {
       const record = allSessions.find((item) => item.thread.id === selectedId);
@@ -134,10 +147,10 @@ export default function SessionsScreen() {
       <Ionicons name="mic-outline" size={27} color={theme.colors.accentForeground} />
     </Pressable>
   </View> : null;
-  const liveStatus = selectedProject && (machineBinding.status !== "bound" || liveProjectStatus !== "matched")
-    ? <Text style={[styles.liveStatus, { color: theme.colors.textMuted }]}>{machineBinding.status !== "bound"
-      ? machineBinding.message : liveProjectStatus === "loading"
-      ? "正在检查 Control 项目…" : liveProjectMessage}</Text> : null;
+  const liveMessage = machineBinding.status !== "bound" ? machineBinding.message
+    : liveProjectResult?.key === liveProjectKey ? liveProjectResult.message : "";
+  const liveStatus = selectedProject && liveMessage
+    ? <Text style={[styles.liveStatus, { color: theme.colors.textMuted }]}>{liveMessage}</Text> : null;
 
   if (!tablet) return <Screen>{navigation}{selectors}{liveStatus}
     <View style={styles.mobileList}>{list}</View>{actions}</Screen>;

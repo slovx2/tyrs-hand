@@ -43,6 +43,10 @@ export type OfficialTurnPage = {
   nextCursor: string | null;
   backwardsCursor: string | null;
 };
+export type OfficialItemPage = {
+  items: Turn["items"];
+  nextCursor: string | null;
+};
 export type ResumedThreadPage = {
   thread: Thread;
   page: OfficialTurnPage;
@@ -211,6 +215,23 @@ export class OfficialAppServerClient {
       items: await this.listAllTurnItems(threadId, turn.id),
       itemsView: "full" as const,
     })));
+  }
+
+  /** 只读取一页；由阅读动作推进游标，禁止在详情首屏自动遍历整轮。 */
+  async listTurnItems(threadId: string, turnId: string, cursor: string | null = null,
+    direction: "asc" | "desc" = "asc"): Promise<OfficialItemPage> {
+    const page = await this.rpc.request<ThreadItemsListResponse>("thread/items/list", {
+      threadId, turnId, cursor, limit: 50, sortDirection: direction,
+    });
+    if (cursor !== null && page.nextCursor === cursor) {
+      throw new Error("thread/items/list 返回了重复游标");
+    }
+    if (page.data.some((entry) => entry.turnId !== turnId)) {
+      throw new Error("thread/items/list 返回了其他轮次的数据");
+    }
+    const items = page.data.map((entry) => projectItemForMobile(entry.item));
+    return { items: direction === "desc" ? items.reverse() : items,
+      nextCursor: page.nextCursor };
   }
 
   private async listAllTurnItems(threadId: string, turnId: string): Promise<Turn["items"]> {

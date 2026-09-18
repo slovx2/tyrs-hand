@@ -72,7 +72,14 @@ async function insertThreads(database: Awaited<ReturnType<typeof getDatabase>>, 
 
 export function cacheableThreadRecord(record: ThreadRecord): ThreadRecord {
   if (record.history.kind !== "loaded") return record;
-  const turns = record.thread.turns.map(normalizeTerminalTurn);
+  const turns = record.thread.turns.slice(-THREAD_PAGE_SIZE).map((turn) => {
+    if (record.thread.historyMode !== "paginated") return normalizeTerminalTurn(turn);
+    // 分页会话的过程可按需重读；SQLite 首屏缓存仅保存摘要，不携带整轮实时过程。
+    const user = turn.items.find((item) => item.type === "userMessage");
+    const last = [...turn.items].reverse().find((item) => item.type === "agentMessage");
+    return { ...turn, itemsView: "summary" as const,
+      items: [user, last].filter((item): item is NonNullable<typeof item> => !!item) };
+  });
   return {
     ...record,
     thread: { ...record.thread, turns: turns.slice(-THREAD_PAGE_SIZE) },

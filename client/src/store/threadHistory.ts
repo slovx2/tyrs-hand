@@ -74,7 +74,7 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
       items.push(mergeItemSnapshot(item, updated.id === item.id ? updated
         : withItemId(updated, item.id), incoming.status !== "inProgress"));
       seen.add(updated.id);
-    } else if (options.preserveMissingItems || incoming.status === "inProgress" ||
+    } else if (options.preserveMissingItems || incoming.itemsView !== "full" || incoming.status === "inProgress" ||
       isToolItem(item) || item.type === "userInputResponse") {
       // Turn 已经进入终态时，旧快照里仍是 inProgress/generating 的工具不可能继续运行。
       // 保留调用本身用于还原时间线，但必须先收敛 Item 状态，否则会把错误的运行态写入缓存，
@@ -86,7 +86,10 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
   for (const item of incoming.items) {
     if (!seen.has(item.id)) items.push(item);
   }
-  const merged = { ...incoming, items };
+  const merged = { ...incoming, items,
+    itemsView: incoming.itemsView === "full" || previous.itemsView === "full" ? "full" as const
+      : incoming.itemsView === "summary" || previous.itemsView === "summary" ? "summary" as const
+        : "notLoaded" as const };
   return sameTurnSnapshot(previous, merged) ? previous : merged;
 }
 

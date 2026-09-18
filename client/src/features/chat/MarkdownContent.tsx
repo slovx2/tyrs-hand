@@ -8,21 +8,26 @@ import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { markdownTableColumnCount, markdownTableMetrics } from "./markdownTableLayout";
 import { lookupMarkdownPlaceholder, prepareMarkdown, type MarkdownPlaceholder } from "./responseDirectives";
+import { headingSourceChunks, markdownSourceChunks, splitMarkdownAst, type MarkdownBlock } from "./markdownBlocks";
+import { previewPerf } from "@/preview/perf";
 
 type MarkdownContentProps = {
   children: string;
   cacheKey: string;
   profileId: string;
   compact?: boolean;
+  astOverride?: ASTNode[] | undefined;
+  resolveAst?: (() => ASTNode[]) | undefined;
   imageTestPrefix?: string;
   onFileCitationPress?: (path: string, lineStart: number, lineEnd?: number) => void;
 };
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
 const markdownIt = new MarkdownIt({ breaks: true, typographer: true });
+const blockMarkdownIt = new MarkdownIt({ breaks: true, typographer: true })
+  .disable(["inline", "linkify", "replacements", "smartquotes"]);
 const MAX_AST_CACHE_ENTRIES = 48;
-const MAX_AST_CACHE_SOURCE_CHARACTERS = 160_000;
-const MAX_AST_ENTRY_SOURCE_CHARACTERS = 32_000;
+const MAX_AST_CACHE_SOURCE_CHARACTERS = 1_000_000;
 
 type MarkdownAstCacheEntry = {
   source: string;
@@ -50,8 +55,8 @@ function cachedMarkdownAst(cacheKey: string, source: string): ASTNode[] {
     markdownAstCacheSourceCharacters -= cached.source.length;
   }
 
-  const ast = parseMarkdownAst(source);
-  if (source.length > MAX_AST_ENTRY_SOURCE_CHARACTERS) return ast;
+  const ast = parseMarkdownAst(prepareMarkdown(source).source);
+  if (source.length > MAX_AST_CACHE_SOURCE_CHARACTERS) return ast;
 
   markdownAstCache.set(cacheKey, { source, ast });
   markdownAstCacheSourceCharacters += source.length;
@@ -64,6 +69,48 @@ function cachedMarkdownAst(cacheKey: string, source: string): ASTNode[] {
     markdownAstCacheSourceCharacters -= oldest?.source.length ?? 0;
   }
   return ast;
+}
+
+const blockCache = new Map<string, { source: string; blocks: MarkdownBlock[] }>();
+let blockCacheCharacters = 0;
+export function markdownBlocks(source: string, cacheKey: string): MarkdownBlock[] {
+  const cached = blockCache.get(cacheKey);
+  if (cached?.source === source) return cached.blocks;
+  if (cached) { blockCache.delete(cacheKey); blockCacheCharacters -= cached.source.length; }
+  const began = performance.now();
+  const prepared = prepareMarkdown(source).source.replace(/\r\n?/g, "\n").replace(/\0/g, "\uFFFD");
+  const preparedAt = performance.now();
+  // 先做块级词法解析；共享 references 环境，使不同虚拟行中的引用链接依然有效。
+  const environment = {};
+  const headings = headingSourceChunks(prepared);
+  const tokens = headings ? [] : blockMarkdownIt.parse(prepared, environment);
+  const lexedAt = performance.now();
+  const chunks = headings ?? markdownSourceChunks(prepared, tokens);
+  const parseChunk = (text: string): ASTNode[] => {
+    const start = performance.now();
+    const result = parser(text, identityRenderer,
+      { parse: (value: string) => markdownIt.parse(value, { ...environment }) }) as ASTNode[];
+    previewPerf("markdown.parse", { cacheKey, characters: text.length, elapsedMs: performance.now() - start });
+    return result;
+  };
+  const blocks = chunks.flatMap((chunk, index): MarkdownBlock[] => {
+    // 单个超长段落或代码块才需要继续拆 AST；普通文档首屏不解析不可见的正文。
+    if (chunk.length > 4800) return splitMarkdownAst(parseChunk(chunk)).map((part) =>
+      ({ ...part, key: `${index}:${part.key}` }));
+    let ast: ASTNode[] | undefined;
+    return [{ key: String(index), ast: [], sizeHint: chunk.length,
+      resolveAst: () => ast ??= parseChunk(chunk) }];
+  });
+  blockCache.set(cacheKey, { source, blocks });
+  previewPerf("markdown.blocks", { characters: source.length, blocks: blocks.length,
+    prepareMs: preparedAt - began, lexMs: lexedAt - preparedAt, splitMs: performance.now() - lexedAt });
+  blockCacheCharacters += source.length;
+  while (blockCache.size > 16 || blockCacheCharacters > MAX_AST_CACHE_SOURCE_CHARACTERS) {
+    const oldestKey = blockCache.keys().next().value!;
+    blockCacheCharacters -= blockCache.get(oldestKey)!.source.length;
+    blockCache.delete(oldestKey);
+  }
+  return blocks;
 }
 
 const textBlockStyle: Record<string, string> = {
@@ -181,15 +228,16 @@ function renderMarkdownText(node: ASTNode, _children: ReactNode[], _parents: AST
 }
 
 export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, profileId,
-  compact = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
+  compact = false, imageTestPrefix = "markdown:image", onFileCitationPress,
+  astOverride, resolveAst }: MarkdownContentProps) {
   const theme = useTheme();
   const [parentWidth, setParentWidth] = useState(0);
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
     setParentWidth((currentWidth) => Math.abs(currentWidth - nextWidth) < 1 ? currentWidth : nextWidth);
   }, []);
-  const prepared = useMemo(() => prepareMarkdown(children), [children]);
-  const ast = useMemo(() => cachedMarkdownAst(cacheKey, prepared.source), [cacheKey, prepared.source]);
+  const ast = useMemo(() => astOverride ?? resolveAst?.() ?? cachedMarkdownAst(cacheKey, children),
+    [astOverride, resolveAst, cacheKey, children]);
   const blockGap = compact ? 5 : 8;
   const tableColumnWidth = markdownTableMetrics(parentWidth, 1).columnWidth;
   const markdownStyle = useMemo(() => StyleSheet.create({
@@ -307,7 +355,8 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
       return lightweightTextBlock(node, children, _parents, styles);
     },
     table: (node, children, _parents, styles) => {
-      const { tableWidth } = markdownTableMetrics(parentWidth, markdownTableColumnCount(node));
+      const { tableWidth } = markdownTableMetrics(parentWidth,
+        node.attributes.virtualColumnCount ?? markdownTableColumnCount(node));
       return <ScrollView key={node.key} horizontal nestedScrollEnabled directionalLockEnabled
         showsHorizontalScrollIndicator testID="markdown:table-scroll"
         style={styles._VIEW_SAFE_tableScroller}

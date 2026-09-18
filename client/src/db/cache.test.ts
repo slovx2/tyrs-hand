@@ -11,6 +11,17 @@ vi.mock("./database", () => ({
 }));
 
 describe("Thread 最近页缓存", () => {
+  it("分页会话仅持久化摘要两端，不把 commentary 伪装成 final", () => {
+    const record = loadedRecord([turn(1)]);
+    record.thread.historyMode = "paginated";
+    const user = { type: "userMessage" as const, id: "user", clientId: null, content: [] };
+    const commentary = { type: "agentMessage" as const, id: "commentary", text: "working",
+      phase: "commentary" as const, memoryCitation: null };
+    record.thread.turns[0]!.items = [user, command("tool"), commentary];
+    const cached = cacheableThreadRecord(record).thread.turns[0]!;
+    expect(cached.itemsView).toBe("summary");
+    expect(cached.items).toEqual([user, commentary]);
+  });
   it("SQLite 只保存最近 5 个 Turn，并把旧页游标重置到最新页边界", () => {
     const record = loadedRecord(Array.from({ length: 12 }, (_, index) => turn(index + 1)));
 

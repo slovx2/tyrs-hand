@@ -1,0 +1,26 @@
+appId: ${APP_ID}
+---
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: "session:30000000-0000-4000-8000-000000000011"
+    direction: DOWN
+- tapOn:
+    id: "session:30000000-0000-4000-8000-000000000011"
+- extendedWaitUntil:
+    visible: "第 500 轮最终回答"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: "第 490 轮最终回答"
+    direction: UP
+    timeout: 30000
+- takeScreenshot: "500-turns-history"
+- tapOn:
+    id: "session:back"
+- tapOn:
+    id: "session:30000000-0000-4000-8000-000000000011"
+- extendedWaitUntil:
+    visible: "第 500 轮最终回答"
+    timeout: 15000
+- takeScreenshot: "500-turns-reopen"

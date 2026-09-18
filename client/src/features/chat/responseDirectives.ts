@@ -241,6 +241,11 @@ function taskListMarker(line: string): string {
 }
 
 export function prepareMarkdown(value: string): PreparedMarkdown {
+  // 普通 Markdown 无须逐行运行官方扩展语法的多轮正则；长文首屏尤其需要避开这项工作。
+  if (!["::", ":codex-", ":chatgpt-", "<", "【", "", "[ ]", "[x]", "[X]"]
+    .some((marker) => value.includes(marker))) {
+    return { source: value.includes("\r") ? value.replace(/\r\n?/g, "\n") : value };
+  }
   const lines = value.replace(/\r\n?/g, "\n").split("\n");
   const output: string[] = [];
   let fence: Fence | null = null;

@@ -8,7 +8,7 @@ import { create } from "zustand";
 
 import { materializeUserInput, type LocalAttachment } from "@/app-server/attachments";
 import { latestExecutablePlan, textInput, THREAD_PAGE_SIZE,
-  type TurnPreferences } from "@/app-server/officialClient";
+  type OfficialItemPage, type TurnPreferences } from "@/app-server/officialClient";
 import { officialClientFor } from "@/app-server/registry";
 import { completeOutbox, discardOutboxItem, enqueueOutbox, failOutbox, listOutbox, markOutboxProcessing,
   retryOutboxItem, setOutboxThread, type NativeOutboxItem } from "@/app-server/outbox";
@@ -60,13 +60,16 @@ type AppState = {
   loadThread: (threadId: string) => Promise<void>;
   refreshThreadTail: (threadId: string) => Promise<void>;
   loadOlderThread: (threadId: string) => Promise<void>;
+  loadTurnItems: (threadId: string, turnId: string, cursor: string | null,
+    direction: "asc" | "desc") => Promise<OfficialItemPage>;
   startTask: (projectId: string, text: string, attachments: LocalAttachment[],
     preferences: TurnPreferences, clientMessageId?: string) => Promise<string | null>;
   submitMessage: (threadId: string, text: string, attachments: LocalAttachment[],
     preferences: TurnPreferences, clientMessageId?: string) => Promise<boolean>;
   retryOutbox: (clientMessageId?: string) => Promise<void>;
   discardOutbox: (clientMessageId: string) => Promise<void>;
-  executePlan: (threadId: string, preferences: TurnPreferences) => Promise<void>;
+  executePlan: (threadId: string, preferences: TurnPreferences,
+    loadedPlan?: NonNullable<ReturnType<typeof latestExecutablePlan>>) => Promise<void>;
   interruptThread: (threadId: string) => Promise<void>;
   answerRequest: (threadId: string, requestId: string | number, result: unknown) => boolean;
   setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
@@ -88,6 +91,7 @@ const visibleThreads = new Set<string>();
 const threadLoadPromises = new Map<string, Promise<void>>();
 const threadTailQueue = new CoalescingKeyedQueue();
 const olderThreadPromises = new Map<string, Promise<void>>();
+const turnItemPromises = new Map<string, Promise<OfficialItemPage>>();
 const pendingCatalogThreads = new Set<string>();
 const outboxDrains = new Map<string, Promise<OutboxDrainResult>>();
 // 连续切换机器时，仅允许最后一次切换提交状态，避免旧请求覆盖新选择。
@@ -210,6 +214,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadThread: async (threadId) => loadOfficialThread(threadId, set, get),
   refreshThreadTail: async (threadId) => queueThreadTailRefresh(threadId, set, get),
   loadOlderThread: async (threadId) => loadOlderOfficialThread(threadId, set, get),
+  loadTurnItems: async (threadId, turnId, cursor, direction) => {
+    const connection = requireConnection(get());
+    const key = JSON.stringify([connection.profileId, threadId, turnId, cursor, direction]);
+    const active = turnItemPromises.get(key);
+    if (active) return active;
+    const record = requireThread(get(), threadId);
+    const client = bindClient(connection, record.workspaceId, set, get);
+    const request = (async () => {
+      await client.connect();
+      if (get().activeConnection?.profileId !== connection.profileId) throw new Error("会话所属连接已切换");
+      const page = await client.listTurnItems(threadId, turnId, cursor, direction);
+      if (get().activeConnection?.profileId !== connection.profileId) throw new Error("会话所属连接已切换");
+      return page;
+    })().finally(() => { if (turnItemPromises.get(key) === request) turnItemPromises.delete(key); });
+    turnItemPromises.set(key, request);
+    return request;
+  },
 
   startTask: async (projectId, text, attachments, preferences, suppliedId) => {
     const connection = requireConnection(get());
@@ -250,9 +271,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await syncOutboxState(connection.profileId, set, get);
   },
 
-  executePlan: async (threadId, preferences) => {
+  executePlan: async (threadId, preferences, loadedPlan) => {
     const record = requireThread(get(), threadId);
-    const plan = latestExecutablePlan(record.thread);
+    const plan = loadedPlan?.turnId === record.thread.turns.at(-1)?.id &&
+      record.thread.turns.at(-1)?.status === "completed" ? loadedPlan : latestExecutablePlan(record.thread);
     if (!plan) throw new Error("最新完成的 Turn 没有可执行计划");
     const clientId = `plan:${threadId}:${plan.itemId}`;
     const internalMessage = `PLEASE IMPLEMENT THIS PLAN:\n${plan.text}`;
@@ -992,7 +1014,8 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
     const record = requireThread(get(), threadId);
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
-    const resumed = await client.resumeThreadPage(threadId, "full", THREAD_PAGE_SIZE,
+    const resumed = await client.resumeThreadPage(threadId,
+      record.thread.historyMode === "paginated" ? "summary" : "full", THREAD_PAGE_SIZE,
       record.thread.historyMode);
     if (get().activeConnection?.profileId !== connection.profileId) return;
     const current = requireThread(get(), threadId);
@@ -1044,7 +1067,8 @@ async function refreshOfficialThreadTail(connection: Connection, threadId: strin
   await client.connect();
   const [metadata, page] = await Promise.all([
     client.readThreadMetadata(threadId),
-    client.listTurnPage(threadId, null, THREAD_PAGE_SIZE, "full", record.thread.historyMode),
+    client.listTurnPage(threadId, null, THREAD_PAGE_SIZE,
+      record.thread.historyMode === "paginated" ? "summary" : "full", record.thread.historyMode),
   ]);
   if (get().activeConnection?.profileId !== connection.profileId) return;
   const before = requireThread(get(), threadId);
@@ -1077,7 +1101,8 @@ async function loadOlderOfficialThread(threadId: string, set: StoreSet,
   const promise = (async () => {
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
-    const page = await client.listTurnPage(threadId, cursor, THREAD_PAGE_SIZE, "full",
+    const page = await client.listTurnPage(threadId, cursor, THREAD_PAGE_SIZE,
+      record.thread.historyMode === "paginated" ? "summary" : "full",
       record.thread.historyMode);
     if (get().activeConnection?.profileId !== connection.profileId) return;
     const current = requireThread(get(), threadId);
