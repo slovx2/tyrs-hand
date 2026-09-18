@@ -48,7 +48,9 @@ func (s *Server) startWorkerWakeDispatcher(ctx context.Context) {
 			case <-ticker.C:
 				s.flushWorkerWakes(ctx, pending)
 			case <-sweep.C:
-				s.collectWorkerWake(ctx, pending, "reconcile")
+				// 兜底扫描只补发待领取类唤醒：定时任务按时间到期，没有对应的写入事件。
+				// 其余待办由 Worker 自己的兜底扫描收敛，避免永久失败的状态被高频重试。
+				s.collectWorkerWake(ctx, pending, workerprotocol.WakeClaim)
 				s.flushWorkerWakes(ctx, pending)
 			case message, open := <-channel:
 				if !open {
