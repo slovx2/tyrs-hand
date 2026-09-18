@@ -204,7 +204,8 @@ func (s *Server) resolveWorkerWakeTargets(ctx context.Context,
 			FROM codex_thread_controls control
 			JOIN worker_workspaces workspace ON workspace.id = control.workspace_id
 			WHERE workspace.worker_id IS NOT NULL
-				AND ((control.desired_thread_name_source = 'fallback'
+				AND ((control.lifecycle_state = 'active'
+						AND control.desired_thread_name_source = 'fallback'
 						AND control.desired_thread_name_revision >
 							control.applied_thread_name_revision
 						AND control.external_thread_id IS NOT NULL)

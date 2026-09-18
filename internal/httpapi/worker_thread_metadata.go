@@ -372,6 +372,9 @@ func (s *Server) workerPendingThreadNames(c *gin.Context) {
 				ON workspace.id = control.workspace_id
 			WHERE workspace.worker_id = $1
 				AND control.desired_thread_name_source = 'fallback'
+			-- 归档后 rollout 会被移到 archived_sessions，Codex thread/name/set
+			-- 找不到该 Thread；此时保持待办，等取消归档后再应用。
+			AND control.lifecycle_state = 'active'
 			AND control.desired_thread_name_revision > control.applied_thread_name_revision
 			AND control.external_thread_id IS NOT NULL
 		ORDER BY control.updated_at, control.id`, currentWorker(c).ID)
