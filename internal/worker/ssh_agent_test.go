@@ -51,7 +51,7 @@ func TestSSHAgentGenerationLoadsKeysAndWritesPublicConfig(t *testing.T) {
 	root, err := os.MkdirTemp("/tmp", "tyrs-ssh-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	manager := newSSHAgentManager(root, nil, zap.NewNop())
+	manager := newSSHAgentManager(root, nil, newWakeSignals(), time.Minute, zap.NewNop())
 	require.NoError(t, os.MkdirAll(filepath.Join(manager.root, "keys"), 0o755))
 	managed, err := manager.startGeneration(context.Background(), configuration)
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestSSHAgentProxyStopsConnectionsAndRemovesSockets(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "keys"), 0o755))
-	manager := newSSHAgentManager(root, nil, zap.NewNop())
+	manager := newSSHAgentManager(root, nil, newWakeSignals(), time.Minute, zap.NewNop())
 	managed, err := manager.startGeneration(context.Background(),
 		workerprotocol.SSHConfiguration{Revision: "empty"})
 	require.NoError(t, err)
@@ -117,7 +117,7 @@ func TestSSHAgentGenerationSupportsEncryptedKeysAndRejectsInvalidGeneration(t *t
 	root, err := os.MkdirTemp("/tmp", "tyrs-ssh-encrypted-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	manager := newSSHAgentManager(root, nil, zap.NewNop())
+	manager := newSSHAgentManager(root, nil, newWakeSignals(), time.Minute, zap.NewNop())
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "keys"), 0o755))
 
 	credentialID := uuid.New()
@@ -153,7 +153,7 @@ func TestSSHAgentStatusAndSocketSwitch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, filepath.Base(targetB), destination)
 
-	manager := newSSHAgentManager(root, nil, zap.NewNop())
+	manager := newSSHAgentManager(root, nil, newWakeSignals(), time.Minute, zap.NewNop())
 	manager.setError(context.DeadlineExceeded)
 	require.Equal(t, "error", manager.Status().Status)
 	manager.current = &managedAgent{}
@@ -204,7 +204,7 @@ func TestSSHAgentSyncKeepsCurrentGenerationWhenRotationIsInvalid(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "keys"), 0o755))
 	client := workerprotocol.NewClient(server.URL, "node-token", time.Second)
-	manager := newSSHAgentManager(root, client, zap.NewNop())
+	manager := newSSHAgentManager(root, client, newWakeSignals(), time.Minute, zap.NewNop())
 	t.Cleanup(manager.Close)
 
 	require.NoError(t, manager.sync(context.Background()))

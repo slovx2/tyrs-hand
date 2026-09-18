@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,10 @@ import (
 )
 
 var workerVersion = "dev"
+
+// catalogHeartbeatRefresh 是心跳重新上传完整模型目录的最长间隔。
+// 目录通常只在 Provider 变化时改变，因此其余心跳只上报 revision。
+const catalogHeartbeatRefresh = 30 * time.Minute
 
 type taskProcessor interface {
 	Process(context.Context, *workerprotocol.Task, <-chan workerprotocol.RunCommand,
@@ -37,15 +43,39 @@ type Runner struct {
 	browser               *browserHealthMonitor
 	coordinator           *runCoordinator
 	sshHostKeyFingerprint string
+	wake                  *wakeSignals
+
+	catalogMu         sync.Mutex
+	catalogRevision   string
+	catalogRevisionAt time.Time
 }
 
 func (r *Runner) SetSSHHostKeyFingerprint(fingerprint string) {
 	r.sshHostKeyFingerprint = fingerprint
 }
 
+// NotifyControlWake 接收 Control 推送的唤醒种类。
+func (r *Runner) NotifyControlWake(kinds []string) {
+	r.wake.Notify(kinds)
+}
+
+// SetControlChannelState 记录控制通道的连接与唤醒能力状态。
+func (r *Runner) SetControlChannelState(connected, wake bool) {
+	r.wake.SetState(connected, wake)
+}
+
 func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskProcessor,
 	logger *zap.Logger,
 ) (*Runner, error) {
+	if cfg.NodeHeartbeatInterval <= 0 {
+		cfg.NodeHeartbeatInterval = time.Minute
+	}
+	if cfg.WorkerClaimFallbackInterval <= 0 {
+		cfg.WorkerClaimFallbackInterval = time.Minute
+	}
+	if cfg.WorkerSyncFallbackInterval <= 0 {
+		cfg.WorkerSyncFallbackInterval = 5 * time.Minute
+	}
 	var journals *journalStore
 	var coordinator *runCoordinator
 	var err error
@@ -60,8 +90,14 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 	}
 	runner := &Runner{cfg: cfg, client: client, processor: processor, logger: logger,
 		journals: journals, coordinator: coordinator}
-	if cfg.EnableSSH {
-		runner.ssh = newSSHAgentManager(cfg.SSHAgentDir, client, logger)
+	if concrete, ok := processor.(*Processor); ok && concrete.wake != nil {
+		runner.wake = concrete.wake
+	} else {
+		runner.wake = newWakeSignals()
+	}
+	if cfg.EnableSSH && cfg.ControlSyncEnabled() {
+		runner.ssh = newSSHAgentManager(cfg.SSHAgentDir, client, runner.wake,
+			cfg.WorkerSyncFallbackInterval, logger)
 	}
 	if cfg.BrowserMCPURL != "" {
 		runner.browser, err = newBrowserHealthMonitor(cfg.BrowserMCPURL)
@@ -73,6 +109,11 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 }
 
 func (r *Runner) Run(ctx context.Context) error {
+	if !r.cfg.ControlSyncEnabled() {
+		r.logger.Info("已关闭与 Control 的通信，仅保留本地 SSH 与 Codex")
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	if err := r.Authenticate(ctx); err != nil {
 		return err
 	}
@@ -110,8 +151,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	go r.heartbeatLoop(ctx)
 
 	for ctx.Err() == nil {
+		if !r.wake.Wait(ctx, r.cfg.WorkerClaimFallbackInterval, workerprotocol.WakeClaim) {
+			break
+		}
 		claim, claimErr := r.client.Claim(ctx, workerprotocol.ClaimRequest{
-			Role: r.claimRole(), Wait: true,
+			Role: r.claimRole(),
 		})
 		if claimErr != nil {
 			r.logger.Warn("从 Control 领取任务失败", zap.Error(claimErr))
@@ -123,6 +167,8 @@ func (r *Runner) Run(ctx context.Context) error {
 		if claim.Task == nil {
 			continue
 		}
+		// 领取成功后立刻再检查一次，直到队列为空，避免依赖下一次唤醒。
+		r.wake.Notify([]string{workerprotocol.WakeClaim})
 		task := claim.Task
 		if activeTask, routed, applied := r.coordinator.route(task); routed {
 			if applied {
@@ -234,15 +280,52 @@ func (r *Runner) sendHeartbeat(ctx context.Context) error {
 			values[key] = value
 		}
 	}
+	revision, catalogIncluded := r.applyCatalogRevision(values)
 	metadata, _ := json.Marshal(values)
-	return r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+	if err := r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
 		WorkerVersion: workerVersion, ProtocolVersion: r.cfg.WorkerProtocolVersion,
-		SSHHostKeyFingerprint: r.sshHostKeyFingerprint, Metadata: metadata,
-	})
+		SSHHostKeyFingerprint: r.sshHostKeyFingerprint,
+		ModelCatalogRevision:  revision, Metadata: metadata,
+	}); err != nil {
+		return err
+	}
+	if catalogIncluded {
+		r.catalogMu.Lock()
+		r.catalogRevision = revision
+		r.catalogRevisionAt = time.Now()
+		r.catalogMu.Unlock()
+	}
+	return nil
+}
+
+// applyCatalogRevision 决定本次心跳是否携带完整模型目录。
+// 只有目录内容变化、首次上报或超过刷新间隔时才上传正文，
+// 其余心跳仅带 revision，由 Control 保留上一份快照。
+func (r *Runner) applyCatalogRevision(values map[string]any) (string, bool) {
+	raw, ok := values["modelCatalog"].(json.RawMessage)
+	r.catalogMu.Lock()
+	defer r.catalogMu.Unlock()
+	if !ok || len(raw) == 0 {
+		delete(values, "modelCatalog")
+		if r.catalogRevision != "" {
+			// 目录被清空时显式发送 null，让 Control 删除旧快照。
+			values["modelCatalog"] = nil
+			return "", true
+		}
+		return "", false
+	}
+	digest := sha256.Sum256(raw)
+	revision := hex.EncodeToString(digest[:])
+	included := revision != r.catalogRevision ||
+		time.Since(r.catalogRevisionAt) >= catalogHeartbeatRefresh
+	if !included {
+		delete(values, "modelCatalog")
+	}
+	return revision, included
 }
 
 func (r *Runner) heartbeatLoop(ctx context.Context) {
-	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
+	ticker := time.NewTicker(r.cfg.NodeHeartbeatInterval)
 	defer ticker.Stop()
 	for {
 		select {

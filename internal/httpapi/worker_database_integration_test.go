@@ -1878,7 +1878,12 @@ func TestWorkerRPCScansProjectsWithoutStartupWorkspace(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(root, "WakeQora"), 0o700))
 	service := workerconfig.NewService(codexHome, "codex")
 	service.SetWorkspaceRoot(root)
-	go func() { _ = workerconfig.RunRPCChannel(ctx, endpoint, credential, service) }()
+	go func() {
+		_ = workerconfig.RunChannel(ctx, workerconfig.ChannelOptions{
+			ControlURL: endpoint, Credential: credential, Service: service,
+			ProtocolVersion: workerprotocol.Version,
+		})
+	}()
 	require.Eventually(t, func() bool {
 		server.workerRPCMu.RLock()
 		defer server.workerRPCMu.RUnlock()

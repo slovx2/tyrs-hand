@@ -167,7 +167,8 @@ func (e *workspaceCodex) recordThreadMetadata(ctx context.Context,
 	event workerprotocol.ThreadMetadataEvent,
 ) {
 	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
-		if (e.controlValid != nil && !e.controlValid()) ||
+		if (e.processor != nil && !e.processor.cfg.ControlSyncEnabled()) ||
+			(e.controlValid != nil && !e.controlValid()) ||
 			(e.metadataAllowed != nil && !e.metadataAllowed(event.ThreadID)) {
 			return
 		}

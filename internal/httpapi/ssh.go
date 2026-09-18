@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/sshconfig"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
 func parseResourceID(c *gin.Context) (uuid.UUID, bool) {
@@ -42,6 +43,7 @@ func (s *Server) createSSHCredential(c *gin.Context) {
 	}
 	s.audit(c, "ssh_credential.create", "ssh_credential", item.ID.String(),
 		map[string]any{"name": item.Name, "fingerprint": item.Fingerprint})
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.JSON(http.StatusCreated, item)
 }
 
@@ -67,6 +69,7 @@ func (s *Server) updateSSHCredential(c *gin.Context) {
 	}
 	s.audit(c, "ssh_credential.update", "ssh_credential", id.String(),
 		map[string]any{"name": item.Name, "rotated": rotated, "fingerprint": item.Fingerprint})
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.JSON(http.StatusOK, item)
 }
 
@@ -80,6 +83,7 @@ func (s *Server) deleteSSHCredential(c *gin.Context) {
 		return
 	}
 	s.audit(c, "ssh_credential.delete", "ssh_credential", id.String(), nil)
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.Status(http.StatusNoContent)
 }
 
@@ -105,6 +109,7 @@ func (s *Server) createSSHHost(c *gin.Context) {
 	}
 	s.audit(c, "ssh_host.create", "ssh_host", item.ID.String(),
 		map[string]any{"alias": item.Alias, "workerIds": item.WorkerIDs})
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.JSON(http.StatusCreated, item)
 }
 
@@ -124,6 +129,7 @@ func (s *Server) importSSHHosts(c *gin.Context) {
 			map[string]any{"alias": item.Alias, "workerIds": item.WorkerIDs,
 				"source": "ssh_config"})
 	}
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.JSON(http.StatusCreated, gin.H{"items": items})
 }
 
@@ -148,6 +154,7 @@ func (s *Server) updateSSHHost(c *gin.Context) {
 	}
 	s.audit(c, "ssh_host.update", "ssh_host", id.String(),
 		map[string]any{"alias": item.Alias, "workerIds": item.WorkerIDs})
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.JSON(http.StatusOK, item)
 }
 
@@ -161,5 +168,6 @@ func (s *Server) deleteSSHHost(c *gin.Context) {
 		return
 	}
 	s.audit(c, "ssh_host.delete", "ssh_host", id.String(), nil)
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSSHConfig, uuid.Nil)
 	c.Status(http.StatusNoContent)
 }

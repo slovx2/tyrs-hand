@@ -41,6 +41,7 @@ type Processor struct {
 	imageNow       func() time.Time
 	imageTimeout   time.Duration
 	coordinator    *runCoordinator
+	wake           *wakeSignals
 }
 
 func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, scopeID uuid.UUID,
@@ -90,7 +91,7 @@ func NewProcessor(ctx context.Context, cfg config.Config, client *workerprotocol
 	workspace ports.WorkspaceManager, catalog *githubtools.Catalog, logger *zap.Logger,
 ) *Processor {
 	processor := &Processor{cfg: cfg, client: client, workspace: workspace, catalog: catalog,
-		logger: logger}
+		logger: logger, wake: newWakeSignals()}
 	if journals, err := newJournalStore(cfg.WorkerDataRoot); err == nil {
 		processor.journals = journals
 		processor.coordinator = newRunCoordinator(journals)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,9 +81,13 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanupFailure(nil)
 		return nil, nil, err
 	}
-	if err := runner.Authenticate(ctx); err != nil {
-		cleanupFailure(nil)
-		return nil, nil, fmt.Errorf("认证宿主 Worker: %w", err)
+	if cfg.ControlSyncEnabled() {
+		if err := runner.Authenticate(ctx); err != nil {
+			cleanupFailure(nil)
+			return nil, nil, fmt.Errorf("认证宿主 Worker: %w", err)
+		}
+	} else {
+		logger.Info("已关闭与 Control 的通信，跳过注册、心跳、任务领取和状态上报")
 	}
 	credentialBytes, err := os.ReadFile(cfg.WorkerCredentialFile)
 	var configService *workerconfig.Service
@@ -91,20 +96,29 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		credential = strings.TrimSpace(string(credentialBytes))
 		configService = workerconfig.NewServiceWithStateDirAndEnv(cfg.WorkerCodexHome, cfg.CodexBin, cfg.WorkerDataRoot, cfg.WorkerGlobalEnvFile)
 	}
-	manifest, err := client.Workspace(ctx)
-	if err != nil {
-		controlErr := err
+	var manifest *workerprotocol.WorkspaceManifest
+	if cfg.ControlSyncEnabled() {
+		manifest, err = client.Workspace(ctx)
+		if err != nil {
+			controlErr := err
+			manifest, err = worker.LoadCachedWorkspaceManifest(cfg.WorkerDataRoot)
+			if err != nil {
+				manifest = nil
+				logger.Warn("Control 不可用且没有有效 Workspace 快照，启动宿主基础能力", zap.Error(err))
+			} else {
+				logger.Warn("Control 暂不可用，使用本地 Workspace 快照启动", zap.Error(controlErr))
+			}
+		} else {
+			if cacheErr := worker.SaveWorkspaceManifest(cfg.WorkerDataRoot, manifest); cacheErr != nil {
+				cleanupFailure(nil)
+				return nil, nil, fmt.Errorf("保存宿主 Workspace 快照: %w", cacheErr)
+			}
+		}
+	} else {
 		manifest, err = worker.LoadCachedWorkspaceManifest(cfg.WorkerDataRoot)
 		if err != nil {
 			manifest = nil
-			logger.Warn("Control 不可用且没有有效 Workspace 快照，启动宿主基础能力", zap.Error(err))
-		} else {
-			logger.Warn("Control 暂不可用，使用本地 Workspace 快照启动", zap.Error(controlErr))
-		}
-	} else {
-		if cacheErr := worker.SaveWorkspaceManifest(cfg.WorkerDataRoot, manifest); cacheErr != nil {
-			cleanupFailure(nil)
-			return nil, nil, fmt.Errorf("保存宿主 Workspace 快照: %w", cacheErr)
+			logger.Warn("没有有效 Workspace 快照，以本地宿主能力启动", zap.Error(err))
 		}
 	}
 	desktopController := worker.NewHostDesktopController(processor, manifest)
@@ -139,10 +153,10 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanupFailure(nil)
 		return nil, nil, err
 	}
-	if configService != nil {
+	if configService != nil && cfg.ControlSyncEnabled() {
 		configService.SetWorkspaceRoot(cfg.WorkerWorkspaceRoot)
 		configService.SetRestart(runtime.Restart)
-		go runWorkerRPCChannel(ctx, cfg.WorkerControlURL, credential, configService, logger)
+		go runControlChannel(ctx, cfg, credential, configService, runner, logger)
 	}
 	var modelCatalog json.RawMessage
 	catalogCtx, cancel := context.WithTimeout(ctx, cfg.ControlTimeout)
@@ -185,17 +199,58 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	}, nil
 }
 
-func runWorkerRPCChannel(ctx context.Context, controlURL, credential string,
-	service *workerconfig.Service, logger *zap.Logger,
+const (
+	controlChannelMinBackoff   = 3 * time.Second
+	controlChannelMaxBackoff   = 30 * time.Second
+	controlChannelResetBackoff = 30 * time.Second
+)
+
+// runControlChannel 维护 Worker 到 Control 的 WebSocket 控制通道。
+// 通道承载 hello 能力协商、配置 RPC 与唤醒推送；断开后指数退避重连，
+// 并在每次连接建立后触发一次全量同步，覆盖断连期间漏掉的唤醒。
+func runControlChannel(ctx context.Context, cfg config.Config, credential string,
+	service *workerconfig.Service, runner *worker.Runner, logger *zap.Logger,
 ) {
+	backoff := controlChannelMinBackoff
 	for ctx.Err() == nil {
-		if err := workerconfig.RunRPCChannel(ctx, controlURL, credential, service); err != nil && ctx.Err() == nil {
-			logger.Warn("Worker RPC WebSocket 断开", zap.Error(err))
-		}
-		select {
-		case <-ctx.Done():
+		runner.SetControlChannelState(false, false)
+		started := time.Now()
+		err := workerconfig.RunChannel(ctx, workerconfig.ChannelOptions{
+			ControlURL: cfg.WorkerControlURL, Credential: credential, Service: service,
+			ProtocolVersion: cfg.WorkerProtocolVersion,
+			Notify:          runner.NotifyControlWake,
+			Ready: func(wake bool) {
+				runner.SetControlChannelState(true, wake)
+				logger.Info("Worker 控制通道已就绪", zap.Bool("wake", wake))
+				runner.NotifyControlWake(workerprotocol.AllWakeKinds())
+			},
+		})
+		runner.SetControlChannelState(false, false)
+		if ctx.Err() != nil {
 			return
-		case <-time.After(3 * time.Second):
 		}
+		if err != nil {
+			logger.Warn("Worker 控制通道断开", zap.Error(err))
+		}
+		if time.Since(started) >= controlChannelResetBackoff {
+			backoff = controlChannelMinBackoff
+		}
+		if !waitControlReconnect(ctx, backoff) {
+			return
+		}
+		backoff = min(backoff*2, controlChannelMaxBackoff)
+	}
+}
+
+// waitControlReconnect 在退避时间上加入抖动，避免多台 Worker 同时重连。
+func waitControlReconnect(ctx context.Context, backoff time.Duration) bool {
+	jitter := time.Duration(rand.Int63n(int64(backoff)/4 + 1))
+	timer := time.NewTimer(backoff + jitter)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }

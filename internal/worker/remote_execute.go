@@ -25,7 +25,11 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal,
 			slotReleased = true
 		}
 	}
-	defer releaseSlot()
+	defer func() {
+		releaseSlot()
+		// 释放并发槽后立刻重新检查待办，避免等下一次唤醒。
+		r.wake.Notify([]string{workerprotocol.WakeClaim})
+	}()
 	task := &journal.Task
 	logger := r.logger.With(zap.String("run_id", task.Claimed.RunID.String()),
 		zap.String("intent_id", task.Claimed.ID.String()))

@@ -100,6 +100,7 @@ sudo -u <os-user> /usr/local/libexec/tyrs-hand-worker-run doctor
 
 ```dotenv
 TYRS_HAND_WORKER_CONTROL_URL=https://agent.example.com
+# TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC=true
 TYRS_HAND_WORKER_ROLE=all
 TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS=6
 TYRS_HAND_CODEX_BIN=/usr/local/bin/codex
@@ -112,6 +113,10 @@ TYRS_HAND_BROWSER_AGENT_ADDRESS=127.0.0.1:8934
 TYRS_HAND_BROWSER_FILES_ROOT=/home/worker/.local/share/tyrs-hand/browser/files
 TYRS_HAND_BROWSER_SERVICES_ROOT=/opt/tyrs-hand/browser-services
 ```
+
+`TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC=true` 会停止 Worker 向 Control 心跳、领取任务、维持配置 WebSocket、同步 Workspace/SSH 配置以及上报 Desktop 状态。本地 SSH（默认 `:2222`）和 Codex App Server 继续运行。重新开启后重启 Worker 即可恢复通信。
+
+Worker 正常运行时复用配置 WebSocket 作为控制通道：Control 产生待办后推送唤醒通知，Worker 按需拉取，空闲时不再高频轮询。`hello` 能力协商失败或通道断开时，Worker 依靠 `TYRS_HAND_WORKER_CLAIM_FALLBACK_INTERVAL`（默认 60s）领取任务、`TYRS_HAND_WORKER_SYNC_FALLBACK_INTERVAL`（默认 5m）同步 Workspace、Thread 与 SSH 配置，`TYRS_HAND_NODE_HEARTBEAT_INTERVAL`（默认 60s）上报节点心跳。运行中的租约心跳与 `lease_duration` 不变。
 
 Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 的真相源仍是机器用户自己的 Codex Home。Control 只通过认证 Worker WebSocket 读取和更新 Provider 非敏感字段及 `AGENTS.md`，不会保存配置正文或任何 `auth.json` token；Control 发起的 Codex OAuth device code 登录也由 Worker 写入自身 `auth.json`。
 

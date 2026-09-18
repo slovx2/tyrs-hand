@@ -9,47 +9,150 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-func RunRPCChannel(ctx context.Context, controlURL, credential string, service *Service) error {
-	endpoint := strings.TrimRight(controlURL, "/") + "/worker/v1/config/ws"
+const (
+	controlChannelPongWait  = 60 * time.Second
+	controlChannelWriteWait = 10 * time.Second
+)
+
+// ChannelOptions 描述 Worker 侧控制通道的运行参数。
+type ChannelOptions struct {
+	ControlURL      string
+	Credential      string
+	Service         *Service
+	ProtocolVersion int
+	// Notify 在收到 Control 唤醒通知时回调，必须立即返回，不能阻塞读取循环。
+	Notify func(kinds []string)
+	// Ready 在能力协商完成后回调；wake 为 true 表示进入事件驱动模式。
+	Ready func(wake bool)
+}
+
+// RunChannel 维护 Worker 到 Control 的 WebSocket 控制通道。
+// 通道同时承载 Control 发起的配置 RPC、Worker 的 hello 协商和唤醒通知。
+// 返回后调用方应退避重连，并在重连成功后触发一次全量同步。
+func RunChannel(ctx context.Context, options ChannelOptions) error {
+	endpoint := strings.TrimRight(options.ControlURL, "/") + "/worker/v1/config/ws"
 	endpoint = strings.Replace(endpoint, "https://", "wss://", 1)
 	endpoint = strings.Replace(endpoint, "http://", "ws://", 1)
 	header := http.Header{}
-	header.Set("Authorization", "Bearer "+credential)
+	header.Set("Authorization", "Bearer "+options.Credential)
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, endpoint, header)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	// 只有收到 Control 的 ping/pong 后才启用读超时。
+	// 旧版 Control 不做保活，此时保持现有行为，避免每 60 秒无谓重连。
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(controlChannelPongWait))
+	})
+	conn.SetPingHandler(func(appData string) error {
+		if err := conn.SetReadDeadline(time.Now().Add(controlChannelPongWait)); err != nil {
+			return err
+		}
+		return conn.WriteControl(websocket.PongMessage, []byte(appData),
+			time.Now().Add(controlChannelWriteWait))
+	})
 	go func() {
 		<-ctx.Done()
 		_ = conn.Close()
 	}()
+	helloID := uuid.NewString()
+	hello, _ := json.Marshal(workerprotocol.WorkerRPCRequest{
+		Type: workerprotocol.MessageTypeRequest, ID: helloID, Method: "hello",
+		Params: mustJSON(workerprotocol.WorkerHelloRequest{
+			ProtocolVersion: options.ProtocolVersion,
+			Capabilities:    []string{workerprotocol.WakeCapability},
+		}),
+	})
+	if err := writeControlMessage(conn, hello); err != nil {
+		return err
+	}
 	for {
 		_, payload, err := conn.ReadMessage()
 		if err != nil {
 			return err
 		}
+		var envelope struct {
+			Type   string          `json:"type"`
+			ID     string          `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+			Kinds  []string        `json:"kinds"`
+		}
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			continue
+		}
+		if envelope.Type == workerprotocol.MessageTypeNotify {
+			if options.Notify != nil {
+				options.Notify(envelope.Kinds)
+			}
+			continue
+		}
+		if envelope.Type == workerprotocol.MessageTypeResponse && envelope.ID == helloID {
+			var response struct {
+				Result workerprotocol.WorkerHelloResponse `json:"result"`
+			}
+			if err := json.Unmarshal(payload, &response); err != nil {
+				continue
+			}
+			if options.Ready != nil {
+				options.Ready(hasCapability(response.Result.Capabilities,
+					workerprotocol.WakeCapability))
+			}
+			continue
+		}
+		if envelope.Type == workerprotocol.MessageTypeResponse {
+			continue
+		}
 		var request workerprotocol.WorkerRPCRequest
 		if err := json.Unmarshal(payload, &request); err != nil {
 			continue
 		}
+		if request.ID == "" || request.Method == "" {
+			continue
+		}
 		response := workerprotocol.WorkerRPCResponse{ID: request.ID}
-		result, callErr := handleRequest(ctx, service, request.Method, request.Params)
+		result, callErr := handleRequest(ctx, options.Service, request.Method, request.Params)
 		if callErr != nil {
 			response.Error = callErr.Error()
 		} else {
 			response.Result = result
 		}
 		encoded, _ := json.Marshal(response)
-		if err := conn.WriteMessage(websocket.TextMessage, encoded); err != nil {
+		if err := writeControlMessage(conn, encoded); err != nil {
 			return err
 		}
 	}
+}
+
+func writeControlMessage(conn *websocket.Conn, payload []byte) error {
+	if err := conn.SetWriteDeadline(time.Now().Add(controlChannelWriteWait)); err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+func hasCapability(capabilities []string, expected string) bool {
+	for _, capability := range capabilities {
+		if capability == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func mustJSON(value any) json.RawMessage {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return encoded
 }
 
 func handleRequest(ctx context.Context, service *Service, method string,

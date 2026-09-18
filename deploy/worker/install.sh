@@ -173,6 +173,7 @@ existing_browser_token_file=
 existing_browser_services_root=
 existing_model_api_key=
 existing_model_base_url=
+existing_disable_control_sync=
 if [ -r "${worker_env_file}" ]; then
   existing_browser_mcp_url=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_URL" {
     value = substr($0, index($0, "=") + 1)
@@ -194,6 +195,7 @@ if [ -r "${worker_env_file}" ]; then
   }' "${worker_env_file}")
   existing_model_api_key=$(awk -F= '$1 == "TYRS_HAND_MODEL_API_KEY" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
   existing_model_base_url=$(awk -F= '$1 == "TYRS_HAND_MODEL_BASE_URL" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_disable_control_sync=$(awk -F= '$1 == "TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
 fi
 if [ "${TYRS_HAND_BROWSER_MCP_URL+x}" = x ]; then
   worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL}
@@ -212,6 +214,11 @@ elif [ -n "${existing_browser_services_root}" ]; then
 else
   worker_browser_services_root=/opt/tyrs-hand/browser-services
 fi
+if [ "${TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC+x}" = x ]; then
+  worker_disable_control_sync=${TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC}
+else
+  worker_disable_control_sync=${existing_disable_control_sync}
+fi
 worker_browser_agent=${TYRS_HAND_BROWSER_AGENT_ADDRESS:-127.0.0.1:8934}
 worker_browser_files=${TYRS_HAND_BROWSER_FILES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-files}
 for pair in \
@@ -222,7 +229,8 @@ for pair in \
   "Authorized Keys:${worker_keys}" "SSH Listen:${worker_listen}" \
   "Browser MCP URL:${worker_browser_mcp_url}" "Browser Token:${worker_browser_token_file}" \
   "Browser Agent:${worker_browser_agent}" "Browser Files:${worker_browser_files}" \
-  "Browser Services:${worker_browser_services_root}"; do
+  "Browser Services:${worker_browser_services_root}" \
+  "Disable Control Sync:${worker_disable_control_sync}"; do
   validate_env_value "${pair%%:*}" "${pair#*:}"
 done
 
@@ -246,6 +254,9 @@ fi
 {
   printf "TYRS_HAND_ENV='production'\n"
   printf "TYRS_HAND_WORKER_CONTROL_URL='%s'\n" "${TYRS_HAND_WORKER_CONTROL_URL}"
+  if [ -n "${worker_disable_control_sync}" ]; then
+    printf "TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC='%s'\n" "${worker_disable_control_sync}"
+  fi
   printf "TYRS_HAND_WORKER_ID='%s'\n" "${worker_id}"
   printf "TYRS_HAND_WORKER_ROLE='%s'\n" "${worker_role}"
   printf "TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS='%s'\n" "${worker_jobs}"

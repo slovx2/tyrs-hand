@@ -238,8 +238,17 @@ func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
 		lastError = fmt.Sprintf("Worker 协议版本 %d，Control 要求 %d", protocolVersion,
 			ProtocolVersion)
 	}
+	// metadata 采用合并写入：心跳可以只上报变化的字段，
+	// 未携带的键（例如 modelCatalog）保留上一次的值。
+	// modelCatalogRevision 为空表示目录已清空，需要删除旧快照。
 	result, err := s.db.ExecContext(ctx, `UPDATE workers SET worker_version = $2,
-		metadata = $3, status = $4, heartbeat_at = now(), last_error = NULLIF($5,''),
+		metadata = CASE
+				WHEN $3::jsonb->>'modelCatalogRevision' = ''
+					THEN (workers.metadata || $3::jsonb) - 'modelCatalog'
+				ELSE workers.metadata || $3::jsonb
+			END,
+		status = $4, heartbeat_at = now(),
+		last_error = NULLIF($5,''),
 		ssh_host_key_fingerprint = COALESCE(ssh_host_key_fingerprint,$6), updated_at = now()
 		WHERE id = $1 AND enabled
 			AND (ssh_host_key_fingerprint IS NULL OR ssh_host_key_fingerprint=$6)`,
@@ -268,6 +277,15 @@ func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
 		return ErrHostKeyFingerprintChanged
 	}
 	return ErrDisabled
+}
+
+// Touch 在 Worker 控制通道建立时刷新在线时间。
+// 协议不兼容的状态保持不变，其余情况标记为在线。
+func (s *Service) Touch(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE workers SET heartbeat_at = now(),
+		status = CASE WHEN status = 'incompatible' THEN status ELSE 'online' END,
+		updated_at = now() WHERE id = $1 AND enabled`, id)
+	return err
 }
 
 func validSSHHostKeyFingerprint(value string) bool {

@@ -43,6 +43,7 @@ type Config struct {
 	WorkerRole                     string
 	WorkerMaxConcurrentJobs        int
 	WorkerControlURL               string
+	WorkerDisableControlSync       bool
 	WorkerCredentialFile           string
 	WorkerEnrollmentToken          string
 	WorkerProtocolVersion          int
@@ -57,6 +58,9 @@ type Config struct {
 	WorkerAPITrustedProxies        []netip.Prefix
 	LeaseDuration                  time.Duration
 	HeartbeatInterval              time.Duration
+	NodeHeartbeatInterval          time.Duration
+	WorkerClaimFallbackInterval    time.Duration
+	WorkerSyncFallbackInterval     time.Duration
 	ControlTimeout                 time.Duration
 	ToolTimeout                    time.Duration
 	TurnIdleTimeout                time.Duration
@@ -118,6 +122,7 @@ func load(workerProcess bool) (Config, error) {
 		WorkerRole:                     strings.TrimSpace(v.GetString("worker_role")),
 		WorkerMaxConcurrentJobs:        v.GetInt("worker_max_concurrent_jobs"),
 		WorkerControlURL:               strings.TrimRight(v.GetString("worker_control_url"), "/"),
+		WorkerDisableControlSync:       v.GetBool("worker_disable_control_sync"),
 		WorkerCredentialFile:           filepath.Clean(v.GetString("worker_credential_file")),
 		WorkerEnrollmentToken:          strings.TrimSpace(v.GetString("worker_enrollment_token")),
 		WorkerProtocolVersion:          v.GetInt("worker_protocol_version"),
@@ -130,6 +135,9 @@ func load(workerProcess bool) (Config, error) {
 		WorkerShell:                    filepath.Clean(v.GetString("worker_shell")),
 		LeaseDuration:                  v.GetDuration("lease_duration"),
 		HeartbeatInterval:              v.GetDuration("heartbeat_interval"),
+		NodeHeartbeatInterval:          v.GetDuration("node_heartbeat_interval"),
+		WorkerClaimFallbackInterval:    v.GetDuration("worker_claim_fallback_interval"),
+		WorkerSyncFallbackInterval:     v.GetDuration("worker_sync_fallback_interval"),
 		ControlTimeout:                 v.GetDuration("control_timeout"),
 		ToolTimeout:                    v.GetDuration("tool_timeout"),
 		TurnIdleTimeout:                v.GetDuration("turn_idle_timeout"),
@@ -186,6 +194,10 @@ func load(workerProcess bool) (Config, error) {
 
 func (c Config) ConnectedWorker() bool { return strings.TrimSpace(c.WorkerControlURL) != "" }
 
+// ControlSyncEnabled 为 false 时，Worker 不再向 Control 心跳、领取任务、维持配置通道或上报状态。
+// 本地 SSH 与 Codex App Server 不受影响。
+func (c Config) ControlSyncEnabled() bool { return !c.WorkerDisableControlSync }
+
 func (c Config) ValidateWorker() error {
 	if !c.ConnectedWorker() {
 		return c.Validate()
@@ -195,6 +207,10 @@ func (c Config) ValidateWorker() error {
 	}
 	if c.WorkerMaxConcurrentJobs <= 0 {
 		return errors.New("worker_max_concurrent_jobs 必须大于零")
+	}
+	if c.NodeHeartbeatInterval <= 0 || c.WorkerClaimFallbackInterval <= 0 ||
+		c.WorkerSyncFallbackInterval <= 0 {
+		return errors.New("node_heartbeat_interval、worker_claim_fallback_interval 和 worker_sync_fallback_interval 必须大于零")
 	}
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("宿主 Worker 的 worker_role 必须是 all、github 或 discord")
@@ -306,6 +322,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_role", "all")
 	v.SetDefault("worker_max_concurrent_jobs", 6)
 	v.SetDefault("worker_control_url", "")
+	v.SetDefault("worker_disable_control_sync", false)
 	v.SetDefault("worker_credential_file", filepath.Join(stateRoot, "control-state", "worker-credential"))
 	v.SetDefault("worker_enrollment_token", "")
 	v.SetDefault("worker_protocol_version", workerprotocol.Version)
@@ -327,6 +344,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")
 	v.SetDefault("heartbeat_interval", "20s")
+	v.SetDefault("node_heartbeat_interval", "60s")
+	v.SetDefault("worker_claim_fallback_interval", "60s")
+	v.SetDefault("worker_sync_fallback_interval", "5m")
 	v.SetDefault("control_timeout", "30s")
 	v.SetDefault("tool_timeout", "60s")
 	v.SetDefault("turn_idle_timeout", "15m")

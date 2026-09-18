@@ -14,15 +14,20 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"go.uber.org/zap"
 )
 
 type workerRPCConnection struct {
-	workerID uuid.UUID
-	conn     *websocket.Conn
-	writeMu  sync.Mutex
-	mu       sync.Mutex
-	pending  map[string]chan workerprotocol.WorkerRPCResponse
+	workerID     uuid.UUID
+	conn         *websocket.Conn
+	writeMu      sync.Mutex
+	mu           sync.Mutex
+	pending      map[string]chan workerprotocol.WorkerRPCResponse
+	capabilities map[string]bool
+	closed       chan struct{}
 }
+
+const workerChannelPingInterval = 20 * time.Second
 
 func (s *Server) workerRPCWS(c *gin.Context) {
 	worker := currentWorker(c)
@@ -31,7 +36,9 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	state := &workerRPCConnection{workerID: worker.ID, conn: conn, pending: make(map[string]chan workerprotocol.WorkerRPCResponse)}
+	state := &workerRPCConnection{workerID: worker.ID, conn: conn,
+		pending:      make(map[string]chan workerprotocol.WorkerRPCResponse),
+		capabilities: make(map[string]bool), closed: make(chan struct{})}
 	s.workerRPCMu.Lock()
 	if old := s.workerRPCConns[worker.ID]; old != nil {
 		_ = old.conn.Close()
@@ -39,6 +46,7 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 	s.workerRPCConns[worker.ID] = state
 	s.workerRPCMu.Unlock()
 	defer func() {
+		close(state.closed)
 		_ = conn.Close()
 		s.workerRPCMu.Lock()
 		if s.workerRPCConns[worker.ID] == state {
@@ -52,13 +60,45 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 		}
 		state.mu.Unlock()
 	}()
+	go func() {
+		ticker := time.NewTicker(workerChannelPingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-state.closed:
+				return
+			case <-c.Request.Context().Done():
+				return
+			case <-ticker.C:
+				_ = conn.WriteControl(websocket.PingMessage, nil,
+					time.Now().Add(10*time.Second))
+			}
+		}
+	}()
 	for {
 		_, payload, readErr := conn.ReadMessage()
 		if readErr != nil {
 			return
 		}
+		var envelope struct {
+			Type   string          `json:"type"`
+			ID     string          `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if json.Unmarshal(payload, &envelope) != nil {
+			continue
+		}
+		if envelope.Type == workerprotocol.MessageTypeRequest {
+			s.handleWorkerChannelRequest(c.Request.Context(), state, envelope.ID,
+				envelope.Method, envelope.Params)
+			continue
+		}
+		if envelope.ID == "" {
+			continue
+		}
 		var response workerprotocol.WorkerRPCResponse
-		if json.Unmarshal(payload, &response) != nil || response.ID == "" {
+		if json.Unmarshal(payload, &response) != nil {
 			continue
 		}
 		state.mu.Lock()
@@ -72,6 +112,80 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 			close(wait)
 		}
 	}
+}
+
+// handleWorkerChannelRequest 处理 Worker 主动发起的控制通道请求，目前只有 hello。
+func (s *Server) handleWorkerChannelRequest(ctx context.Context,
+	state *workerRPCConnection, id, method string, params json.RawMessage,
+) {
+	response := workerprotocol.WorkerRPCResponse{
+		Type: workerprotocol.MessageTypeResponse, ID: id}
+	if method != "hello" {
+		response.Error = fmt.Sprintf("不支持的控制通道方法 %q", method)
+	} else {
+		var hello workerprotocol.WorkerHelloRequest
+		if err := json.Unmarshal(params, &hello); err != nil {
+			response.Error = err.Error()
+		} else {
+			state.mu.Lock()
+			state.capabilities = make(map[string]bool, len(hello.Capabilities))
+			for _, capability := range hello.Capabilities {
+				state.capabilities[capability] = true
+			}
+			state.mu.Unlock()
+			response.Result = workerprotocol.WorkerHelloResponse{
+				Capabilities: []string{workerprotocol.WakeCapability}}
+			if err := s.workers.Touch(ctx, state.workerID); err != nil && ctx.Err() == nil {
+				if s.logger != nil {
+					s.logger.Warn("刷新 Worker 在线时间失败", zap.Error(err))
+				}
+			}
+		}
+	}
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return
+	}
+	_ = state.write(payload)
+}
+
+func (c *workerRPCConnection) write(payload []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+func (c *workerRPCConnection) supportsWake() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.capabilities[workerprotocol.WakeCapability]
+}
+
+// notify 向该 Worker 推送唤醒通知；未协商唤醒能力时静默忽略。
+func (c *workerRPCConnection) notify(kinds []string) error {
+	if len(kinds) == 0 || !c.supportsWake() {
+		return nil
+	}
+	payload, err := json.Marshal(workerprotocol.WorkerNotification{
+		Type: workerprotocol.MessageTypeNotify, Kinds: kinds})
+	if err != nil {
+		return err
+	}
+	return c.write(payload)
+}
+
+// notifyWorkerKinds 向指定 Worker 推送唤醒，未连接或未协商时返回 false。
+func (s *Server) notifyWorkerKinds(workerID uuid.UUID, kinds []string) bool {
+	s.workerRPCMu.RLock()
+	state := s.workerRPCConns[workerID]
+	s.workerRPCMu.RUnlock()
+	if state == nil || !state.supportsWake() {
+		return false
+	}
+	return state.notify(kinds) == nil
 }
 
 func (s *Server) callWorkerRPC(ctx context.Context, workerID uuid.UUID, method string,

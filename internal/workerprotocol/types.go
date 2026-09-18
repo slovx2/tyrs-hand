@@ -11,16 +11,61 @@ import (
 
 const Version = 32
 
+// 控制通道报文类型。空类型保持旧行为，即 Control 发起的 RPC 请求。
+const (
+	MessageTypeRequest  = "request"
+	MessageTypeResponse = "response"
+	MessageTypeNotify   = "notify"
+)
+
+// WakeCapability 表示 Worker 与 Control 都支持事件驱动唤醒，
+// 空闲时不再定期轮询，改为收到通知后按需拉取。
+const WakeCapability = "wake.v1"
+
+// 唤醒种类，与 Worker 侧的拉取动作一一对应。
+const (
+	WakeClaim        = "claim"
+	WakeSessionTitle = "session_title"
+	WakeThreadSync   = "thread_sync"
+	WakeWorkspace    = "workspace"
+	WakeSSHConfig    = "ssh_config"
+)
+
+// AllWakeKinds 用于连接建立后的全量同步。
+func AllWakeKinds() []string {
+	return []string{WakeClaim, WakeSessionTitle, WakeThreadSync, WakeWorkspace,
+		WakeSSHConfig}
+}
+
 type WorkerRPCRequest struct {
+	Type   string          `json:"type,omitempty"`
 	ID     string          `json:"id"`
 	Method string          `json:"method"`
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
 type WorkerRPCResponse struct {
+	Type   string `json:"type,omitempty"`
 	ID     string `json:"id"`
 	Result any    `json:"result,omitempty"`
 	Error  string `json:"error,omitempty"`
+}
+
+// WorkerHelloRequest 由 Worker 在连接建立后发送，用于协商唤醒能力。
+type WorkerHelloRequest struct {
+	ProtocolVersion int      `json:"protocolVersion"`
+	Capabilities    []string `json:"capabilities"`
+}
+
+// WorkerHelloResponse 返回 Control 侧支持的能力。
+type WorkerHelloResponse struct {
+	Capabilities []string `json:"capabilities"`
+}
+
+// WorkerNotification 是 Control 推送给 Worker 的唤醒通知，不需要应答。
+type WorkerNotification struct {
+	Type  string   `json:"type"`
+	Kinds []string `json:"kinds"`
 }
 
 type WorkerConfig struct {
@@ -73,6 +118,7 @@ type HeartbeatRequest struct {
 	WorkerVersion         string          `json:"workerVersion"`
 	ProtocolVersion       int             `json:"protocolVersion"`
 	SSHHostKeyFingerprint string          `json:"sshHostKeyFingerprint"`
+	ModelCatalogRevision  string          `json:"modelCatalogRevision,omitempty"`
 	Metadata              json.RawMessage `json:"metadata,omitempty"`
 }
 
@@ -460,17 +506,17 @@ type DiscordSnapshot struct {
 }
 
 type SessionSnapshot struct {
-	SessionID     uuid.UUID                `json:"sessionId"`
-	MessageID     string                   `json:"messageId"`
-	Body          string                   `json:"body"`
-	ParticipantID uuid.UUID                `json:"participantId,omitempty"`
-	DisplayName   string                   `json:"displayName,omitempty"`
-	InputSurface      string                   `json:"inputSurface"`
-	VoiceBound        bool                     `json:"voiceBound,omitempty"`
-	VoiceCoordinator  bool                     `json:"voiceCoordinator,omitempty"`
-	VoiceEnded        bool                     `json:"voiceEnded,omitempty"`
-	Attachments   []Attachment             `json:"attachments,omitempty"`
-	Project       *WorkspaceProjectContext `json:"project"`
+	SessionID        uuid.UUID                `json:"sessionId"`
+	MessageID        string                   `json:"messageId"`
+	Body             string                   `json:"body"`
+	ParticipantID    uuid.UUID                `json:"participantId,omitempty"`
+	DisplayName      string                   `json:"displayName,omitempty"`
+	InputSurface     string                   `json:"inputSurface"`
+	VoiceBound       bool                     `json:"voiceBound,omitempty"`
+	VoiceCoordinator bool                     `json:"voiceCoordinator,omitempty"`
+	VoiceEnded       bool                     `json:"voiceEnded,omitempty"`
+	Attachments      []Attachment             `json:"attachments,omitempty"`
+	Project          *WorkspaceProjectContext `json:"project"`
 }
 
 type WorkspaceProjectContext struct {

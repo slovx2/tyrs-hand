@@ -45,9 +45,11 @@ type unixSocketProxy struct {
 }
 
 type sshAgentManager struct {
-	root   string
-	client *workerprotocol.Client
-	logger *zap.Logger
+	root         string
+	client       *workerprotocol.Client
+	wake         *wakeSignals
+	syncFallback time.Duration
+	logger       *zap.Logger
 
 	mu      sync.RWMutex
 	etag    string
@@ -55,10 +57,11 @@ type sshAgentManager struct {
 	status  sshCapabilityStatus
 }
 
-func newSSHAgentManager(root string, client *workerprotocol.Client,
-	logger *zap.Logger,
+func newSSHAgentManager(root string, client *workerprotocol.Client, wake *wakeSignals,
+	syncFallback time.Duration, logger *zap.Logger,
 ) *sshAgentManager {
-	return &sshAgentManager{root: root, client: client, logger: logger,
+	return &sshAgentManager{root: root, client: client, wake: wake,
+		syncFallback: syncFallback, logger: logger,
 		status: sshCapabilityStatus{Status: "starting"}}
 }
 
@@ -73,20 +76,14 @@ func (m *sshAgentManager) Run(ctx context.Context) error {
 		m.setError(err)
 		m.logger.Warn("首次同步 SSH 配置失败，将继续重试", zap.Error(err))
 	}
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			m.Close()
-			return ctx.Err()
-		case <-ticker.C:
-			if err := m.sync(ctx); err != nil {
-				m.setError(err)
-				m.logger.Warn("同步 SSH 配置失败", zap.Error(err))
-			}
+	for m.wake.Wait(ctx, m.syncFallback, workerprotocol.WakeSSHConfig) {
+		if err := m.sync(ctx); err != nil {
+			m.setError(err)
+			m.logger.Warn("同步 SSH 配置失败", zap.Error(err))
 		}
 	}
+	m.Close()
+	return ctx.Err()
 }
 
 func (m *sshAgentManager) sync(ctx context.Context) error {

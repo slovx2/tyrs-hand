@@ -41,6 +41,16 @@ func TestBrowserScopePersistsAndIsolatesWorkers(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestHostDesktopControlSyncCanBeDisabled(t *testing.T) {
+	manifest := &workerprotocol.WorkspaceManifest{WorkspaceID: uuid.New()}
+	enabled, _ := NewHostDesktopController(&Processor{}, manifest).snapshot()
+	require.True(t, enabled.controlEnabled())
+	disabled, _ := NewHostDesktopController(&Processor{
+		cfg: config.Config{WorkerDisableControlSync: true},
+	}, manifest).snapshot()
+	require.False(t, disabled.controlEnabled())
+}
+
 func TestHostBindingSnapshotsAndLocalToolBoundary(t *testing.T) {
 	p := &Processor{cfg: config.Config{BrowserMCPURL: "http://localhost:8931/mcp"}}
 	c := NewHostDesktopController(p, nil)

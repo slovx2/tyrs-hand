@@ -41,7 +41,8 @@ func main() {
 	}
 	app.Logger.Info("宿主 Worker 已启动", zap.String("ssh", app.SSH.Addr().String()),
 		zap.String("home", cfg.WorkerHome), zap.String("codex_home", cfg.WorkerCodexHome),
-		zap.String("workspace_root", cfg.WorkerWorkspaceRoot))
+		zap.String("workspace_root", cfg.WorkerWorkspaceRoot),
+		zap.Bool("control_sync", cfg.ControlSyncEnabled()))
 	runErr := app.Run(ctx)
 	cleanup()
 	if runErr != nil && !errors.Is(runErr, context.Canceled) {

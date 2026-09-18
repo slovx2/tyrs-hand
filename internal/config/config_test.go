@@ -82,7 +82,10 @@ func TestValidateAndLoadHostWorker(t *testing.T) {
 		WorkerAuthorizedKeysFile: "/data/worker/ssh/authorized_keys",
 		WorkerWorkspaceRoot:      "/home/user/tyrs-hand/workspaces",
 		WorkerCodexHome:          "/home/user/.codex", WorkerHome: "/home/user",
-		WorkerShell: "/bin/sh",
+		WorkerShell:                 "/bin/sh",
+		NodeHeartbeatInterval:       60 * time.Second,
+		WorkerClaimFallbackInterval: 60 * time.Second,
+		WorkerSyncFallbackInterval:  5 * time.Minute,
 	}
 	require.True(t, valid.ConnectedWorker())
 	require.NoError(t, valid.ValidateWorker())
@@ -123,6 +126,27 @@ func TestValidateAndLoadHostWorker(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://tyr.example.com", loaded.WorkerControlURL)
 	require.Equal(t, "github", loaded.WorkerRole)
+	require.True(t, loaded.ControlSyncEnabled())
+}
+
+func TestWorkerControlSyncFlag(t *testing.T) {
+	require.True(t, Config{}.ControlSyncEnabled())
+	require.False(t, Config{WorkerDisableControlSync: true}.ControlSyncEnabled())
+
+	t.Setenv("TYRS_HAND_ENV", "production")
+	t.Setenv("TYRS_HAND_WORKER_CONTROL_URL", "https://tyr.example.com")
+	t.Setenv("TYRS_HAND_WORKER_ID", "home-1")
+	t.Setenv("TYRS_HAND_WORKER_ROLE", "all")
+	t.Setenv("TYRS_HAND_WORKER_CREDENTIAL_FILE", filepath.Join(t.TempDir(), "credential"))
+	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", strconv.Itoa(workerprotocol.Version))
+	t.Setenv("TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS", "2")
+	t.Setenv("TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC", "true")
+	t.Setenv("TYRS_HAND_DATABASE_URL", "")
+	t.Setenv("TYRS_HAND_REDIS_URL", "")
+	loaded, err := LoadWorker()
+	require.NoError(t, err)
+	require.True(t, loaded.WorkerDisableControlSync)
+	require.False(t, loaded.ControlSyncEnabled())
 }
 
 func TestDeploymentWorkerProtocolVersion(t *testing.T) {

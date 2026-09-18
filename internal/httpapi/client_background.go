@@ -29,6 +29,7 @@ type clientNotification struct {
 // RunBackground 不再回收 Codex Run。Worker 离线只影响连接状态，
 // 不能据此修改本地真实运行的任务状态。
 func (s *Server) RunBackground(ctx context.Context) error {
+	s.startWorkerWakeDispatcher(ctx)
 	if s.liveManager != nil {
 		go func() {
 			if err := s.liveManager.Start(ctx); err != nil && !errors.Is(err, context.Canceled) && s.logger != nil {

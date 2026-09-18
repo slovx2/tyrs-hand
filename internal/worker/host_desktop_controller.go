@@ -122,8 +122,10 @@ func (c *HostDesktopController) AttachRuntime(ctx context.Context, runtime *host
 		c.bindClientLocked(c.integration.workspace, runtime.Client(), runtime.Generation())
 	}
 	c.mu.Unlock()
-	go c.reconcileControlState(ctx)
-	go c.runSessionTitleLoop(ctx)
+	if c.processor.cfg.ControlSyncEnabled() {
+		go c.reconcileControlState(ctx)
+		go c.runSessionTitleLoop(ctx)
+	}
 	return nil
 }
 
@@ -163,7 +165,6 @@ func (c *HostDesktopController) RebindRuntime(_ context.Context, client *appserv
 }
 
 func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
-	interval := max(c.processor.cfg.HeartbeatInterval, 15*time.Second)
 	reconcile := func() {
 		if err := c.syncHostEnvironment(ctx); err != nil && ctx.Err() == nil {
 			c.processor.logger.Warn("同步宿主绑定失败，保留最近确认状态", zap.Error(err))
@@ -186,15 +187,9 @@ func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
 		}
 	}
 	reconcile()
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			reconcile()
-		}
+	for c.processor.wake.Wait(ctx, c.processor.cfg.WorkerSyncFallbackInterval,
+		workerprotocol.WakeWorkspace, workerprotocol.WakeThreadSync) {
+		reconcile()
 	}
 }
 

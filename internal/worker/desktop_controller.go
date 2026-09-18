@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,9 @@ type desktopController struct {
 }
 
 func (c *desktopController) controlEnabled() bool {
+	if c.processor != nil && !c.processor.cfg.ControlSyncEnabled() {
+		return false
+	}
 	return c.workspace != nil && (c.controlValid == nil || c.controlValid())
 }
 
@@ -1308,21 +1312,29 @@ func callScope(raw json.RawMessage) (string, string) {
 }
 
 type desktopEventReporter struct {
-	ctx       context.Context
-	processor *Processor
-	task      *workerprotocol.Task
-	journal   *runJournal
+	ctx        context.Context
+	processor  *Processor
+	task       *workerprotocol.Task
+	journal    *runJournal
+	lastFlush  time.Time
+	flushStop  chan struct{}
+	flushClose sync.Once
 }
+
+// desktopEventFlushInterval 是 Desktop 事件上报的去抖窗口。
+// 一次回合会产生大量细粒度事件，批量上传可省掉每个事件的请求头开销。
+const desktopEventFlushInterval = 500 * time.Millisecond
 
 func newDesktopEventReporter(ctx context.Context, processor *Processor,
 	task *workerprotocol.Task,
 ) (*desktopEventReporter, error) {
 	journal := &runJournal{Task: *task, NextSequence: 1}
 	reporter := &desktopEventReporter{ctx: ctx, processor: processor, task: task,
-		journal: journal}
+		journal: journal, flushStop: make(chan struct{})}
 	if err := reporter.saveLocked(); err != nil {
 		return nil, err
 	}
+	go reporter.runFlushLoop()
 	return reporter, nil
 }
 
@@ -1334,7 +1346,29 @@ func (r *desktopEventReporter) Report(eventType string, payload json.RawMessage)
 		Type:     eventType, Payload: append(json.RawMessage(nil), payload...)})
 	r.journal.NextSequence++
 	_ = r.saveLocked()
-	r.flushLocked()
+	if time.Since(r.lastFlush) >= desktopEventFlushInterval {
+		r.flushLocked()
+	}
+}
+
+// runFlushLoop 定期冲刷未上传事件，保证最后一个事件不会一直等待下一次上报。
+func (r *desktopEventReporter) runFlushLoop() {
+	ticker := time.NewTicker(desktopEventFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-r.flushStop:
+			return
+		case <-ticker.C:
+			r.Flush()
+		}
+	}
+}
+
+func (r *desktopEventReporter) stopFlushLoop() {
+	r.flushClose.Do(func() { close(r.flushStop) })
 }
 
 func (r *desktopEventReporter) Flush() {
@@ -1350,6 +1384,7 @@ func (r *desktopEventReporter) flushLocked() {
 	if len(r.journal.PendingEvents) == 0 {
 		return
 	}
+	r.lastFlush = time.Now()
 	requestCtx, cancel := context.WithTimeout(r.ctx, r.processor.cfg.ControlTimeout)
 	err := r.processor.client.Events(requestCtx, r.task, r.journal.PendingEvents)
 	cancel()
@@ -1362,6 +1397,7 @@ func (r *desktopEventReporter) flushLocked() {
 }
 
 func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause error) {
+	defer r.stopFlushLoop()
 	r.journal.mu.Lock()
 	if cause == nil {
 		copyResult := result

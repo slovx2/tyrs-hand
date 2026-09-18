@@ -150,6 +150,7 @@ func (s *Server) createWorkspace(c *gin.Context) {
 	s.audit(c, "workspace.create", "workspace",
 		workspaceID.String(), map[string]any{"ownerDiscordUserId": input.OwnerDiscordUserID,
 			"workerId": input.WorkerID})
+	s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeWorkspace, input.WorkerID)
 	c.JSON(http.StatusCreated, gin.H{"id": workspaceID})
 }
 

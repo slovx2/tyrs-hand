@@ -293,6 +293,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交 Desktop Turn 失败", err)
 		return
 	}
+	if !isReplacement {
+		// Desktop 首条消息会同时创建 Session 标题任务，立即唤醒同一台 Worker 处理。
+		s.publishWorkerWake(c.Request.Context(), workerprotocol.WakeSessionTitle, worker.ID)
+	}
 	snapshot, err := s.loadWorkerSnapshot(c.Request.Context(), &claimed)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "生成 Desktop Turn 快照失败", err)

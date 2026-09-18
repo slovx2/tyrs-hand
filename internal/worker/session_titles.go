@@ -25,10 +25,15 @@ const (
 func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 	for ctx.Err() == nil {
 		if integration, _ := c.snapshot(); integration == nil {
-			if !waitContext(ctx, 2*time.Second) {
+			if !c.processor.wake.Wait(ctx, c.processor.cfg.WorkerSyncFallbackInterval,
+				workerprotocol.WakeSessionTitle) {
 				return
 			}
 			continue
+		}
+		if !c.processor.wake.Wait(ctx, c.processor.cfg.WorkerSyncFallbackInterval,
+			workerprotocol.WakeSessionTitle) {
+			return
 		}
 		claimCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		claim, err := c.processor.client.ClaimSessionTitle(claimCtx)
@@ -41,11 +46,10 @@ func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 			continue
 		}
 		if claim.Task == nil {
-			if !waitContext(ctx, 2*time.Second) {
-				return
-			}
 			continue
 		}
+		// 领取成功后立刻再检查，直到没有待办标题任务。
+		c.processor.wake.Notify([]string{workerprotocol.WakeSessionTitle})
 		task := claim.Task
 		titleCtx, titleCancel := context.WithTimeout(ctx, sessionTitleTimeout)
 		title, generateErr := c.generateSessionTitle(titleCtx, *task)
