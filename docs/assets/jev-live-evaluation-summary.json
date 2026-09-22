@@ -1,0 +1,2643 @@
+{
+  "date": "2026-09-20",
+  "frozen": {
+    "policy": "notification",
+    "model": "jev-1.13.0",
+    "prompt": "zh-basic-v1",
+    "prompt_hash": "01bb8d270f51e6f90f3ce0aed65c3edef1e447db469876a3242b5b63b36e2cfa",
+    "dataset_hash": "9bb28f7879ad2d9a3f49b5e991912442c32108ea30ab7f85116c820a597752b4",
+    "thresholds": {
+      "related": 0.85,
+      "notify": 0.65,
+      "completed": 0.65,
+      "needs_user_input": 0.5
+    },
+    "created_at": "2026-09-20T08:15:41.404517Z"
+  },
+  "development": [
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "single",
+      "round": 1,
+      "metrics": {
+        "Calls": 122,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 2,
+        "FalseSpeak": 1,
+        "CriticalTotal": 19,
+        "CriticalHit": 19,
+        "ProgressTotal": 37,
+        "ProgressHit": 35,
+        "SpeakTotal": 55,
+        "SpeakHit": 54,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 188644,
+        "OutputTokens": 8540,
+        "ColdMS": 900.338083,
+        "StableP95MS": 407.537875,
+        "Confusion": {
+          "completed": {
+            "TP": 15,
+            "FP": 0,
+            "TN": 105,
+            "FN": 2
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 53,
+            "FP": 2,
+            "TN": 64,
+            "FN": 3
+          },
+          "related": {
+            "TP": 93,
+            "FP": 0,
+            "TN": 21,
+            "FN": 8
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "loop",
+      "round": 1,
+      "metrics": {
+        "Calls": 125,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 2,
+        "FalseSpeak": 2,
+        "CriticalTotal": 19,
+        "CriticalHit": 19,
+        "ProgressTotal": 37,
+        "ProgressHit": 35,
+        "SpeakTotal": 56,
+        "SpeakHit": 54,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 193728,
+        "OutputTokens": 8750,
+        "ColdMS": 318.807292,
+        "StableP95MS": 409.471833,
+        "Confusion": {
+          "completed": {
+            "TP": 15,
+            "FP": 0,
+            "TN": 105,
+            "FN": 2
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 53,
+            "FP": 2,
+            "TN": 64,
+            "FN": 3
+          },
+          "related": {
+            "TP": 94,
+            "FP": 0,
+            "TN": 21,
+            "FN": 7
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-request-v2",
+      "thresholds": {
+        "related": 0.8,
+        "notify": 0.65,
+        "completed": 0.9,
+        "needs_user_input": 0.65
+      },
+      "mode": "single",
+      "round": 1,
+      "metrics": {
+        "Calls": 122,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 6,
+        "FalseSpeak": 1,
+        "CriticalTotal": 19,
+        "CriticalHit": 16,
+        "ProgressTotal": 37,
+        "ProgressHit": 34,
+        "SpeakTotal": 51,
+        "SpeakHit": 50,
+        "SemanticTotal": 19,
+        "SemanticHit": 11,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 246838,
+        "OutputTokens": 8540,
+        "ColdMS": 335.887792,
+        "StableP95MS": 415.938333,
+        "Confusion": {
+          "completed": {
+            "TP": 9,
+            "FP": 0,
+            "TN": 105,
+            "FN": 8
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 50,
+            "FP": 4,
+            "TN": 62,
+            "FN": 6
+          },
+          "related": {
+            "TP": 94,
+            "FP": 0,
+            "TN": 21,
+            "FN": 7
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-request-v2",
+      "thresholds": {
+        "related": 0.8,
+        "notify": 0.65,
+        "completed": 0.9,
+        "needs_user_input": 0.65
+      },
+      "mode": "loop",
+      "round": 1,
+      "metrics": {
+        "Calls": 137,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 6,
+        "FalseSpeak": 3,
+        "CriticalTotal": 19,
+        "CriticalHit": 16,
+        "ProgressTotal": 37,
+        "ProgressHit": 34,
+        "SpeakTotal": 53,
+        "SpeakHit": 50,
+        "SemanticTotal": 19,
+        "SemanticHit": 10,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 280488,
+        "OutputTokens": 9590,
+        "ColdMS": 303.598208,
+        "StableP95MS": 396.560959,
+        "Confusion": {
+          "completed": {
+            "TP": 8,
+            "FP": 0,
+            "TN": 105,
+            "FN": 9
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 50,
+            "FP": 4,
+            "TN": 62,
+            "FN": 6
+          },
+          "related": {
+            "TP": 94,
+            "FP": 0,
+            "TN": 21,
+            "FN": 7
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "en-contract-v3",
+      "thresholds": {
+        "related": 0.8,
+        "notify": 0.75,
+        "completed": 0.7,
+        "needs_user_input": 0.75
+      },
+      "mode": "single",
+      "round": 1,
+      "metrics": {
+        "Calls": 122,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 1,
+        "FalseSpeak": 1,
+        "CriticalTotal": 19,
+        "CriticalHit": 19,
+        "ProgressTotal": 37,
+        "ProgressHit": 36,
+        "SpeakTotal": 56,
+        "SpeakHit": 55,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 174980,
+        "OutputTokens": 8540,
+        "ColdMS": 362.833583,
+        "StableP95MS": 393.56825,
+        "Confusion": {
+          "completed": {
+            "TP": 15,
+            "FP": 0,
+            "TN": 105,
+            "FN": 2
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 53,
+            "FP": 3,
+            "TN": 63,
+            "FN": 3
+          },
+          "related": {
+            "TP": 100,
+            "FP": 0,
+            "TN": 21,
+            "FN": 1
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "en-contract-v3",
+      "thresholds": {
+        "related": 0.8,
+        "notify": 0.75,
+        "completed": 0.7,
+        "needs_user_input": 0.75
+      },
+      "mode": "loop",
+      "round": 1,
+      "metrics": {
+        "Calls": 120,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 3,
+        "FalseSpeak": 2,
+        "CriticalTotal": 19,
+        "CriticalHit": 18,
+        "ProgressTotal": 37,
+        "ProgressHit": 35,
+        "SpeakTotal": 55,
+        "SpeakHit": 53,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 172046,
+        "OutputTokens": 8400,
+        "ColdMS": 308.688625,
+        "StableP95MS": 395.449958,
+        "Confusion": {
+          "completed": {
+            "TP": 15,
+            "FP": 1,
+            "TN": 102,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 117,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 53,
+            "FP": 3,
+            "TN": 61,
+            "FN": 2
+          },
+          "related": {
+            "TP": 97,
+            "FP": 0,
+            "TN": 20,
+            "FN": 2
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-evidence-v4",
+      "thresholds": {
+        "related": 0.9,
+        "notify": 0.7,
+        "completed": 0.75,
+        "needs_user_input": 0.55
+      },
+      "mode": "single",
+      "round": 1,
+      "metrics": {
+        "Calls": 122,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 3,
+        "FalseSpeak": 1,
+        "CriticalTotal": 19,
+        "CriticalHit": 19,
+        "ProgressTotal": 37,
+        "ProgressHit": 34,
+        "SpeakTotal": 54,
+        "SpeakHit": 53,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 271726,
+        "OutputTokens": 8540,
+        "ColdMS": 358.926166,
+        "StableP95MS": 414.574167,
+        "Confusion": {
+          "completed": {
+            "TP": 15,
+            "FP": 0,
+            "TN": 105,
+            "FN": 2
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 53,
+            "FP": 2,
+            "TN": 64,
+            "FN": 3
+          },
+          "related": {
+            "TP": 87,
+            "FP": 0,
+            "TN": 21,
+            "FN": 14
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-evidence-v4",
+      "thresholds": {
+        "related": 0.9,
+        "notify": 0.7,
+        "completed": 0.75,
+        "needs_user_input": 0.55
+      },
+      "mode": "loop",
+      "round": 1,
+      "metrics": {
+        "Calls": 125,
+        "Errors": 0,
+        "EarlyClose": 0,
+        "Missed": 2,
+        "FalseSpeak": 2,
+        "CriticalTotal": 19,
+        "CriticalHit": 19,
+        "ProgressTotal": 37,
+        "ProgressHit": 35,
+        "SpeakTotal": 56,
+        "SpeakHit": 54,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 278910,
+        "OutputTokens": 8750,
+        "ColdMS": 331.094667,
+        "StableP95MS": 409.509833,
+        "Confusion": {
+          "completed": {
+            "TP": 15,
+            "FP": 0,
+            "TN": 105,
+            "FN": 2
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 0,
+            "TN": 120,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 53,
+            "FP": 2,
+            "TN": 64,
+            "FN": 3
+          },
+          "related": {
+            "TP": 89,
+            "FP": 0,
+            "TN": 21,
+            "FN": 12
+          }
+        }
+      }
+    }
+  ],
+  "holdout": [
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "single",
+      "round": 1,
+      "metrics": {
+        "Calls": 121,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 1,
+        "FalseSpeak": 8,
+        "CriticalTotal": 19,
+        "CriticalHit": 18,
+        "ProgressTotal": 33,
+        "ProgressHit": 33,
+        "SpeakTotal": 59,
+        "SpeakHit": 51,
+        "SemanticTotal": 19,
+        "SemanticHit": 18,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 189318,
+        "OutputTokens": 8470,
+        "ColdMS": 981.944667,
+        "StableP95MS": 409.271166,
+        "Confusion": {
+          "completed": {
+            "TP": 16,
+            "FP": 0,
+            "TN": 104,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 1,
+            "TN": 118,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 48,
+            "FP": 8,
+            "TN": 61,
+            "FN": 4
+          },
+          "related": {
+            "TP": 97,
+            "FP": 0,
+            "TN": 22,
+            "FN": 2
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "loop",
+      "round": 1,
+      "metrics": {
+        "Calls": 121,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 3,
+        "FalseSpeak": 8,
+        "CriticalTotal": 19,
+        "CriticalHit": 17,
+        "ProgressTotal": 33,
+        "ProgressHit": 32,
+        "SpeakTotal": 57,
+        "SpeakHit": 49,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 189547,
+        "OutputTokens": 8470,
+        "ColdMS": 516.971625,
+        "StableP95MS": 384.257833,
+        "Confusion": {
+          "completed": {
+            "TP": 16,
+            "FP": 0,
+            "TN": 102,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 1,
+            "FP": 1,
+            "TN": 117,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 47,
+            "FP": 9,
+            "TN": 60,
+            "FN": 3
+          },
+          "related": {
+            "TP": 95,
+            "FP": 0,
+            "TN": 22,
+            "FN": 2
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "single",
+      "round": 2,
+      "metrics": {
+        "Calls": 121,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 1,
+        "FalseSpeak": 7,
+        "CriticalTotal": 19,
+        "CriticalHit": 18,
+        "ProgressTotal": 33,
+        "ProgressHit": 33,
+        "SpeakTotal": 58,
+        "SpeakHit": 51,
+        "SemanticTotal": 19,
+        "SemanticHit": 18,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 189318,
+        "OutputTokens": 8470,
+        "ColdMS": 288.379125,
+        "StableP95MS": 369.482542,
+        "Confusion": {
+          "completed": {
+            "TP": 16,
+            "FP": 0,
+            "TN": 104,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 1,
+            "TN": 118,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 48,
+            "FP": 7,
+            "TN": 62,
+            "FN": 4
+          },
+          "related": {
+            "TP": 98,
+            "FP": 0,
+            "TN": 22,
+            "FN": 1
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "loop",
+      "round": 2,
+      "metrics": {
+        "Calls": 121,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 3,
+        "FalseSpeak": 8,
+        "CriticalTotal": 19,
+        "CriticalHit": 17,
+        "ProgressTotal": 33,
+        "ProgressHit": 32,
+        "SpeakTotal": 57,
+        "SpeakHit": 49,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 189547,
+        "OutputTokens": 8470,
+        "ColdMS": 282.163875,
+        "StableP95MS": 403.808458,
+        "Confusion": {
+          "completed": {
+            "TP": 16,
+            "FP": 0,
+            "TN": 102,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 1,
+            "FP": 1,
+            "TN": 117,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 47,
+            "FP": 8,
+            "TN": 61,
+            "FN": 3
+          },
+          "related": {
+            "TP": 95,
+            "FP": 0,
+            "TN": 22,
+            "FN": 2
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "single",
+      "round": 3,
+      "metrics": {
+        "Calls": 121,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 1,
+        "FalseSpeak": 8,
+        "CriticalTotal": 19,
+        "CriticalHit": 18,
+        "ProgressTotal": 33,
+        "ProgressHit": 33,
+        "SpeakTotal": 59,
+        "SpeakHit": 51,
+        "SemanticTotal": 19,
+        "SemanticHit": 18,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 189318,
+        "OutputTokens": 8470,
+        "ColdMS": 253.497166,
+        "StableP95MS": 392.361125,
+        "Confusion": {
+          "completed": {
+            "TP": 16,
+            "FP": 0,
+            "TN": 104,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 2,
+            "FP": 1,
+            "TN": 118,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 48,
+            "FP": 8,
+            "TN": 61,
+            "FN": 4
+          },
+          "related": {
+            "TP": 97,
+            "FP": 0,
+            "TN": 22,
+            "FN": 2
+          }
+        }
+      }
+    },
+    {
+      "policy": "notification",
+      "prompt": "zh-basic-v1",
+      "thresholds": {
+        "related": 0.85,
+        "notify": 0.65,
+        "completed": 0.65,
+        "needs_user_input": 0.5
+      },
+      "mode": "loop",
+      "round": 3,
+      "metrics": {
+        "Calls": 121,
+        "Errors": 0,
+        "EarlyClose": 1,
+        "Missed": 3,
+        "FalseSpeak": 8,
+        "CriticalTotal": 19,
+        "CriticalHit": 17,
+        "ProgressTotal": 33,
+        "ProgressHit": 32,
+        "SpeakTotal": 57,
+        "SpeakHit": 49,
+        "SemanticTotal": 19,
+        "SemanticHit": 17,
+        "ProtocolExtraCalls": 0,
+        "ClosedExtraCalls": 0,
+        "DuplicateExtraCalls": 0,
+        "InputTokens": 189547,
+        "OutputTokens": 8470,
+        "ColdMS": 288.177541,
+        "StableP95MS": 370.643375,
+        "Confusion": {
+          "completed": {
+            "TP": 16,
+            "FP": 0,
+            "TN": 102,
+            "FN": 1
+          },
+          "needs_user_input": {
+            "TP": 1,
+            "FP": 1,
+            "TN": 117,
+            "FN": 0
+          },
+          "notify": {
+            "TP": 47,
+            "FP": 8,
+            "TN": 61,
+            "FN": 3
+          },
+          "related": {
+            "TP": 95,
+            "FP": 0,
+            "TN": 22,
+            "FN": 2
+          }
+        }
+      }
+    }
+  ],
+  "development_scores": [
+    {
+      "prompt": "zh-basic-v1",
+      "axis": "related",
+      "round": 1,
+      "Positive": {
+        "count": 101,
+        "Min": 0.65,
+        "P10": 0.87,
+        "Median": 0.95,
+        "P90": 0.97,
+        "Max": 0.98,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 21,
+        "Min": 0.05,
+        "P10": 0.06,
+        "Median": 0.12,
+        "P90": 0.34,
+        "Max": 0.41,
+        "at_or_below_0_6": 21
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 101,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 101,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.75,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.8,
+          "TP": 97,
+          "FP": 0,
+          "FN": 4,
+          "Precision": 1,
+          "Recall": 0.9603960396039604
+        },
+        {
+          "threshold": 0.85,
+          "TP": 93,
+          "FP": 0,
+          "FN": 8,
+          "Precision": 1,
+          "Recall": 0.9207920792079208
+        },
+        {
+          "threshold": 0.9,
+          "TP": 89,
+          "FP": 0,
+          "FN": 12,
+          "Precision": 1,
+          "Recall": 0.8811881188118812
+        },
+        {
+          "threshold": 0.95,
+          "TP": 53,
+          "FP": 0,
+          "FN": 48,
+          "Precision": 1,
+          "Recall": 0.5247524752475248
+        }
+      ]
+    },
+    {
+      "prompt": "zh-basic-v1",
+      "axis": "notify",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.29,
+        "P10": 0.78,
+        "Median": 0.89,
+        "P90": 0.93,
+        "Max": 0.95,
+        "at_or_below_0_6": 2
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.04,
+        "P10": 0.06,
+        "Median": 0.13,
+        "P90": 0.38,
+        "Max": 0.83,
+        "at_or_below_0_6": 64
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 54,
+          "FP": 2,
+          "FN": 2,
+          "Precision": 0.9642857142857143,
+          "Recall": 0.9642857142857143
+        },
+        {
+          "threshold": 0.65,
+          "TP": 53,
+          "FP": 2,
+          "FN": 3,
+          "Precision": 0.9636363636363636,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.7,
+          "TP": 53,
+          "FP": 2,
+          "FN": 3,
+          "Precision": 0.9636363636363636,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.75,
+          "TP": 53,
+          "FP": 2,
+          "FN": 3,
+          "Precision": 0.9636363636363636,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.8,
+          "TP": 48,
+          "FP": 2,
+          "FN": 8,
+          "Precision": 0.96,
+          "Recall": 0.8571428571428571
+        },
+        {
+          "threshold": 0.85,
+          "TP": 44,
+          "FP": 0,
+          "FN": 12,
+          "Precision": 1,
+          "Recall": 0.7857142857142857
+        },
+        {
+          "threshold": 0.9,
+          "TP": 26,
+          "FP": 0,
+          "FN": 30,
+          "Precision": 1,
+          "Recall": 0.4642857142857143
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 55,
+          "Precision": 1,
+          "Recall": 0.017857142857142856
+        }
+      ]
+    },
+    {
+      "prompt": "zh-basic-v1",
+      "axis": "completed",
+      "round": 1,
+      "Positive": {
+        "count": 17,
+        "Min": 0.48,
+        "P10": 0.49,
+        "Median": 0.89,
+        "P90": 0.95,
+        "Max": 0.95,
+        "at_or_below_0_6": 2
+      },
+      "Negative": {
+        "count": 105,
+        "Min": 0.03,
+        "P10": 0.04,
+        "Median": 0.07,
+        "P90": 0.19,
+        "Max": 0.6,
+        "at_or_below_0_6": 105
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 15,
+          "FP": 1,
+          "FN": 2,
+          "Precision": 0.9375,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.65,
+          "TP": 15,
+          "FP": 0,
+          "FN": 2,
+          "Precision": 1,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.7,
+          "TP": 15,
+          "FP": 0,
+          "FN": 2,
+          "Precision": 1,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.75,
+          "TP": 13,
+          "FP": 0,
+          "FN": 4,
+          "Precision": 1,
+          "Recall": 0.7647058823529411
+        },
+        {
+          "threshold": 0.8,
+          "TP": 12,
+          "FP": 0,
+          "FN": 5,
+          "Precision": 1,
+          "Recall": 0.7058823529411765
+        },
+        {
+          "threshold": 0.85,
+          "TP": 12,
+          "FP": 0,
+          "FN": 5,
+          "Precision": 1,
+          "Recall": 0.7058823529411765
+        },
+        {
+          "threshold": 0.9,
+          "TP": 8,
+          "FP": 0,
+          "FN": 9,
+          "Precision": 1,
+          "Recall": 0.47058823529411764
+        },
+        {
+          "threshold": 0.95,
+          "TP": 3,
+          "FP": 0,
+          "FN": 14,
+          "Precision": 1,
+          "Recall": 0.17647058823529413
+        }
+      ]
+    },
+    {
+      "prompt": "zh-basic-v1",
+      "axis": "needs_user_input",
+      "round": 1,
+      "Positive": {
+        "count": 2,
+        "Min": 0.96,
+        "P10": 0.96,
+        "Median": 0.96,
+        "P90": 0.96,
+        "Max": 0.96,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 120,
+        "Min": 0.03,
+        "P10": 0.03,
+        "Median": 0.04,
+        "P90": 0.07,
+        "Max": 0.44,
+        "at_or_below_0_6": 120
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.75,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.8,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.85,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.9,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.95,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        }
+      ]
+    },
+    {
+      "prompt": "zh-basic-v1",
+      "axis": "notification_gate",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.49,
+        "P10": 0.8,
+        "Median": 0.9,
+        "P90": 0.94,
+        "Max": 0.96,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.04,
+        "P10": 0.05,
+        "Median": 0.11,
+        "P90": 0.36,
+        "Max": 0.83,
+        "at_or_below_0_6": 64
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 55,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.9649122807017544,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.65,
+          "TP": 55,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.9649122807017544,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.7,
+          "TP": 55,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.9649122807017544,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.75,
+          "TP": 55,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.9649122807017544,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.8,
+          "TP": 52,
+          "FP": 2,
+          "FN": 4,
+          "Precision": 0.9629629629629629,
+          "Recall": 0.9285714285714286
+        },
+        {
+          "threshold": 0.85,
+          "TP": 48,
+          "FP": 0,
+          "FN": 8,
+          "Precision": 1,
+          "Recall": 0.8571428571428571
+        },
+        {
+          "threshold": 0.9,
+          "TP": 29,
+          "FP": 0,
+          "FN": 27,
+          "Precision": 1,
+          "Recall": 0.5178571428571429
+        },
+        {
+          "threshold": 0.95,
+          "TP": 6,
+          "FP": 0,
+          "FN": 50,
+          "Precision": 1,
+          "Recall": 0.10714285714285714
+        }
+      ]
+    },
+    {
+      "prompt": "zh-request-v2",
+      "axis": "related",
+      "round": 1,
+      "Positive": {
+        "count": 101,
+        "Min": 0.52,
+        "P10": 0.82,
+        "Median": 0.93,
+        "P90": 0.96,
+        "Max": 0.97,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 21,
+        "Min": 0.05,
+        "P10": 0.06,
+        "Median": 0.11,
+        "P90": 0.25,
+        "Max": 0.53,
+        "at_or_below_0_6": 21
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.65,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.7,
+          "TP": 97,
+          "FP": 0,
+          "FN": 4,
+          "Precision": 1,
+          "Recall": 0.9603960396039604
+        },
+        {
+          "threshold": 0.75,
+          "TP": 96,
+          "FP": 0,
+          "FN": 5,
+          "Precision": 1,
+          "Recall": 0.9504950495049505
+        },
+        {
+          "threshold": 0.8,
+          "TP": 94,
+          "FP": 0,
+          "FN": 7,
+          "Precision": 1,
+          "Recall": 0.9306930693069307
+        },
+        {
+          "threshold": 0.85,
+          "TP": 89,
+          "FP": 0,
+          "FN": 12,
+          "Precision": 1,
+          "Recall": 0.8811881188118812
+        },
+        {
+          "threshold": 0.9,
+          "TP": 69,
+          "FP": 0,
+          "FN": 32,
+          "Precision": 1,
+          "Recall": 0.6831683168316832
+        },
+        {
+          "threshold": 0.95,
+          "TP": 27,
+          "FP": 0,
+          "FN": 74,
+          "Precision": 1,
+          "Recall": 0.26732673267326734
+        }
+      ]
+    },
+    {
+      "prompt": "zh-request-v2",
+      "axis": "notify",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.45,
+        "P10": 0.64,
+        "Median": 0.84,
+        "P90": 0.89,
+        "Max": 0.92,
+        "at_or_below_0_6": 4
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.07,
+        "P10": 0.08,
+        "Median": 0.16,
+        "P90": 0.47,
+        "Max": 0.73,
+        "at_or_below_0_6": 62
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 53,
+          "FP": 4,
+          "FN": 3,
+          "Precision": 0.9298245614035088,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.65,
+          "TP": 50,
+          "FP": 4,
+          "FN": 6,
+          "Precision": 0.9259259259259259,
+          "Recall": 0.8928571428571429
+        },
+        {
+          "threshold": 0.7,
+          "TP": 47,
+          "FP": 1,
+          "FN": 9,
+          "Precision": 0.9791666666666666,
+          "Recall": 0.8392857142857143
+        },
+        {
+          "threshold": 0.75,
+          "TP": 46,
+          "FP": 0,
+          "FN": 10,
+          "Precision": 1,
+          "Recall": 0.8214285714285714
+        },
+        {
+          "threshold": 0.8,
+          "TP": 38,
+          "FP": 0,
+          "FN": 18,
+          "Precision": 1,
+          "Recall": 0.6785714285714286
+        },
+        {
+          "threshold": 0.85,
+          "TP": 21,
+          "FP": 0,
+          "FN": 35,
+          "Precision": 1,
+          "Recall": 0.375
+        },
+        {
+          "threshold": 0.9,
+          "TP": 5,
+          "FP": 0,
+          "FN": 51,
+          "Precision": 1,
+          "Recall": 0.08928571428571429
+        },
+        {
+          "threshold": 0.95,
+          "TP": 0,
+          "FP": 0,
+          "FN": 56,
+          "Precision": 1,
+          "Recall": 0
+        }
+      ]
+    },
+    {
+      "prompt": "zh-request-v2",
+      "axis": "completed",
+      "round": 1,
+      "Positive": {
+        "count": 17,
+        "Min": 0.47,
+        "P10": 0.65,
+        "Median": 0.9,
+        "P90": 0.94,
+        "Max": 0.95,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 105,
+        "Min": 0.03,
+        "P10": 0.04,
+        "Median": 0.08,
+        "P90": 0.24,
+        "Max": 0.87,
+        "at_or_below_0_6": 102
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 16,
+          "FP": 3,
+          "FN": 1,
+          "Precision": 0.8421052631578947,
+          "Recall": 0.9411764705882353
+        },
+        {
+          "threshold": 0.65,
+          "TP": 16,
+          "FP": 3,
+          "FN": 1,
+          "Precision": 0.8421052631578947,
+          "Recall": 0.9411764705882353
+        },
+        {
+          "threshold": 0.7,
+          "TP": 15,
+          "FP": 2,
+          "FN": 2,
+          "Precision": 0.8823529411764706,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.75,
+          "TP": 14,
+          "FP": 2,
+          "FN": 3,
+          "Precision": 0.875,
+          "Recall": 0.8235294117647058
+        },
+        {
+          "threshold": 0.8,
+          "TP": 14,
+          "FP": 1,
+          "FN": 3,
+          "Precision": 0.9333333333333333,
+          "Recall": 0.8235294117647058
+        },
+        {
+          "threshold": 0.85,
+          "TP": 14,
+          "FP": 1,
+          "FN": 3,
+          "Precision": 0.9333333333333333,
+          "Recall": 0.8235294117647058
+        },
+        {
+          "threshold": 0.9,
+          "TP": 9,
+          "FP": 0,
+          "FN": 8,
+          "Precision": 1,
+          "Recall": 0.5294117647058824
+        },
+        {
+          "threshold": 0.95,
+          "TP": 2,
+          "FP": 0,
+          "FN": 15,
+          "Precision": 1,
+          "Recall": 0.11764705882352941
+        }
+      ]
+    },
+    {
+      "prompt": "zh-request-v2",
+      "axis": "needs_user_input",
+      "round": 1,
+      "Positive": {
+        "count": 2,
+        "Min": 0.93,
+        "P10": 0.93,
+        "Median": 0.93,
+        "P90": 0.93,
+        "Max": 0.96,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 120,
+        "Min": 0.03,
+        "P10": 0.03,
+        "Median": 0.04,
+        "P90": 0.07,
+        "Max": 0.61,
+        "at_or_below_0_6": 119
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 2,
+          "FP": 1,
+          "FN": 0,
+          "Precision": 0.6666666666666666,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.75,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.8,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.85,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.9,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.5
+        }
+      ]
+    },
+    {
+      "prompt": "zh-request-v2",
+      "axis": "notification_gate",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.45,
+        "P10": 0.73,
+        "Median": 0.85,
+        "P90": 0.92,
+        "Max": 0.95,
+        "at_or_below_0_6": 3
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.05,
+        "P10": 0.07,
+        "Median": 0.11,
+        "P90": 0.28,
+        "Max": 0.68,
+        "at_or_below_0_6": 63
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 54,
+          "FP": 3,
+          "FN": 2,
+          "Precision": 0.9473684210526315,
+          "Recall": 0.9642857142857143
+        },
+        {
+          "threshold": 0.65,
+          "TP": 53,
+          "FP": 2,
+          "FN": 3,
+          "Precision": 0.9636363636363636,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.7,
+          "TP": 51,
+          "FP": 0,
+          "FN": 5,
+          "Precision": 1,
+          "Recall": 0.9107142857142857
+        },
+        {
+          "threshold": 0.75,
+          "TP": 50,
+          "FP": 0,
+          "FN": 6,
+          "Precision": 1,
+          "Recall": 0.8928571428571429
+        },
+        {
+          "threshold": 0.8,
+          "TP": 44,
+          "FP": 0,
+          "FN": 12,
+          "Precision": 1,
+          "Recall": 0.7857142857142857
+        },
+        {
+          "threshold": 0.85,
+          "TP": 30,
+          "FP": 0,
+          "FN": 26,
+          "Precision": 1,
+          "Recall": 0.5357142857142857
+        },
+        {
+          "threshold": 0.9,
+          "TP": 14,
+          "FP": 0,
+          "FN": 42,
+          "Precision": 1,
+          "Recall": 0.25
+        },
+        {
+          "threshold": 0.95,
+          "TP": 2,
+          "FP": 0,
+          "FN": 54,
+          "Precision": 1,
+          "Recall": 0.03571428571428571
+        }
+      ]
+    },
+    {
+      "prompt": "en-contract-v3",
+      "axis": "related",
+      "round": 1,
+      "Positive": {
+        "count": 101,
+        "Min": 0.76,
+        "P10": 0.9,
+        "Median": 0.95,
+        "P90": 0.97,
+        "Max": 0.98,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 21,
+        "Min": 0.07,
+        "P10": 0.07,
+        "Median": 0.19,
+        "P90": 0.41,
+        "Max": 0.46,
+        "at_or_below_0_6": 21
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 101,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 101,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 101,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.75,
+          "TP": 101,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.8,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.85,
+          "TP": 97,
+          "FP": 0,
+          "FN": 4,
+          "Precision": 1,
+          "Recall": 0.9603960396039604
+        },
+        {
+          "threshold": 0.9,
+          "TP": 92,
+          "FP": 0,
+          "FN": 9,
+          "Precision": 1,
+          "Recall": 0.9108910891089109
+        },
+        {
+          "threshold": 0.95,
+          "TP": 63,
+          "FP": 0,
+          "FN": 38,
+          "Precision": 1,
+          "Recall": 0.6237623762376238
+        }
+      ]
+    },
+    {
+      "prompt": "en-contract-v3",
+      "axis": "notify",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.52,
+        "P10": 0.8,
+        "Median": 0.9,
+        "P90": 0.93,
+        "Max": 0.95,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.05,
+        "P10": 0.06,
+        "Median": 0.17,
+        "P90": 0.62,
+        "Max": 0.82,
+        "at_or_below_0_6": 58
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 55,
+          "FP": 8,
+          "FN": 1,
+          "Precision": 0.873015873015873,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.65,
+          "TP": 55,
+          "FP": 7,
+          "FN": 1,
+          "Precision": 0.8870967741935484,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.7,
+          "TP": 54,
+          "FP": 5,
+          "FN": 2,
+          "Precision": 0.9152542372881356,
+          "Recall": 0.9642857142857143
+        },
+        {
+          "threshold": 0.75,
+          "TP": 53,
+          "FP": 3,
+          "FN": 3,
+          "Precision": 0.9464285714285714,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.8,
+          "TP": 51,
+          "FP": 3,
+          "FN": 5,
+          "Precision": 0.9444444444444444,
+          "Recall": 0.9107142857142857
+        },
+        {
+          "threshold": 0.85,
+          "TP": 46,
+          "FP": 0,
+          "FN": 10,
+          "Precision": 1,
+          "Recall": 0.8214285714285714
+        },
+        {
+          "threshold": 0.9,
+          "TP": 32,
+          "FP": 0,
+          "FN": 24,
+          "Precision": 1,
+          "Recall": 0.5714285714285714
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 55,
+          "Precision": 1,
+          "Recall": 0.017857142857142856
+        }
+      ]
+    },
+    {
+      "prompt": "en-contract-v3",
+      "axis": "completed",
+      "round": 1,
+      "Positive": {
+        "count": 17,
+        "Min": 0.61,
+        "P10": 0.64,
+        "Median": 0.86,
+        "P90": 0.91,
+        "Max": 0.95,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 105,
+        "Min": 0.03,
+        "P10": 0.03,
+        "Median": 0.06,
+        "P90": 0.15,
+        "Max": 0.67,
+        "at_or_below_0_6": 103
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 17,
+          "FP": 2,
+          "FN": 0,
+          "Precision": 0.8947368421052632,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 15,
+          "FP": 2,
+          "FN": 2,
+          "Precision": 0.8823529411764706,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.7,
+          "TP": 15,
+          "FP": 0,
+          "FN": 2,
+          "Precision": 1,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.75,
+          "TP": 14,
+          "FP": 0,
+          "FN": 3,
+          "Precision": 1,
+          "Recall": 0.8235294117647058
+        },
+        {
+          "threshold": 0.8,
+          "TP": 14,
+          "FP": 0,
+          "FN": 3,
+          "Precision": 1,
+          "Recall": 0.8235294117647058
+        },
+        {
+          "threshold": 0.85,
+          "TP": 10,
+          "FP": 0,
+          "FN": 7,
+          "Precision": 1,
+          "Recall": 0.5882352941176471
+        },
+        {
+          "threshold": 0.9,
+          "TP": 5,
+          "FP": 0,
+          "FN": 12,
+          "Precision": 1,
+          "Recall": 0.29411764705882354
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 16,
+          "Precision": 1,
+          "Recall": 0.058823529411764705
+        }
+      ]
+    },
+    {
+      "prompt": "en-contract-v3",
+      "axis": "needs_user_input",
+      "round": 1,
+      "Positive": {
+        "count": 2,
+        "Min": 0.92,
+        "P10": 0.92,
+        "Median": 0.92,
+        "P90": 0.92,
+        "Max": 0.97,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 120,
+        "Min": 0.05,
+        "P10": 0.06,
+        "Median": 0.08,
+        "P90": 0.13,
+        "Max": 0.72,
+        "at_or_below_0_6": 119
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 2,
+          "FP": 1,
+          "FN": 0,
+          "Precision": 0.6666666666666666,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 2,
+          "FP": 1,
+          "FN": 0,
+          "Precision": 0.6666666666666666,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 2,
+          "FP": 1,
+          "FN": 0,
+          "Precision": 0.6666666666666666,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.75,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.8,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.85,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.9,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.5
+        }
+      ]
+    },
+    {
+      "prompt": "en-contract-v3",
+      "axis": "notification_gate",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.52,
+        "P10": 0.83,
+        "Median": 0.91,
+        "P90": 0.93,
+        "Max": 0.97,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.06,
+        "P10": 0.07,
+        "Median": 0.12,
+        "P90": 0.4,
+        "Max": 0.81,
+        "at_or_below_0_6": 62
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 55,
+          "FP": 4,
+          "FN": 1,
+          "Precision": 0.9322033898305084,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.65,
+          "TP": 55,
+          "FP": 3,
+          "FN": 1,
+          "Precision": 0.9482758620689655,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.7,
+          "TP": 55,
+          "FP": 3,
+          "FN": 1,
+          "Precision": 0.9482758620689655,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.75,
+          "TP": 55,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.9649122807017544,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.8,
+          "TP": 54,
+          "FP": 1,
+          "FN": 2,
+          "Precision": 0.9818181818181818,
+          "Recall": 0.9642857142857143
+        },
+        {
+          "threshold": 0.85,
+          "TP": 48,
+          "FP": 0,
+          "FN": 8,
+          "Precision": 1,
+          "Recall": 0.8571428571428571
+        },
+        {
+          "threshold": 0.9,
+          "TP": 33,
+          "FP": 0,
+          "FN": 23,
+          "Precision": 1,
+          "Recall": 0.5892857142857143
+        },
+        {
+          "threshold": 0.95,
+          "TP": 3,
+          "FP": 0,
+          "FN": 53,
+          "Precision": 1,
+          "Recall": 0.05357142857142857
+        }
+      ]
+    },
+    {
+      "prompt": "zh-evidence-v4",
+      "axis": "related",
+      "round": 1,
+      "Positive": {
+        "count": 101,
+        "Min": 0.44,
+        "P10": 0.88,
+        "Median": 0.96,
+        "P90": 0.97,
+        "Max": 0.98,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 21,
+        "Min": 0.06,
+        "P10": 0.09,
+        "Median": 0.18,
+        "P90": 0.4,
+        "Max": 0.5,
+        "at_or_below_0_6": 21
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.65,
+          "TP": 100,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.9900990099009901
+        },
+        {
+          "threshold": 0.7,
+          "TP": 98,
+          "FP": 0,
+          "FN": 3,
+          "Precision": 1,
+          "Recall": 0.9702970297029703
+        },
+        {
+          "threshold": 0.75,
+          "TP": 96,
+          "FP": 0,
+          "FN": 5,
+          "Precision": 1,
+          "Recall": 0.9504950495049505
+        },
+        {
+          "threshold": 0.8,
+          "TP": 94,
+          "FP": 0,
+          "FN": 7,
+          "Precision": 1,
+          "Recall": 0.9306930693069307
+        },
+        {
+          "threshold": 0.85,
+          "TP": 94,
+          "FP": 0,
+          "FN": 7,
+          "Precision": 1,
+          "Recall": 0.9306930693069307
+        },
+        {
+          "threshold": 0.9,
+          "TP": 87,
+          "FP": 0,
+          "FN": 14,
+          "Precision": 1,
+          "Recall": 0.8613861386138614
+        },
+        {
+          "threshold": 0.95,
+          "TP": 66,
+          "FP": 0,
+          "FN": 35,
+          "Precision": 1,
+          "Recall": 0.6534653465346535
+        }
+      ]
+    },
+    {
+      "prompt": "zh-evidence-v4",
+      "axis": "notify",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.59,
+        "P10": 0.75,
+        "Median": 0.87,
+        "P90": 0.91,
+        "Max": 0.95,
+        "at_or_below_0_6": 2
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.06,
+        "P10": 0.07,
+        "Median": 0.13,
+        "P90": 0.33,
+        "Max": 0.78,
+        "at_or_below_0_6": 63
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 55,
+          "FP": 3,
+          "FN": 1,
+          "Precision": 0.9482758620689655,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.65,
+          "TP": 54,
+          "FP": 3,
+          "FN": 2,
+          "Precision": 0.9473684210526315,
+          "Recall": 0.9642857142857143
+        },
+        {
+          "threshold": 0.7,
+          "TP": 53,
+          "FP": 2,
+          "FN": 3,
+          "Precision": 0.9636363636363636,
+          "Recall": 0.9464285714285714
+        },
+        {
+          "threshold": 0.75,
+          "TP": 51,
+          "FP": 2,
+          "FN": 5,
+          "Precision": 0.9622641509433962,
+          "Recall": 0.9107142857142857
+        },
+        {
+          "threshold": 0.8,
+          "TP": 48,
+          "FP": 0,
+          "FN": 8,
+          "Precision": 1,
+          "Recall": 0.8571428571428571
+        },
+        {
+          "threshold": 0.85,
+          "TP": 40,
+          "FP": 0,
+          "FN": 16,
+          "Precision": 1,
+          "Recall": 0.7142857142857143
+        },
+        {
+          "threshold": 0.9,
+          "TP": 14,
+          "FP": 0,
+          "FN": 42,
+          "Precision": 1,
+          "Recall": 0.25
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 55,
+          "Precision": 1,
+          "Recall": 0.017857142857142856
+        }
+      ]
+    },
+    {
+      "prompt": "zh-evidence-v4",
+      "axis": "completed",
+      "round": 1,
+      "Positive": {
+        "count": 17,
+        "Min": 0.5,
+        "P10": 0.7,
+        "Median": 0.89,
+        "P90": 0.94,
+        "Max": 0.95,
+        "at_or_below_0_6": 1
+      },
+      "Negative": {
+        "count": 105,
+        "Min": 0.04,
+        "P10": 0.04,
+        "Median": 0.09,
+        "P90": 0.23,
+        "Max": 0.74,
+        "at_or_below_0_6": 103
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 16,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.8888888888888888,
+          "Recall": 0.9411764705882353
+        },
+        {
+          "threshold": 0.65,
+          "TP": 16,
+          "FP": 1,
+          "FN": 1,
+          "Precision": 0.9411764705882353,
+          "Recall": 0.9411764705882353
+        },
+        {
+          "threshold": 0.7,
+          "TP": 16,
+          "FP": 1,
+          "FN": 1,
+          "Precision": 0.9411764705882353,
+          "Recall": 0.9411764705882353
+        },
+        {
+          "threshold": 0.75,
+          "TP": 15,
+          "FP": 0,
+          "FN": 2,
+          "Precision": 1,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.8,
+          "TP": 15,
+          "FP": 0,
+          "FN": 2,
+          "Precision": 1,
+          "Recall": 0.8823529411764706
+        },
+        {
+          "threshold": 0.85,
+          "TP": 13,
+          "FP": 0,
+          "FN": 4,
+          "Precision": 1,
+          "Recall": 0.7647058823529411
+        },
+        {
+          "threshold": 0.9,
+          "TP": 8,
+          "FP": 0,
+          "FN": 9,
+          "Precision": 1,
+          "Recall": 0.47058823529411764
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 16,
+          "Precision": 1,
+          "Recall": 0.058823529411764705
+        }
+      ]
+    },
+    {
+      "prompt": "zh-evidence-v4",
+      "axis": "needs_user_input",
+      "round": 1,
+      "Positive": {
+        "count": 2,
+        "Min": 0.94,
+        "P10": 0.94,
+        "Median": 0.94,
+        "P90": 0.94,
+        "Max": 0.96,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 120,
+        "Min": 0.03,
+        "P10": 0.03,
+        "Median": 0.04,
+        "P90": 0.06,
+        "Max": 0.52,
+        "at_or_below_0_6": 120
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.75,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.8,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.85,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.9,
+          "TP": 2,
+          "FP": 0,
+          "FN": 0,
+          "Precision": 1,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.95,
+          "TP": 1,
+          "FP": 0,
+          "FN": 1,
+          "Precision": 1,
+          "Recall": 0.5
+        }
+      ]
+    },
+    {
+      "prompt": "zh-evidence-v4",
+      "axis": "notification_gate",
+      "round": 1,
+      "Positive": {
+        "count": 56,
+        "Min": 0.69,
+        "P10": 0.82,
+        "Median": 0.88,
+        "P90": 0.94,
+        "Max": 0.96,
+        "at_or_below_0_6": 0
+      },
+      "Negative": {
+        "count": 66,
+        "Min": 0.06,
+        "P10": 0.07,
+        "Median": 0.13,
+        "P90": 0.4,
+        "Max": 0.78,
+        "at_or_below_0_6": 63
+      },
+      "curve": [
+        {
+          "threshold": 0.6,
+          "TP": 56,
+          "FP": 3,
+          "FN": 0,
+          "Precision": 0.9491525423728814,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.65,
+          "TP": 56,
+          "FP": 3,
+          "FN": 0,
+          "Precision": 0.9491525423728814,
+          "Recall": 1
+        },
+        {
+          "threshold": 0.7,
+          "TP": 55,
+          "FP": 2,
+          "FN": 1,
+          "Precision": 0.9649122807017544,
+          "Recall": 0.9821428571428571
+        },
+        {
+          "threshold": 0.75,
+          "TP": 54,
+          "FP": 2,
+          "FN": 2,
+          "Precision": 0.9642857142857143,
+          "Recall": 0.9642857142857143
+        },
+        {
+          "threshold": 0.8,
+          "TP": 52,
+          "FP": 0,
+          "FN": 4,
+          "Precision": 1,
+          "Recall": 0.9285714285714286
+        },
+        {
+          "threshold": 0.85,
+          "TP": 45,
+          "FP": 0,
+          "FN": 11,
+          "Precision": 1,
+          "Recall": 0.8035714285714286
+        },
+        {
+          "threshold": 0.9,
+          "TP": 19,
+          "FP": 0,
+          "FN": 37,
+          "Precision": 1,
+          "Recall": 0.3392857142857143
+        },
+        {
+          "threshold": 0.95,
+          "TP": 3,
+          "FP": 0,
+          "FN": 53,
+          "Precision": 1,
+          "Recall": 0.05357142857142857
+        }
+      ]
+    }
+  ]
+}
