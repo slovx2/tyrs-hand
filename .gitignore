@@ -47,3 +47,6 @@ community-research/
 auth.json
 sessions/
 deploy/browser/out/
+
+# Jev 评测运行产物（图片与指标摘要由 CLI 本地生成）
+/docs/assets/jev-live-*

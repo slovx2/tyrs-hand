@@ -73,8 +73,6 @@ notification_gate = min(related, max(notify, completed, needs_user_input))
 
 它不是 Jev 直接输出的概率，也不能当作校准正确率。交付证据版在开发集的派生指标中，56 个正样本最小值为 **0.69**，全部高于 0.6；负样本最高 **0.78**，仍有重叠。这一版值得下一轮通知门控研究，但不能据此声称其完整闭环或留出测试达标。
 
-![开发集原始与派生分数](assets/jev-live-develop-scores.png)
-
 冻结版本在三轮留出集上的原始 notify：每轮 52 个正样本中均有 **4 个 ≤0.6**；69 个负样本中有 **10～11 个 >0.6**。派生通知指标每轮仍有 1 个正样本 ≤0.6。
 
 以下为留出单消息分数的**事后描述性扫描**，未据此修改冻结配置。三轮合计 156 次正样本观察来自同样的 52 条消息，不是 156 个独立样例：
@@ -88,8 +86,6 @@ notification_gate = min(related, max(notify, completed, needs_user_input))
 |0.90|100.0%|58.3%|0|65|
 
 分数门槛确实无需接近 1；这里的问题是少数正负样本发生倒置。单纯抬高阈值会丢失有效信息，降低阈值会播报更多重复状态。派生分数扫描也不能替代实际四轴阈值和结束状态的闭环回放。
-
-![留出集三轮分数](assets/jev-live-holdout-scores.png)
 
 ## 留出闭环三轮
 
@@ -126,7 +122,7 @@ notification_gate = min(related, max(notify, completed, needs_user_input))
 - 包含本次保存的全部开发探索，总计 **4460 次请求**，均成功；输入 **6,725,563 tokens**、输出 **312,200 tokens**。这些探索数据没有与最终准确率合并。
 - 每轮首请求耗时约 253～982 ms。这里只测本进程的首调用，无法控制供应商模型冷启动；其余成功调用统计稳定 P95。
 
-完整本机证据位于 `.local/jev-eval/context-notification/`：`develop.json/.md`、`holdout.json/.md`、`*-scores.json/.md/.png`、`dataset.json`、`frozen.json`。每条输入、概率、错误、混淆矩阵和场景指标均可复查。[版本化指标摘要](assets/jev-live-evaluation-summary.json) 另行保留，不含密钥。
+完整本机证据位于 `.local/jev-eval/context-notification/`：`develop.json/.md`、`holdout.json/.md`、`*-scores.json/.md/.png`、`dataset.json`、`frozen.json`。每条输入、概率、错误、混淆矩阵和场景指标均可复查。分数分布图与指标摘要由 CLI 在输出目录本地生成，属于运行产物，不入库。
 
 按业务场景族分割，常见协议机制在两侧均有覆盖；同类机制的固定结构仍可能使这批人工样例偏简单。没有进行生产真实会话测试，也没有随机化上下文增量的严格 A/B 实验，因此不能声称新增用户上下文本身提高了多少准确率。
 
