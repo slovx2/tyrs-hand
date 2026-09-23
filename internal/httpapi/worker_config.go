@@ -70,8 +70,11 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 			case <-c.Request.Context().Done():
 				return
 			case <-ticker.C:
-				_ = conn.WriteControl(websocket.PingMessage, nil,
-					time.Now().Add(10*time.Second))
+				if err := conn.WriteControl(websocket.PingMessage, nil,
+					time.Now().Add(10*time.Second)); err != nil {
+					_ = conn.Close()
+					return
+				}
 			}
 		}
 	}()
@@ -155,7 +158,11 @@ func (c *workerRPCConnection) write(payload []byte) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		return err
 	}
-	return c.conn.WriteMessage(websocket.TextMessage, payload)
+	if err := c.conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+		_ = c.conn.Close()
+		return err
+	}
+	return nil
 }
 
 func (c *workerRPCConnection) supportsWake() bool {
@@ -205,14 +212,11 @@ func (s *Server) callWorkerRPC(ctx context.Context, workerID uuid.UUID, method s
 	requestParams, _ := json.Marshal(params)
 	request := workerprotocol.WorkerRPCRequest{ID: id, Method: method, Params: requestParams}
 	payload, _ := json.Marshal(request)
-	state.writeMu.Lock()
-	writeErr := state.conn.WriteMessage(websocket.TextMessage, payload)
-	state.writeMu.Unlock()
-	if writeErr != nil {
+	if err := state.write(payload); err != nil {
 		state.mu.Lock()
 		delete(state.pending, id)
 		state.mu.Unlock()
-		return nil, writeErr
+		return nil, err
 	}
 	if timeout <= 0 {
 		timeout = 30 * time.Second
