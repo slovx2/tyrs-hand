@@ -611,6 +611,11 @@ func (r *Repository) RecordSubmission(ctx context.Context, claimed *ClaimedContr
 	if err := r.fence(ctx, tx, claimed); err != nil {
 		return err
 	}
+	if done, err := lockSubmissionState(ctx, tx, claimed, submissionID, false); err != nil {
+		return err
+	} else if done {
+		return tx.Commit()
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'awaiting_confirmation',
 		codex_submission_id = $2,
 		replacement_phase = CASE WHEN operation='replace_last_turn' THEN 'running'
@@ -665,6 +670,11 @@ func (r *Repository) ConfirmTurn(ctx context.Context, claimed *ClaimedControl, t
 	defer func() { _ = tx.Rollback() }()
 	if err := r.fence(ctx, tx, claimed); err != nil {
 		return err
+	}
+	if done, err := lockSubmissionState(ctx, tx, claimed, turnID, true); err != nil {
+		return err
+	} else if done {
+		return tx.Commit()
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'running',
 		confirmed_codex_turn_id = $2, confirmed_at = COALESCE(confirmed_at, now()), updated_at = now()

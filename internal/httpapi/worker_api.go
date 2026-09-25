@@ -396,6 +396,9 @@ func remoteRunError(c *gin.Context, action string, err error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		status = http.StatusNotFound
 	}
+	if errors.Is(err, codexcontrol.ErrSubmissionConflict) {
+		status = http.StatusConflict
+	}
 	problem(c, status, action, err)
 }
 

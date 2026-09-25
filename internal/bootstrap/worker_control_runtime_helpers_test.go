@@ -9,9 +9,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,7 +60,18 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	control, err := httpapi.NewServer(controlConfig, db, cache, nil, nil, nil,
 		platformsettings.NewService(db), nil, nil, secrets.NewStore(db, box), zap.NewNop())
 	require.NoError(t, err)
-	server := httptest.NewServer(control.Router())
+	router := control.Router()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/worker/v1/desktop-thread-requests/") && strings.HasSuffix(r.URL.Path, "/complete") {
+			// 稳定覆盖“模型已完成、会话登记仍在网络中”的先后顺序，不能依赖机器快慢。
+			select {
+			case <-time.After(300 * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		router.ServeHTTP(w, r)
+	}))
 	t.Cleanup(server.Close)
 	registry := workerregistry.NewService(db)
 	registered, enrollment, err := registry.Create(ctx, "protocol-worker", []string{"discord"}, 2)

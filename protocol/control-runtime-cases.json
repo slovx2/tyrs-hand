@@ -141,6 +141,15 @@
         "codex",
         "claude-code"
       ]
+    },
+    {
+      "id": "CONTROL-SUBMIT-002",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerLateSubmissionCannotReopenTerminalRun",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
     }
   ]
 }

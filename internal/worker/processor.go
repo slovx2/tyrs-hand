@@ -45,6 +45,8 @@ type Processor struct {
 	coordinator     *runCoordinator
 	wake            *wakeSignals
 	turnSlots       chan struct{}
+	threadSyncMu    sync.Mutex
+	threadSync      map[string]*desktopThreadRegistration
 }
 
 func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, scopeID uuid.UUID,

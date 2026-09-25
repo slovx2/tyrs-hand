@@ -125,6 +125,7 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 			state.subscription.Close()
 			return plan, fmt.Errorf("持久化 Desktop Run Journal: %w", err)
 		}
+		state.reporter.holdRegistration()
 		if c.processor.coordinator != nil {
 			c.processor.coordinator.register(state.reporter.journal, state.commands)
 		}
@@ -282,7 +283,7 @@ func (c *desktopController) CompleteCall(_ context.Context, call appserverhub.Ca
 		return result, cause
 	}
 	if state, ok := plan.State.(*desktopThreadCallState); ok {
-		go c.syncDesktopThread(state.request, result, nil)
+		c.startThreadRegistration(state.request, result)
 	}
 	switch call.Method {
 	case "thread/start", "thread/fork":
@@ -583,7 +584,7 @@ func hostWorkspacePath(root, relative string) (string, error) {
 
 func (c *desktopController) syncDesktopThread(
 	request workerprotocol.DesktopThreadPrepareRequest, result json.RawMessage, cause error,
-) {
+) error {
 	ctx := c.processor.workspaces.ctx
 	for ctx.Err() == nil && c.controlEnabled() {
 		requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
@@ -604,15 +605,19 @@ func (c *desktopController) syncDesktopThread(
 			}
 			cancel()
 			if err == nil {
-				return
+				return nil
 			}
 		}
 		c.processor.logger.Warn("补报 Desktop Thread 状态失败，本地操作已经执行",
 			zap.String("request_key", request.RequestKey), zap.Error(err))
 		if !retryableControlError(err) || !waitContext(ctx, 3*time.Second) {
-			return
+			return err
 		}
 	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return errDesktopBindingChanged
 }
 
 func (c *desktopController) controlTimeout() time.Duration {
@@ -802,6 +807,16 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 	requestKey, turnID string, images []workerprotocol.DesktopImage, imageNotice string,
 	state *desktopCallState,
 ) {
+	if state.reporter != nil {
+		defer state.reporter.finishRegistration()
+	}
+	if err := c.waitThreadRegistration(ctx, params); err != nil {
+		if state.reporter != nil {
+			abandonRunJournal(c.processor.journals, state.reporter.journal)
+		}
+		c.processor.logger.Warn("会话登记未完成，保留本地 Turn 等待对账", zap.Error(err))
+		return
+	}
 	for ctx.Err() == nil && c.controlEnabled() {
 		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		request := workerprotocol.DesktopTurnPrepareRequest{
@@ -820,20 +835,22 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 		_, err := c.processor.client.PrepareDesktopTurn(requestCtx, request)
 		cancel()
 		if err == nil {
-			if state.reporter != nil {
-				state.reporter.journal.clearControlRetry()
-			}
+			requestCtx, cancel = context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+			err = c.processor.client.RecordSubmission(requestCtx, state.task, turnID)
+			cancel()
+		}
+		if err == nil {
+			requestCtx, cancel = context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+			err = c.processor.client.ConfirmTurn(requestCtx, state.task, turnID)
+			cancel()
+		}
+		if err == nil {
+			state.reporter.journal.clearControlRetry()
 			if len(images) > 0 {
-				c.syncDesktopImages(state.task,
-					append([]workerprotocol.DesktopImage(nil), images...))
+				c.syncDesktopImages(state.task, append([]workerprotocol.DesktopImage(nil), images...))
 			}
+			state.reporter.finishRegistration()
 			state.reporter.Flush()
-			requestCtx, cancel = context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-			_ = c.processor.client.RecordSubmission(requestCtx, state.task, turnID)
-			cancel()
-			requestCtx, cancel = context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-			_ = c.processor.client.ConfirmTurn(requestCtx, state.task, turnID)
-			cancel()
 			return
 		}
 		c.processor.logger.Warn("补报 Desktop 本地 Run 失败，本地 Turn 继续运行",
@@ -1312,13 +1329,14 @@ func callScope(raw json.RawMessage) (string, string) {
 }
 
 type desktopEventReporter struct {
-	ctx        context.Context
-	processor  *Processor
-	task       *workerprotocol.Task
-	journal    *runJournal
-	lastFlush  time.Time
-	flushStop  chan struct{}
-	flushClose sync.Once
+	ctx              context.Context
+	processor        *Processor
+	task             *workerprotocol.Task
+	journal          *runJournal
+	lastFlush        time.Time
+	flushStop        chan struct{}
+	flushClose       sync.Once
+	registrationDone chan struct{}
 }
 
 // desktopEventFlushInterval 是 Desktop 事件上报的去抖窗口。
@@ -1381,7 +1399,7 @@ func (r *desktopEventReporter) Flush() {
 }
 
 func (r *desktopEventReporter) flushLocked() {
-	if len(r.journal.PendingEvents) == 0 {
+	if r.journal.ControlAbandoned || r.registrationPendingLocked() || len(r.journal.PendingEvents) == 0 {
 		return
 	}
 	r.lastFlush = time.Now()
@@ -1414,9 +1432,17 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 		}
 	}
 	_ = r.saveLocked()
+	registered := r.registrationDone
 	r.journal.mu.Unlock()
 	if r.processor.coordinator != nil {
 		r.processor.coordinator.unregister(r.task.Claimed.RunID)
+	}
+	if registered != nil {
+		select {
+		case <-registered:
+		case <-r.ctx.Done():
+			return
+		}
 	}
 	for r.ctx.Err() == nil {
 		if r.journal.ControlAbandoned {
