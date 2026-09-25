@@ -132,6 +132,15 @@
       "engines": [
         "claude-code"
       ]
+    },
+    {
+      "id": "CONTROL-DISPATCH-002",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerClaimPrioritizesActiveCommandsWithinRuntime",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
     }
   ]
 }

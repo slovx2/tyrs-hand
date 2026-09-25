@@ -159,8 +159,10 @@ type SSHConfiguration struct {
 }
 
 type ClaimRequest struct {
-	Role string `json:"role"`
-	Wait bool   `json:"wait"`
+	Role             string      `json:"role"`
+	Wait             bool        `json:"wait"`
+	OnlyActive       bool        `json:"onlyActive"`
+	ActiveControlIDs []uuid.UUID `json:"activeControlIds,omitempty"`
 }
 
 type ClaimResponse struct {

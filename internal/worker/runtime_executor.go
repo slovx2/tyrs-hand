@@ -93,7 +93,8 @@ func (r *Runner) claimNext(ctx context.Context) (*runtimeExecutor, *workerprotoc
 	for offset := 0; offset < len(r.executors); offset++ {
 		index := (r.nextExecutor + offset) % len(r.executors)
 		executor := r.executors[index]
-		claim, err := executor.client.Claim(ctx, workerprotocol.ClaimRequest{Role: r.claimRole()})
+		claim, err := executor.client.Claim(ctx, workerprotocol.ClaimRequest{Role: r.claimRole(),
+			OnlyActive: len(r.turnSlots) >= cap(r.turnSlots), ActiveControlIDs: executor.coordinator.activeControlIDs()})
 		if err != nil {
 			r.logger.Warn("从 Control 领取运行时任务失败", zap.String("engine", string(executor.engine)), zap.Error(err))
 			continue

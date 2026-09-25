@@ -2104,8 +2104,10 @@ components:
         metadata: { type: object, additionalProperties: true }
     WorkerClaimRequest:
       type: object
-      required: [role, wait]
+      required: [role, wait, onlyActive]
       properties:
+        onlyActive: { type: boolean, description: 并发已满时仅领取本机活动会话的输入 }
+        activeControlIds: { type: array, maxItems: 1024, items: { type: string, format: uuid } }
         role: { type: string, enum: [all, github, discord] }
         wait: { type: boolean }
     WorkerClaimResponse:

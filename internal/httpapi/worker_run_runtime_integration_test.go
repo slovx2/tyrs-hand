@@ -31,7 +31,7 @@ func TestWorkerRuntimeRejectsForeignRunAndAttachments(t *testing.T) {
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
 	// Codex 领取不会拿走 Claude 输入，直接伪造其 ID 也不能登记 Run。
-	queued, err := repository.PendingWorkerInput(ctx, workerID, runtimeidentity.Codex)
+	queued, err := repository.PendingWorkerInput(ctx, workerID, runtimeidentity.Codex, codexcontrol.WorkerInputSelection{})
 	require.NoError(t, err)
 	require.Nil(t, queued)
 	runID := uuid.New()

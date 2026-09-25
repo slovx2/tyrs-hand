@@ -2429,6 +2429,9 @@ export interface components {
             };
         };
         WorkerClaimRequest: {
+            /** @description 并发已满时仅领取本机活动会话的输入 */
+            onlyActive: boolean;
+            activeControlIds?: string[];
             /** @enum {string} */
             role: "all" | "github" | "discord";
             wait: boolean;

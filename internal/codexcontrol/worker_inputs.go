@@ -8,12 +8,18 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
-// PendingWorkerInput 返回指定 Worker 最早的一条待决议输入，不创建 Run，
-// 也不改变 Control 的执行状态。start/steer 由 Worker 根据本地状态决定。
-func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID, engine runtimeidentity.Engine) (*ClaimedControl, error) {
+type WorkerInputSelection struct {
+	OnlyActive       bool
+	ActiveControlIDs []uuid.UUID
+}
+
+// PendingWorkerInput 优先返回本机活动会话的输入；满载时排除新会话，停止命令优先。
+// 查询不创建 Run 或改变 Control 状态。start/steer 仍由 Worker 根据本地状态决定。
+func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID, engine runtimeidentity.Engine, selection WorkerInputSelection) (*ClaimedControl, error) {
 	if err := engine.Validate(); err != nil {
 		return nil, err
 	}
@@ -40,7 +46,11 @@ func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID,
 	  AND i.available_at<=now() AND i.resolved_action IS NULL
 	  AND c.lifecycle_state='active'
 	  AND COALESCE(session.lifecycle_state,'active')='active'
-	ORDER BY i.created_at,i.sequence_no LIMIT 1`, workerID, engine).Scan(
+ AND (NOT $4 OR c.id=ANY($3::uuid[]))
+ ORDER BY COALESCE(c.id=ANY($3::uuid[]),false) DESC,
+ COALESCE(c.id=ANY($3::uuid[]) AND i.operation IN ('interrupt','replace_last_turn'),false) DESC,
+ i.created_at,i.sequence_no LIMIT 1`,
+		workerID, engine, pq.Array(selection.ActiveControlIDs), selection.OnlyActive).Scan(
 		&claimed.ID, &claimed.ControlID, &claimed.Sequence, &claimed.Operation,
 		&claimed.Behavior, &claimed.SourceType, &claimed.InputSurface,
 		&workItemID, &conversationID, &sessionID, &repositoryID, &projectID,

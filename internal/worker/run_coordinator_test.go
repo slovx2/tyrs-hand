@@ -123,7 +123,8 @@ func TestRunCoordinatorEnforcesSteerLimitAndThreadIsolation(t *testing.T) {
 
 	second := coordinatorTask(uuid.New(), controlID, workspaceID, "thread-1", 1)
 	_, routed, _ = coordinator.route(&second)
-	require.False(t, routed, "达到上限后输入应留到下一轮")
+	require.True(t, routed, "达到上限仍归属当前会话，不能启动并行 Turn")
+	require.Empty(t, commands, "达到上限后输入应留到下一轮")
 
 	other := coordinatorTask(uuid.New(), uuid.New(), workspaceID, "thread-2", 1)
 	_, routed, _ = coordinator.route(&other)
@@ -134,6 +135,27 @@ func TestRunCoordinatorEnforcesSteerLimitAndThreadIsolation(t *testing.T) {
 	interrupt.Claimed.Operation = "interrupt"
 	_, routed, _ = coordinator.route(&interrupt)
 	require.True(t, routed, "停止请求不受 steer 数量限制")
+}
+
+func TestRunCoordinatorKeepsFullCommandQueueAttachedToActiveTurn(t *testing.T) {
+	coordinator := newRunCoordinator(nil)
+	active := coordinatorTask(uuid.New(), uuid.New(), uuid.New(), "busy-thread", 5)
+	commands := make(chan workerprotocol.RunCommand, 1)
+	coordinator.register(&runJournal{Task: active}, commands)
+	first := active
+	first.Claimed.ID = uuid.New()
+	_, routed, _ := coordinator.route(&first)
+	require.True(t, routed)
+	next := first
+	next.Claimed.ID = uuid.New()
+	owner, routed, applied := coordinator.route(&next)
+	require.True(t, routed, "队列满仍属于活动 Turn，Runner 不能另起同会话任务")
+	require.False(t, applied)
+	require.Equal(t, active.Claimed.RunID, owner.Claimed.RunID)
+	require.Equal(t, first.Claimed.ID, (<-commands).ID)
+	_, routed, _ = coordinator.route(&next)
+	require.True(t, routed)
+	require.Equal(t, next.Claimed.ID, (<-commands).ID, "释放队列后原输入可继续投递")
 }
 
 func TestRunStateSyncReplaysAppliedInputDecisionAfterAckLoss(t *testing.T) {

@@ -195,6 +195,10 @@ func (r *Runner) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			active.Wait()
 			return ctx.Err()
+		default:
+			// 查询后可能被 SSH 会话占满。待决议输入尚未被接受，留在 Control，继续处理活动命令。
+			_ = waitContext(ctx, 100*time.Millisecond)
+			continue
 		}
 		task.Claimed.RunID = uuid.New()
 		journal := &runJournal{Task: *task, NextSequence: 1}

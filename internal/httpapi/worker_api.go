@@ -218,6 +218,16 @@ func (s *Server) workerClaim(c *gin.Context) {
 		problem(c, http.StatusConflict, "Worker 协议版本不兼容，禁止领取任务", nil)
 		return
 	}
+	if len(request.ActiveControlIDs) > 1024 {
+		badRequest(c, errors.New("活动会话数不能超过 1024"))
+		return
+	}
+	for _, id := range request.ActiveControlIDs {
+		if id == uuid.Nil {
+			badRequest(c, errors.New("活动会话 ID 无效"))
+			return
+		}
+	}
 	if request.Role == "github" {
 		problem(c, http.StatusGone, "GitHub 功能已停用", nil)
 		return
@@ -249,7 +259,8 @@ func (s *Server) workerClaim(c *gin.Context) {
 				return
 			}
 		}
-		claimed, err := repository.PendingWorkerInput(c.Request.Context(), worker.ID, currentWorkerEngine(c))
+		claimed, err := repository.PendingWorkerInput(c.Request.Context(), worker.ID, currentWorkerEngine(c),
+			codexcontrol.WorkerInputSelection{OnlyActive: request.OnlyActive, ActiveControlIDs: request.ActiveControlIDs})
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "领取远程任务失败", err)
 			return

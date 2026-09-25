@@ -71,6 +71,20 @@ func (c *runCoordinator) unregister(runID uuid.UUID) {
 	c.mu.Unlock()
 }
 
+func (c *runCoordinator) activeControlIDs() []uuid.UUID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ids := make([]uuid.UUID, 0, len(c.active))
+	seen := make(map[uuid.UUID]bool)
+	for _, run := range c.active {
+		if run.control != uuid.Nil && !seen[run.control] {
+			ids = append(ids, run.control)
+			seen[run.control] = true
+		}
+	}
+	return ids
+}
+
 func (c *runCoordinator) route(task *workerprotocol.Task) (*workerprotocol.Task, bool, bool) {
 	if c == nil || task == nil {
 		return nil, false, false
@@ -92,7 +106,7 @@ func (c *runCoordinator) route(task *workerprotocol.Task) (*workerprotocol.Task,
 			return result, true, false
 		}
 		if task.Claimed.Operation == "turn_input" && active.appends >= active.max {
-			return nil, false, false
+			return result, true, false
 		}
 		command := workerprotocol.RunCommand{ID: task.Claimed.ID,
 			Sequence: task.Claimed.Sequence, Operation: task.Claimed.Operation,
@@ -104,7 +118,7 @@ func (c *runCoordinator) route(task *workerprotocol.Task) (*workerprotocol.Task,
 			active.appends++
 			return result, true, false
 		default:
-			return nil, false, false
+			return result, true, false
 		}
 	}
 	return nil, false, false
