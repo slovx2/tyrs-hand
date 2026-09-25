@@ -1,10 +1,13 @@
-import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
 import {
-  findLiveVoice,
-  liveVoices,
-  type LiveVoice,
-} from './voices'
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
+  RotateCcw,
+  X,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { findLiveVoice, liveVoices, type LiveVoice } from './voices'
 
 type PreviewStatus = 'idle' | 'playing' | 'error'
 
@@ -59,7 +62,8 @@ export function LiveVoicePicker({
       if (event.key === 'End') nextIndex = liveVoices.length - 1
       if (nextIndex === undefined) return
       event.preventDefault()
-      const next = liveVoices[(nextIndex + liveVoices.length) % liveVoices.length]
+      const next =
+        liveVoices[(nextIndex + liveVoices.length) % liveVoices.length]
       if (!next || next.slug === selected.slug) return
       audio.current?.pause()
       if (audio.current) audio.current.currentTime = 0
@@ -150,7 +154,13 @@ export function LiveVoicePicker({
                 className="live-voice-arrow"
                 type="button"
                 aria-label="上一个音色"
-                onClick={() => choose(selectedIndex - 1 < 0 ? liveVoices.length - 1 : selectedIndex - 1)}
+                onClick={() =>
+                  choose(
+                    selectedIndex - 1 < 0
+                      ? liveVoices.length - 1
+                      : selectedIndex - 1,
+                  )
+                }
               >
                 <ChevronLeft aria-hidden size={20} />
               </button>
@@ -184,7 +194,11 @@ export function LiveVoicePicker({
                 <ChevronRight aria-hidden size={20} />
               </button>
             </div>
-            <div className="live-voice-dots" role="radiogroup" aria-label="音色">
+            <div
+              className="live-voice-dots"
+              role="radiogroup"
+              aria-label="音色"
+            >
               {liveVoices.map((voice) => (
                 <button
                   key={voice.slug}

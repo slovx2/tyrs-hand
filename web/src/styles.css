@@ -1997,7 +1997,9 @@ h2 {
   box-shadow:
     0 0 0 0.7rem color-mix(in srgb, var(--gold) 8%, transparent),
     inset 0 0 0 1.25rem color-mix(in srgb, var(--gold) 5%, transparent);
-  transition: box-shadow 150ms ease, transform 150ms ease;
+  transition:
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 .live-voice-orb:hover {
   transform: scale(1.02);
@@ -2172,9 +2174,17 @@ h2 {
   animation-delay: 0.35s;
 }
 @keyframes live-pulse {
-  0% { transform: scale(0.86); opacity: 0.9; }
-  70% { transform: scale(1.08); opacity: 0; }
-  100% { opacity: 0; }
+  0% {
+    transform: scale(0.86);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.08);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 .live-dock-copy {
   display: grid;

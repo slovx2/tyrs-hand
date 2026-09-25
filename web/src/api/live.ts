@@ -72,14 +72,20 @@ export function recoverLiveSession(id: string, offerSdp: string) {
   })
 }
 export function resetLiveConversationHistory(id: string) {
-  return api<LiveConversation>(`/client/live-conversations/${id}/reset-history`, {
-    method: 'POST',
-  })
+  return api<LiveConversation>(
+    `/client/live-conversations/${id}/reset-history`,
+    {
+      method: 'POST',
+    },
+  )
 }
 export function clearLiveConversationMessages(id: string) {
-  return api<LiveConversation>(`/client/live-conversations/${id}/clear-messages`, {
-    method: 'POST',
-  })
+  return api<LiveConversation>(
+    `/client/live-conversations/${id}/clear-messages`,
+    {
+      method: 'POST',
+    },
+  )
 }
 export function closeLiveSession(id: string) {
   return api<{ sessionId: string; status: string }>(

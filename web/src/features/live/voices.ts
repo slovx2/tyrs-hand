@@ -69,6 +69,8 @@ export type LiveVoice = (typeof liveVoices)[number]['slug']
 
 export const defaultLiveVoice: LiveVoice = 'cove'
 
-export function findLiveVoice(value: string | undefined): (typeof liveVoices)[number] {
+export function findLiveVoice(
+  value: string | undefined,
+): (typeof liveVoices)[number] {
   return liveVoices.find((voice) => voice.slug === value) ?? liveVoices[2]
 }

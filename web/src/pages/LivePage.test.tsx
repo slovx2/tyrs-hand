@@ -59,15 +59,21 @@ class FakePeerConnection {
 describe('LivePage', () => {
   it('展示产品控制，不展示调试入口', () => {
     render(<LivePage />)
-    expect(screen.getByRole('heading', { name: 'Live 语音' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Live 语音' }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '连接' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '更多' })).toBeInTheDocument()
     expect(screen.getByText('连接后开始说话')).toBeInTheDocument()
     expect(screen.queryByText('使用验收录音')).not.toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('输入文本测试')).not.toBeInTheDocument()
+    expect(
+      screen.queryByPlaceholderText('输入文本测试'),
+    ).not.toBeInTheDocument()
     expect(screen.queryByText(/Conversation/)).not.toBeInTheDocument()
     expect(screen.getByText('Worker')).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '选择 Worker' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: '选择 Worker' }),
+    ).toBeInTheDocument()
   })
 
   it('打开菜单后可重置且字幕仍在，清空后字幕消失', async () => {
@@ -130,8 +136,12 @@ describe('LivePage', () => {
       expect(screen.queryByText('切到 staging')).not.toBeInTheDocument()
     })
     expect(screen.getByText('连接后开始说话')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '音色：Ember' })).toBeInTheDocument()
-    expect(window.localStorage.getItem('tyrs-hand.live.conversationId')).toBe(conversationId)
+    expect(
+      screen.getByRole('button', { name: '音色：Ember' }),
+    ).toBeInTheDocument()
+    expect(window.localStorage.getItem('tyrs-hand.live.conversationId')).toBe(
+      conversationId,
+    )
   })
 
   it('acceptanceAudio 不展示控件', () => {
@@ -161,7 +171,9 @@ describe('LivePage', () => {
     await user.click(screen.getByRole('button', { name: '播放 Cove 试听' }))
     expect(play).toHaveBeenCalledTimes(1)
     await user.click(screen.getByRole('radio', { name: 'Breeze：活泼真挚' }))
-    expect(screen.getByRole('button', { name: '音色：Breeze' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '音色：Breeze' }),
+    ).toBeInTheDocument()
     expect(pause).toHaveBeenCalled()
   })
 
@@ -180,7 +192,10 @@ describe('LivePage', () => {
         `/api/v1/client/live-conversations/${conversationId}`,
         async ({ request }) => {
           receivedVoice = ((await request.json()) as { voice: string }).voice
-          return HttpResponse.json({ ...conversationJson(), voice: receivedVoice })
+          return HttpResponse.json({
+            ...conversationJson(),
+            voice: receivedVoice,
+          })
         },
       ),
     )
@@ -190,7 +205,9 @@ describe('LivePage', () => {
     await user.click(await screen.findByRole('button', { name: '音色：Cove' }))
     await user.click(screen.getByRole('radio', { name: 'Ember：自信乐观' }))
     await waitFor(() => expect(receivedVoice).toBe('ember'))
-    expect(screen.getByRole('button', { name: '音色：Ember' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '音色：Ember' }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '连接' })).toBeInTheDocument()
   })
 
@@ -212,7 +229,9 @@ describe('LivePage', () => {
         HttpResponse.json({ items: [{ id: workerId, name: 'Live Worker' }] }),
       ),
       http.get(`/api/v1/client/live-workers/${workerId}/sessions`, () =>
-        HttpResponse.json({ sessions: [{ id: sessionId, title: 'Live Session' }] }),
+        HttpResponse.json({
+          sessions: [{ id: sessionId, title: 'Live Session' }],
+        }),
       ),
       http.get(`/api/v1/client/live-workers/${workerId}/projects`, () =>
         HttpResponse.json({ projects: [] }),
@@ -225,12 +244,15 @@ describe('LivePage', () => {
         `/api/v1/client/live-conversations/${createdConversation.id}/sessions`,
         () => {
           sessionCreated = true
-          return HttpResponse.json({
-            conversationId: createdConversation.id,
-            sessionId: '66666666-6666-6666-6666-666666666666',
-            transport: { type: 'webrtc', answerSdp: 'answer-sdp' },
-            session: { status: 'starting' },
-          }, { status: 201 })
+          return HttpResponse.json(
+            {
+              conversationId: createdConversation.id,
+              sessionId: '66666666-6666-6666-6666-666666666666',
+              transport: { type: 'webrtc', answerSdp: 'answer-sdp' },
+              session: { status: 'starting' },
+            },
+            { status: 201 },
+          )
         },
       ),
     )
@@ -238,17 +260,16 @@ describe('LivePage', () => {
     render(<LivePage />)
 
     await user.selectOptions(await screen.findByLabelText('Worker'), workerId)
-    await user.selectOptions(
-      await screen.findByLabelText('Session'),
-      sessionId,
-    )
+    await user.selectOptions(await screen.findByLabelText('Session'), sessionId)
     await user.click(screen.getByRole('button', { name: '音色：Cove' }))
     await user.click(screen.getByRole('radio', { name: 'Ember：自信乐观' }))
     await user.click(screen.getByRole('button', { name: '连接' }))
 
     await waitFor(() => expect(createBody?.voice).toBe('ember'))
     await waitFor(() => expect(sessionCreated).toBe(true))
-    expect(screen.getByRole('button', { name: '音色：Ember' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '音色：Ember' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText(/重置会话后生效/)).not.toBeInTheDocument()
   })
 })

@@ -52,7 +52,9 @@ function commonHandlers(role: 'admin' | 'user' = 'admin') {
   server.use(
     http.get('/api/v1/auth/me', () => HttpResponse.json({ role })),
     http.get(`/api/v1/workers/${workerId}`, () => HttpResponse.json(worker)),
-    http.get(`/api/v1/workers/${workerId}/runtimes`, () => HttpResponse.json([])),
+    http.get(`/api/v1/workers/${workerId}/runtimes`, () =>
+      HttpResponse.json([]),
+    ),
   )
 }
 

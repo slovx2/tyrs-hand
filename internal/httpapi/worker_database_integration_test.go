@@ -1269,7 +1269,11 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 		"conversation:"+state.ConversationID.String()+":message:"+task.Claimed.ProjectionAnchor).
 		Scan(&initialCardRole, &initialCardHeader, &initialCardURL))
 	require.Equal(t, "history", initialCardRole)
-	require.Equal(t, "Codex · 已引导对话", initialCardHeader)
+	expectedEngineLabel := "Codex"
+	if engine == runtimeidentity.Claude {
+		expectedEngineLabel = "Claude"
+	}
+	require.Equal(t, expectedEngineLabel+" · 已引导对话", initialCardHeader)
 	require.Empty(t, initialCardURL)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT role FROM discord_turn_status_cards
 		WHERE run_id=$1 AND projection_key=$2`, task.Claimed.RunID, desktopSteerStatusKey).

@@ -39,7 +39,10 @@ describe('Live transcript nested events', () => {
     expect(state.items).toEqual([
       { role: 'assistant', text: 'world', eventId: 'turn-event-1' },
     ])
-    expect(state.partial['user:input-1']).toEqual({ role: 'user', text: 'hello ' })
+    expect(state.partial['user:input-1']).toEqual({
+      role: 'user',
+      text: 'hello ',
+    })
   })
 
   it('grows one bubble from turn.created and turn.delta', () => {

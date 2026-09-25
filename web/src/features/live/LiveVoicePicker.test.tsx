@@ -11,7 +11,11 @@ import { useState } from 'react'
 import { LiveVoicePicker } from './LiveVoicePicker'
 import { defaultLiveVoice, type LiveVoice } from './voices'
 
-function PickerHarness({ initial = defaultLiveVoice }: { initial?: LiveVoice }) {
+function PickerHarness({
+  initial = defaultLiveVoice,
+}: {
+  initial?: LiveVoice
+}) {
   const [value, setValue] = useState<LiveVoice>(initial)
   return <LiveVoicePicker value={value} onChange={setValue} />
 }
@@ -36,7 +40,9 @@ describe('LiveVoicePicker', () => {
     const audio = dialog.querySelector('audio') as HTMLAudioElement
     fireEvent.click(screen.getByRole('button', { name: '播放 Cove 试听' }))
     fireEvent.play(audio)
-    expect(screen.getByRole('button', { name: '暂停 Cove 试听' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '暂停 Cove 试听' }),
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '暂停 Cove 试听' }))
     fireEvent.pause(audio)
@@ -47,7 +53,9 @@ describe('LiveVoicePicker', () => {
 
     fireEvent.play(audio)
     fireEvent.click(screen.getByRole('radio', { name: 'Breeze：活泼真挚' }))
-    expect(screen.getByRole('button', { name: '音色：Breeze' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '音色：Breeze' }),
+    ).toBeInTheDocument()
     expect(pause).toHaveBeenCalled()
   })
 
@@ -62,7 +70,9 @@ describe('LiveVoicePicker', () => {
     const { unmount } = render(<PickerHarness />)
 
     fireEvent.click(screen.getByRole('button', { name: '音色：Cove' }))
-    const audio = screen.getByRole('dialog').querySelector('audio') as HTMLAudioElement
+    const audio = screen
+      .getByRole('dialog')
+      .querySelector('audio') as HTMLAudioElement
     fireEvent.click(screen.getByRole('button', { name: '播放 Cove 试听' }))
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('试听暂时不可用'),

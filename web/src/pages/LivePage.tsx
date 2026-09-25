@@ -67,7 +67,9 @@ function transcriptFromMessages(items: LiveMessage[]): LiveTranscriptState {
   }
 }
 
-async function waitForIceGathering(connection: RTCPeerConnection): Promise<void> {
+async function waitForIceGathering(
+  connection: RTCPeerConnection,
+): Promise<void> {
   if (connection.iceGatheringState === 'complete') return
   await new Promise<void>((resolve) => {
     const timeout = window.setTimeout(() => {
@@ -154,9 +156,15 @@ export function LivePage() {
   const [selectedVoice, setSelectedVoice] =
     useState<LiveVoice>(defaultLiveVoice)
   const [activeSessionVoice, setActiveSessionVoice] = useState<string>()
-  const [workers, setWorkers] = useState<Array<{ id: string; name: string }>>([])
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string }>>([])
-  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([])
+  const [workers, setWorkers] = useState<Array<{ id: string; name: string }>>(
+    [],
+  )
+  const [sessions, setSessions] = useState<
+    Array<{ id: string; title: string }>
+  >([])
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>(
+    [],
+  )
   const peer = useRef<RTCPeerConnection | null>(null)
   const channel = useRef<RTCDataChannel | null>(null)
   const audio = useRef<HTMLAudioElement>(null)
@@ -225,7 +233,8 @@ export function LivePage() {
         if (cancelled) return
         setConversation(current)
         if (current.workerId) setWorkerId(current.workerId)
-        if (current.workspaceSessionId) setBindSessionId(current.workspaceSessionId)
+        if (current.workspaceSessionId)
+          setBindSessionId(current.workspaceSessionId)
         if (current.projectId) setProjectId(current.projectId)
         setSelectedVoice(findLiveVoice(current.voice).slug)
         selectedVoiceRef.current = findLiveVoice(current.voice).slug
@@ -266,7 +275,8 @@ export function LivePage() {
     const hasPendingVoice =
       conversation !== null &&
       requestedVoice.current?.conversationId === conversation.id
-    if (!conversation || (conversation.voice === voice && !hasPendingVoice)) return
+    if (!conversation || (conversation.voice === voice && !hasPendingVoice))
+      return
     const revision = ++voiceSaveRevision.current
     const conversationId = conversation.id
     requestedVoice.current = { conversationId, voice }
@@ -490,13 +500,11 @@ export function LivePage() {
       {error && <div className="danger-note">{error}</div>}
       <div className="live-pickers">
         <div className="live-voice-field">
-          <LiveVoicePicker
-            value={selectedVoice}
-            onChange={handleVoiceChange}
-          />
+          <LiveVoicePicker value={selectedVoice} onChange={handleVoiceChange} />
           {voiceNeedsReset && (
             <span className="live-voice-pending" role="status">
-              已选择 {findLiveVoice(selectedVoice).name}，重置会话或清空字幕后生效
+              已选择 {findLiveVoice(selectedVoice).name}
+              ，重置会话或清空字幕后生效
             </span>
           )}
         </div>
@@ -582,11 +590,23 @@ export function LivePage() {
       <div className="live-dock">
         <LiveMark connected={connected} />
         <div className="live-dock-copy">
-          <strong>{connected ? '已连接' : connecting ? '连接中' : '未连接'}</strong>
-          <span>{connected ? '正在听' : connecting ? '正在建立会话' : '点击连接开始'}</span>
+          <strong>
+            {connected ? '已连接' : connecting ? '连接中' : '未连接'}
+          </strong>
+          <span>
+            {connected
+              ? '正在听'
+              : connecting
+                ? '正在建立会话'
+                : '点击连接开始'}
+          </span>
         </div>
         {connected ? (
-          <button className="button" type="button" onClick={() => void disconnect()}>
+          <button
+            className="button"
+            type="button"
+            onClick={() => void disconnect()}
+          >
             断开
           </button>
         ) : (
@@ -594,7 +614,11 @@ export function LivePage() {
             className="button"
             type="button"
             onClick={() => void connect()}
-            disabled={connecting || (!conversation && (!workerId || (mode === 'bind' ? !bindSessionId : !projectId)))}
+            disabled={
+              connecting ||
+              (!conversation &&
+                (!workerId || (mode === 'bind' ? !bindSessionId : !projectId)))
+            }
           >
             连接
           </button>

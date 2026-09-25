@@ -50,7 +50,8 @@ function nonEmptyString(value: unknown): string | undefined {
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined
   return value as Record<string, unknown>
 }
 
@@ -126,7 +127,11 @@ function transcriptKind(type: string): TranscriptKind | null {
 }
 
 function eventTurnId(event: LiveTranscriptEvent): string | undefined {
-  if (event.turn && typeof event.turn === 'object' && !Array.isArray(event.turn)) {
+  if (
+    event.turn &&
+    typeof event.turn === 'object' &&
+    !Array.isArray(event.turn)
+  ) {
     const id = nonEmptyString((event.turn as Record<string, unknown>).id)
     if (id) return id.trim()
   }
@@ -138,7 +143,11 @@ function eventTurnRole(
   event: LiveTranscriptEvent,
 ): LiveTranscriptItem['role'] | undefined {
   let role: unknown
-  if (event.turn && typeof event.turn === 'object' && !Array.isArray(event.turn)) {
+  if (
+    event.turn &&
+    typeof event.turn === 'object' &&
+    !Array.isArray(event.turn)
+  ) {
     role = (event.turn as Record<string, unknown>).role
   }
   if (role === undefined) role = event.role
@@ -146,7 +155,11 @@ function eventTurnRole(
 }
 
 function eventTurnTranscript(event: LiveTranscriptEvent): string | undefined {
-  if (!event.turn || typeof event.turn !== 'object' || Array.isArray(event.turn)) {
+  if (
+    !event.turn ||
+    typeof event.turn !== 'object' ||
+    Array.isArray(event.turn)
+  ) {
     return undefined
   }
   const object = event.turn as Record<string, unknown>
@@ -199,7 +212,9 @@ function activeTurnKey(
   state: LiveTranscriptState,
   role: LiveTranscriptItem['role'],
 ): string | undefined {
-  return Object.keys(state.partial).find((key) => key.startsWith(`${role}:turn:`))
+  return Object.keys(state.partial).find((key) =>
+    key.startsWith(`${role}:turn:`),
+  )
 }
 
 function findTurnPartialKey(
@@ -276,7 +291,8 @@ export function reduceLiveTranscript(
     if (!role || !turnId) return id ? { ...state, seenEventIds } : state
     const key = `${role}:turn:${turnId}`
     const openKey = `${role}:open`
-    const text = eventTurnTranscript(event) ?? state.partial[openKey]?.text ?? ''
+    const text =
+      eventTurnTranscript(event) ?? state.partial[openKey]?.text ?? ''
     const partial = { ...state.partial }
     delete partial[openKey]
     if (text) {
@@ -347,8 +363,7 @@ export function reduceLiveTranscript(
     }
   }
   const partial = state.partial[key]
-  const text =
-    knownText(event, ['text', 'transcript']) ?? partial?.text ?? ''
+  const text = knownText(event, ['text', 'transcript']) ?? partial?.text ?? ''
   const nextPartial = { ...state.partial }
   delete nextPartial[key]
   if (!text) return { ...state, seenEventIds, partial: nextPartial }
