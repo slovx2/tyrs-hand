@@ -29,7 +29,7 @@ type runJournal struct {
 	CodexError        *workerprotocol.CodexTurnError            `json:"codexError,omitempty"`
 	AppliedInputs     []appliedInputDecision                    `json:"appliedInputs,omitempty"`
 	TerminalDelivered bool                                      `json:"terminalDelivered,omitempty"`
-	ControlAbandoned  bool                                      `json:"-"`
+	ControlAbandoned  bool                                      `json:"controlReportStopped,omitempty"`
 	ControlRetryCount int                                       `json:"controlRetryCount,omitempty"`
 	ControlRetryStart time.Time                                 `json:"controlRetryStart,omitempty"`
 }
@@ -64,11 +64,11 @@ func abandonRunJournal(store *journalStore, journal *runJournal) {
 		return
 	}
 	journal.mu.Lock()
+	defer journal.mu.Unlock()
 	journal.ControlAbandoned = true
-	runID := journal.Task.Claimed.RunID
-	journal.mu.Unlock()
-	if store != nil && runID != uuid.Nil {
-		_ = store.remove(runID)
+	if store != nil && journal.Task.Claimed.RunID != uuid.Nil {
+		// 停止补报不等于未执行。保留原结果与输入 ID，等待明确对账，禁止重放副作用。
+		_ = store.save(journal)
 	}
 }
 
@@ -135,9 +135,6 @@ func (s *journalStore) save(journal *runJournal) error {
 	}
 	if err := journal.Task.Snapshot.Runtime.Engine.Validate(); err != nil {
 		return fmt.Errorf("保存 Run Journal: %w", err)
-	}
-	if journal.ControlAbandoned {
-		return nil
 	}
 	data, err := json.Marshal(journal)
 	if err != nil {

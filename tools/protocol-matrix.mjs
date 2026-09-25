@@ -35,7 +35,9 @@ if (process.env.CI && output('git', ['status', '--porcelain'], adapter))
 run('npm', ['run', 'build'], adapter)
 writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: process.versions.node,
   codex: version, adapterCommit: actual, adapterDirty: !!output('git', ['status', '--porcelain'], adapter),
-  workerCommit: output('git', ['rev-parse', 'HEAD']), platform: process.platform, arch: process.arch,
+  workerCommit: output('git', ['rev-parse', 'HEAD']), workerDirty: !!output('git', ['status', '--porcelain']),
+  claudeAgentSdk: pin.claudeAgentSdk, claudeCli: pin.claudeCli, codexProtocol: pin.codexProtocol,
+  platform: process.platform, arch: process.arch,
 }, null, 2))
 
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。

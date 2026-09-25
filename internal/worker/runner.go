@@ -184,6 +184,12 @@ func (r *Runner) Run(ctx context.Context) error {
 			}
 			continue
 		}
+		if executor.remembersInput(task.Claimed.ID) {
+			if !waitContext(ctx, 100*time.Millisecond) {
+				break
+			}
+			continue
+		}
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
@@ -196,6 +202,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			<-slots
 			return fmt.Errorf("持久化新领取任务: %w", err)
 		}
+		executor.rememberJournalInputs(journal)
 		commands := make(chan workerprotocol.RunCommand, 16)
 		executor.coordinator.register(journal, commands)
 		active.Add(1)

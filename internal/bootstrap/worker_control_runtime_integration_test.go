@@ -142,6 +142,11 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	stopWorker()
 	app, _ = startWorker()
 	require.Equal(t, workerID, app.Runner.WorkerID(), "重启不能注册第二个 Worker")
+	require.Eventually(t, func() bool {
+		var count int
+		err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM worker_runtimes WHERE worker_id=$1 AND status='running'`, workerID).Scan(&count)
+		return err == nil && count == 2
+	}, 5*time.Second, 50*time.Millisecond, "一个 Worker 必须同时上报两个运行时")
 	// 用真实调度服务立即运行已由模型工具创建的任务，Runner 必须恢复同一 Claude 会话。
 	_, _, err := scheduledtasks.NewService(f.db, time.Minute, 5, 3).RunNow(ctx,
 		scheduledtasks.ToolContext{SessionID: sessionID, ProjectID: projectID, AgentProfileID: profileID}, scheduleID)

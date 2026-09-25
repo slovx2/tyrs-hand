@@ -33,13 +33,16 @@ func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 	task := &journal.Task
 	logger := r.logger.With(zap.String("run_id", task.Claimed.RunID.String()),
 		zap.String("intent_id", task.Claimed.ID.String()))
+	if journal.ControlAbandoned {
+		return
+	}
 	if journal.TerminalDelivered {
 		releaseSlot()
 		r.deliverTerminal(ctx, journal, logger)
 		return
 	}
 
-	defer r.coordinator.unregister(task.Claimed.RunID)
+	defer r.releaseRun(journal)
 	if task.Claimed.SubmissionID != "" || task.Claimed.ConfirmedTurnID != "" {
 		task.Claimed.Recovering = true
 	}
@@ -51,7 +54,7 @@ func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 		r.flushEvents(ctx, journal, logger)
 	}
 	if journal.Result != nil || journal.Failure != "" {
-		r.coordinator.unregister(task.Claimed.RunID)
+		r.releaseRun(journal)
 		releaseSlot()
 		r.deliverTerminal(ctx, journal, logger)
 		return
@@ -108,7 +111,7 @@ func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 		return
 	}
 	journal.mu.Unlock()
-	r.coordinator.unregister(task.Claimed.RunID)
+	r.releaseRun(journal)
 	releaseSlot()
 	r.deliverTerminal(ctx, journal, logger)
 }

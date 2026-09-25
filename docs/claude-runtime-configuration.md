@@ -97,6 +97,9 @@ Control 必需用例包含实际定时任务记录、重复工具提交及交互
 单一 Runner 轮流领取两个运行时队列，按返回快照校验引擎后交给对应执行器。
 执行器使用独立客户端、Journal 和会话协调器，并共享 Worker 并发预算。
 恢复前检查所有 Journal 的目录归属；已有终态只补报，不再执行模型或工具。
+Control 登记或终态确认失败时，已接受的输入在进程内持续去重；超过补报预算或被永久
+拒绝时保留带 `controlReportStopped` 的 Journal，重启后禁止自动重放，等待明确对账。
+此状态尚未提供自动对账恢复入口，不能将保留 Journal 视为 Control 已确认成功。
 启用 Claude 时，其 Controller 与 Control 同步也启用。Live 的绑定、可选会话列表
 和跨会话工具限定 Codex；不能从 Live 转入 Claude 会话。
 

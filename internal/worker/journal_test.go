@@ -179,7 +179,7 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestRegisterDesktopTurnDropsJournalOnNotFound(t *testing.T) {
+func TestRegisterDesktopTurnRetainsStoppedJournalOnNotFound(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		unwrapWorkerTestRequest(t, request)
@@ -204,7 +204,11 @@ func TestRegisterDesktopTurnDropsJournalOnNotFound(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 	require.True(t, reporter.journal.ControlAbandoned)
 	_, err = os.Stat(store.path(task.Claimed.RunID))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoError(t, err)
+	stored, err := store.loadAll()
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.True(t, stored[0].ControlAbandoned)
 }
 
 func TestRegisterDesktopTurnRetriesBadGateway(t *testing.T) {
@@ -237,7 +241,7 @@ func TestRegisterDesktopTurnRetriesBadGateway(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDeliverTerminalDropsUnboundDesktopJournal(t *testing.T) {
+func TestDeliverTerminalRetainsUnboundDesktopJournal(t *testing.T) {
 	var prepares atomic.Int64
 	var completes atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -274,7 +278,11 @@ func TestDeliverTerminalDropsUnboundDesktopJournal(t *testing.T) {
 	require.EqualValues(t, 0, completes.Load())
 	require.True(t, journal.ControlAbandoned)
 	_, err = os.Stat(store.path(runID))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoError(t, err)
+	stored, err := store.loadAll()
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.True(t, stored[0].ControlAbandoned)
 }
 
 func TestDeliverTerminalRetriesBadGateway(t *testing.T) {
@@ -309,7 +317,7 @@ func TestDeliverTerminalRetriesBadGateway(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestFinishDesktopTurnDropsJournalOnForbidden(t *testing.T) {
+func TestFinishDesktopTurnRetainsStoppedJournalOnForbidden(t *testing.T) {
 	var completes atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		unwrapWorkerTestRequest(t, request)
@@ -330,7 +338,11 @@ func TestFinishDesktopTurnDropsJournalOnForbidden(t *testing.T) {
 	require.EqualValues(t, 1, completes.Load())
 	require.True(t, reporter.journal.ControlAbandoned)
 	_, err = os.Stat(store.path(task.Claimed.RunID))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoError(t, err)
+	stored, err := store.loadAll()
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.True(t, stored[0].ControlAbandoned)
 }
 
 func TestControlReportBackoffGrowsAndCaps(t *testing.T) {
@@ -362,7 +374,7 @@ func TestScheduleControlRetryAbandonsAfterMaxAge(t *testing.T) {
 	require.True(t, stop)
 }
 
-func TestDeliverTerminalAbandonsAfterRetryBudget(t *testing.T) {
+func TestDeliverTerminalRetainsJournalAfterRetryBudget(t *testing.T) {
 	var completes atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		unwrapWorkerTestRequest(t, request)
@@ -390,5 +402,9 @@ func TestDeliverTerminalAbandonsAfterRetryBudget(t *testing.T) {
 	require.EqualValues(t, 1, completes.Load())
 	require.True(t, journal.ControlAbandoned)
 	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NoError(t, err)
+	stored, err := store.loadAll()
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.True(t, stored[0].ControlAbandoned)
 }

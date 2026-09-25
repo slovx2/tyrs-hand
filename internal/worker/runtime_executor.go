@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -14,15 +15,43 @@ import (
 
 // runtimeExecutor 只负责一个引擎的执行与补报。所有引擎由 Runner 的唯一领取循环派发。
 type runtimeExecutor struct {
-	engine      runtimeidentity.Engine
-	cfg         config.Config
-	client      *workerprotocol.Client
-	processor   taskProcessor
-	logger      *zap.Logger
-	journals    *journalStore
-	coordinator *runCoordinator
-	wake        *wakeSignals
-	claimWake   *wakeSignals
+	engine         runtimeidentity.Engine
+	cfg            config.Config
+	client         *workerprotocol.Client
+	processor      taskProcessor
+	logger         *zap.Logger
+	journals       *journalStore
+	coordinator    *runCoordinator
+	wake           *wakeSignals
+	claimWake      *wakeSignals
+	inputMu        sync.Mutex
+	acceptedInputs map[uuid.UUID]bool
+}
+
+// 当前进程内保留已接受输入的墓碑，覆盖完成补报与较早发出的领取响应交错的窗口。
+func (r *runtimeExecutor) remembersInput(id uuid.UUID) bool {
+	r.inputMu.Lock()
+	defer r.inputMu.Unlock()
+	return r.acceptedInputs[id]
+}
+
+func (r *runtimeExecutor) rememberJournalInputs(journal *runJournal) {
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	r.inputMu.Lock()
+	defer r.inputMu.Unlock()
+	if r.acceptedInputs == nil {
+		r.acceptedInputs = make(map[uuid.UUID]bool)
+	}
+	r.acceptedInputs[journal.Task.Claimed.ID] = true
+	for _, decision := range journal.AppliedInputs {
+		r.acceptedInputs[decision.InputID] = true
+	}
+}
+
+func (r *runtimeExecutor) releaseRun(journal *runJournal) {
+	r.rememberJournalInputs(journal)
+	r.coordinator.unregister(journal.Task.Claimed.RunID)
 }
 
 // AddRuntimeProcessor 必须在 Run 和 Control 唤醒通道启动之前调用。
@@ -102,6 +131,13 @@ func (r *Runner) recoverJournals(ctx context.Context, active *sync.WaitGroup) er
 		}
 	}
 	for _, run := range pendingRuns {
+		run.executor.rememberJournalInputs(run.journal)
+		if run.journal.ControlAbandoned {
+			r.logger.Warn("保留未确认 Journal，等待对账，不重新执行",
+				zap.String("engine", string(run.executor.engine)),
+				zap.String("run_id", run.journal.Task.Claimed.RunID.String()))
+			continue
+		}
 		select {
 		case r.turnSlots <- struct{}{}:
 		case <-ctx.Done():
