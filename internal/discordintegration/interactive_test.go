@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -100,4 +101,13 @@ func TestInteractiveModalIdentifierRoundTrip(t *testing.T) {
 	require.Equal(t, 2, question)
 	_, _, err = parseInteractiveModal("invalid")
 	require.Error(t, err)
+}
+
+func TestClaudeInteractiveReceiptsPreserveEngineAndAnswerSurface(t *testing.T) {
+	request := InteractiveProjection{Engine: runtimeidentity.Claude, Status: "resolved", Surface: "client"}
+	require.Contains(t, interactiveCard(request).Body, "Tyrs Hand")
+	require.Contains(t, interactiveCard(request).Header, "Claude Code")
+	require.Contains(t, interactiveAnswerLinkCard(request).Header, "Claude Code")
+	require.Contains(t, interactiveSubmittedCard(runtimeidentity.Claude).Header, "Claude Code")
+	require.Contains(t, interactiveSubmittedCard(runtimeidentity.Codex).Header, "Codex")
 }

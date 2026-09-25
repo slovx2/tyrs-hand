@@ -40,7 +40,7 @@ func TestWorkerRuntimeRejectsForeignRunAndAttachments(t *testing.T) {
 	var interactiveID uuid.UUID
 	require.NoError(t, f.db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
 		control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,app_server_request_id,questions,
-		deadline_at) VALUES ($1,$2,$3,'same-thread','same-turn','same-item',1,'1','[]',now()-interval '1 second') RETURNING id`,
+		deadline_at,request_method,request_params) VALUES ($1,$2,$3,'same-thread','same-turn','same-item',1,'1','[]',now()-interval '1 second','item/tool/requestUserInput','{}') RETURNING id`,
 		state.ControlID, runID, sessionID).Scan(&interactiveID))
 	client := f.clients[runtimeidentity.Codex]
 	_, err = client.RunHeartbeat(ctx, &workerprotocol.Task{Claimed: codexcontrol.ClaimedControl{RunID: runID}})

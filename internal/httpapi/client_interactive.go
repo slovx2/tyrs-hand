@@ -21,7 +21,7 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 		return
 	}
 	var request clientInteractiveAnswerRequest
-	if err = c.ShouldBindJSON(&request); err != nil || !validInteractiveAnswer(request.Answer) {
+	if err = c.ShouldBindJSON(&request); err != nil {
 		if err == nil {
 			err = errors.New("交互回答参数无效")
 		}
@@ -38,19 +38,26 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 	var runStatus string
 	var runFinishedAt sql.NullTime
 	var questions json.RawMessage
+	var method string
+	var nativeParams json.RawMessage
 	var sessionID, workerID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.status,request.questions,
-		request.session_id,run.worker_id,run.status,run.finished_at
+		request.session_id,run.worker_id,run.status,run.finished_at,request.request_method,request.request_params
 		FROM codex_interactive_requests request
 		JOIN codex_turn_runs run ON run.id=request.run_id
 		WHERE request.id=$1 AND request.session_id IS NOT NULL FOR UPDATE OF request,run`, id).
-		Scan(&status, &questions, &sessionID, &workerID, &runStatus, &runFinishedAt)
+		Scan(&status, &questions, &sessionID, &workerID, &runStatus, &runFinishedAt, &method, &nativeParams)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "交互请求不存在", err)
 		return
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取交互请求失败", err)
+		return
+	}
+	request.Answer, err = normalizeInteractiveAnswer(method, nativeParams, request.Answer)
+	if err != nil {
+		badRequest(c, err)
 		return
 	}
 	if interactiveQuestionsSecret(questions) {

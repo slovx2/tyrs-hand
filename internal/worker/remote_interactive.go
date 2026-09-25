@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -21,7 +20,7 @@ func publishRemoteInteractiveState(target chan bool, waiting bool) {
 func (p *Processor) handleRemoteInteractive(ctx context.Context, task *workerprotocol.Task,
 	generation int64, request codex.ServerRequest,
 ) (any, error) {
-	state, err := p.client.RegisterInteractive(ctx, task, request.ID, request.Params, generation)
+	state, err := p.client.RegisterInteractive(ctx, task, request.Method, request.ID, request.Params, generation)
 	if err != nil {
 		return nil, err
 	}
@@ -30,12 +29,12 @@ func (p *Processor) handleRemoteInteractive(ctx context.Context, task *workerpro
 		case "resolved", "expired":
 			if state.Ready {
 				if len(state.Answer) == 0 {
-					return json.RawMessage(`{"answers":{}}`), nil
+					return nil, errors.New("已结束的交互缺少明确回答")
 				}
 				return state.Answer, nil
 			}
 		case "interrupted":
-			return nil, errors.New("app-server 重启中断了 requestUserInput")
+			return nil, errors.New("app-server 重启中断了用户交互")
 		}
 		if !waitContext(ctx, 250*time.Millisecond) {
 			return nil, ctx.Err()

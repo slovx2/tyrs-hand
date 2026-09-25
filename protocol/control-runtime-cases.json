@@ -2,6 +2,18 @@
   "scope": "control-database",
   "cases": [
     {
+      "id": "CONTROL-APPROVAL-002",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerNativeApprovalsPersistIdentityAndArbitrateAnswers",
+      "engines": ["codex", "claude-code"]
+    },
+    {
+      "id": "CONTROL-DISCORD-003",
+      "package": "./internal/discordintegration",
+      "test": "TestDiscordNativeApprovalStoresOnlyExplicitDecisions",
+      "engines": ["claude-code"]
+    },
+    {
       "id": "CONTROL-ISOLATION-001",
       "package": "./internal/httpapi",
       "test": "TestWorkerSessionRuntimeCreationAndForkIsolation",

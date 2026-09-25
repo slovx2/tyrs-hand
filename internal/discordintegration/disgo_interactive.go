@@ -22,7 +22,7 @@ func (c *DisgoConnector) answerInteractiveComponent(event *events.ComponentInter
 	if option < 0 {
 		input := discord.NewParagraphTextInput("answer").WithRequired(true).WithMaxLength(2000)
 		modal := discord.NewModalCreate(fmt.Sprintf("%s%s:%d", interactiveModalPrefix, id, question),
-			"回答 Codex 问题", discord.NewLabel("你的回答", input))
+			"回答 AI 问题", discord.NewLabel("你的回答", input))
 		_ = event.Modal(modal)
 		return
 	}
@@ -39,7 +39,7 @@ func (c *DisgoConnector) answerInteractiveComponent(event *events.ComponentInter
 				WithContent("回答已保存，但完整回答卡暂时无法投递。").WithEphemeral(true))
 			return
 		}
-		card = interactiveSubmittedCard()
+		card = interactiveSubmittedCard(result.Engine)
 	}
 	components, err := discordCardComponents(card)
 	if err != nil {
@@ -75,7 +75,7 @@ func (c *DisgoConnector) answerInteractiveModal(event *events.ModalSubmitInterac
 				WithContent("回答已保存，但完整回答卡暂时无法投递。").WithEphemeral(true))
 			return
 		}
-		result.Card = interactiveSubmittedCard()
+		result.Card = interactiveSubmittedCard(result.Engine)
 	}
 	components, err := discordCardComponents(result.Card)
 	if err != nil {

@@ -25,12 +25,13 @@ import (
 
 // 真实 Control/PostgreSQL/Redis + 单 Worker + 双 SSH + 原生 CLI；只有模型服务是本地替身。
 func TestWorkerControlRealSSHBothEngines(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 240*time.Second)
 	defer cancel()
 	var requestedTool, toolResultSeen, followupSeen atomic.Bool
 	firstToolRequested := make(chan struct{})
 	var mu sync.Mutex
 	requests := map[runtimeidentity.Engine][]json.RawMessage{}
+	approvals := newControlApprovalScenario()
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.Contains(req.URL.Path, "count_tokens") {
 			_, _ = io.WriteString(w, `{"input_tokens":10}`)
@@ -57,6 +58,9 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 		requests[engine] = append(requests[engine], body)
 		mu.Unlock()
 		if engine == runtimeidentity.Claude {
+			if approvals.respond(t, w, body) {
+				return
+			}
 			var payload struct {
 				Tools    []struct{ Name, Description string }
 				Messages json.RawMessage
@@ -112,6 +116,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	}))
 	t.Cleanup(model.Close)
 	f := newControlRuntimeFixture(t, ctx, model.URL, firstToolRequested)
+	discord := startControlDiscordFixture(t, ctx, f.db)
 	startWorker := func() (*WorkerApp, func()) {
 		workerCtx, cancelWorker := context.WithCancel(ctx)
 		app, cleanup, err := InitializeWorker(workerCtx, f.cfg)
@@ -175,13 +180,21 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	var codexRuns int
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='codex'`).Scan(&codexRuns))
 	require.Equal(t, 1, codexRuns, "Claude 定时任务不能派发至 Codex")
+	approvals.run(t, ctx, app, f, threads[runtimeidentity.Claude], discord)
+	var claudeRuns int
+	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r
+		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='claude-code' AND r.status='completed'`).Scan(&claudeRuns))
+	require.Equal(t, 5, claudeRuns)
+	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r
+		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='codex'`).Scan(&codexRuns))
+	require.Equal(t, 1, codexRuns, "Claude 审批不得产生 Codex 回合")
 	mu.Lock()
 	defer mu.Unlock()
 	for engine, payloads := range requests {
 		saveBootstrapArtifact(t, "models", engine, map[string]any{"requests": payloads})
 	}
 	saveBootstrapArtifact(t, "effects", runtimeidentity.Claude, map[string]any{"scheduleEngine": scheduleEngine,
-		"threadPreserved": recordedThread == threads[runtimeidentity.Claude], "claudeCompletedRuns": 2, "codexRuns": codexRuns})
+		"threadPreserved": recordedThread == threads[runtimeidentity.Claude], "claudeCompletedRuns": claudeRuns, "codexRuns": codexRuns})
 	// 工具只能使用临时 HOME；不依赖个人安装或凭据。
 	require.True(t, strings.HasPrefix(f.cfg.WorkerHome, os.TempDir()) || strings.HasPrefix(f.cfg.WorkerHome, "/tmp/"))
 	require.FileExists(t, filepath.Join(f.cfg.ClaudeConfigDir(), "settings.json"))

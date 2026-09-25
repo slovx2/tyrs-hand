@@ -31,6 +31,7 @@ env:
   NODE_VERSION: 24.14.0
   PNPM_VERSION: 11.14.0
   MAESTRO_VERSION: 2.3.0
+  ANDROID_COMMAND_LINE_TOOLS_VERSION: "19.0"
 
 jobs:
   android-phone:
@@ -49,7 +50,13 @@ jobs:
           ./tools/mobile-e2e/install-maestro.sh
       - name: 创建 Android 35 手机模拟器
         run: |
-          yes | sdkmanager --licenses >/dev/null
+          test -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          { yes || true; } | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --install "cmdline-tools;${ANDROID_COMMAND_LINE_TOOLS_VERSION}"
+          export PATH="${ANDROID_HOME}/cmdline-tools/${ANDROID_COMMAND_LINE_TOOLS_VERSION}/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${PATH}"
+          printf '%s\n' "${ANDROID_HOME}/cmdline-tools/${ANDROID_COMMAND_LINE_TOOLS_VERSION}/bin" \
+            "${ANDROID_HOME}/platform-tools" "${ANDROID_HOME}/emulator" >> "${GITHUB_PATH}"
+          test "$(sdkmanager --version)" = "${ANDROID_COMMAND_LINE_TOOLS_VERSION}"
           sdkmanager "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
           echo no | avdmanager create avd --force --name tyrs_hand_e2e_api35 \
             --package "system-images;android-35;google_apis;x86_64" --device "pixel_7"

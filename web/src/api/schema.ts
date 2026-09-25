@@ -2031,6 +2031,69 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        NativeRequestID: string | number;
+        /** @enum {string} */
+        InteractiveMethod: "item/tool/requestUserInput" | "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
+        InteractiveQuestion: {
+            id: string;
+            header: string;
+            question: string;
+            isSecret?: boolean;
+            options?: {
+                label: string;
+                description: string;
+            }[];
+        };
+        WorkerInteractiveRegister: {
+            method: components["schemas"]["InteractiveMethod"];
+            requestId: components["schemas"]["NativeRequestID"];
+            /** Format: int64 */
+            appServerGeneration: number;
+            /** @description 对应原生方法的完整参数，审批选项和策略提案不能省略 */
+            params: {
+                threadId: string;
+                turnId: string;
+                itemId: string;
+            } & {
+                [key: string]: unknown;
+            };
+        };
+        WorkerInteractiveAnswer: {
+            /** Format: uuid */
+            workspaceId: string;
+            threadId: string;
+            turnId: string;
+            itemId: string;
+            requestId: components["schemas"]["NativeRequestID"];
+            /** Format: int64 */
+            appServerGeneration: number;
+            /** @enum {string} */
+            surface: "desktop" | "discord" | "auto";
+            /** @description 原生 answers 或 decision，按已保存请求校验 */
+            answer: {
+                [key: string]: unknown;
+            };
+        };
+        WorkerInteractiveState: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "resolved" | "expired" | "interrupted";
+            requestId: components["schemas"]["NativeRequestID"];
+            /** Format: int64 */
+            appServerGeneration: number;
+            method: components["schemas"]["InteractiveMethod"];
+            questions?: components["schemas"]["InteractiveQuestion"][];
+            answer?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            deadlineAt?: string;
+            secret: boolean;
+            surface?: string;
+            accepted?: boolean;
+            ready: boolean;
+        };
         WorkerRuntime: {
             /** Format: uuid */
             workerId: string;
@@ -2911,6 +2974,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description 按引擎及原生请求身份隔离的交互状态 */
+        WorkerInteractiveState: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["WorkerInteractiveState"];
+            };
+        };
         /** @description RFC 9457 Problem Details */
         Problem: {
             headers: {
@@ -6006,9 +6078,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: components["requestBodies"]["WorkerJSON"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerInteractiveRegister"];
+            };
+        };
         responses: {
-            200: components["responses"]["WorkerJSON"];
+            200: components["responses"]["WorkerInteractiveState"];
             default: components["responses"]["Problem"];
         };
     };
@@ -6026,7 +6102,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["WorkerJSON"];
+            200: components["responses"]["WorkerInteractiveState"];
             default: components["responses"]["Problem"];
         };
     };
@@ -6040,9 +6116,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: components["requestBodies"]["WorkerJSON"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerInteractiveAnswer"];
+            };
+        };
         responses: {
-            200: components["responses"]["WorkerJSON"];
+            200: components["responses"]["WorkerInteractiveState"];
             default: components["responses"]["Problem"];
         };
     };

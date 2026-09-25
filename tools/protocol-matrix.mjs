@@ -43,7 +43,7 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
 const suites = controlOnly ? [
   { name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
-    cases: ['CHANNELS-002', 'AUTOMATION-002'] },
+    cases: ['CHANNELS-002', 'AUTOMATION-002', 'APPROVAL-006'] },
 ] : [
   { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
     cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'EVENTS-003'] },
@@ -70,7 +70,7 @@ const suites = controlOnly ? [
 ]
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
   suites.push({ name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
-    cases: ['CHANNELS-002', 'AUTOMATION-002'] })
+    cases: ['CHANNELS-002', 'AUTOMATION-002', 'APPROVAL-006'] })
 }
 for (const suite of suites) {
   suite.binary = resolve(artifacts, `${suite.name}.test`)
@@ -104,12 +104,12 @@ for (const suite of suites) {
   }
   runtimeExecutions += (suite.engines ?? ['codex', 'claude-code']).map(engine => JSON.stringify({
     runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
-    caseIds: [...suite.cases.filter(id => id !== 'AUTOMATION-002' || engine === 'claude-code'),
+    caseIds: [...suite.cases.filter(id => !['AUTOMATION-002', 'APPROVAL-006'].includes(id) || engine === 'claude-code'),
       ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001', 'CAPABILITY-002', 'HISTORY-003'] : [])], status: 'passed',
   })).join('\n') + '\n'
 }
 } finally { infrastructure?.close() }
-console.log(controlOnly ? '真实 Control、双 SSH、SDK 与 Worker 重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
+console.log(controlOnly ? '真实 Control、双 SSH、SDK、Discord 审批与重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
   '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
 writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 if (!process.argv.includes('--runtime-only') && !controlOnly) {

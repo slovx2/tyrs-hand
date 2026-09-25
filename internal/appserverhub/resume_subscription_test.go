@@ -26,7 +26,16 @@ func TestResumeOnlyResubscribesRequestingDesktop(t *testing.T) {
 	var response struct {
 		Thread struct{ ID string }
 	}
+	// 创建响应和通知独立到达；先让两个连接收完创建事件，再测试恢复的订阅范围。
+	firstStarted := first.Subscribe(codex.ThreadFilter{})
+	defer firstStarted.Close()
+	secondStarted := second.Subscribe(codex.ThreadFilter{})
+	defer secondStarted.Close()
 	require.NoError(t, first.Call(ctx, "thread/start", map[string]any{"cwd": t.TempDir()}, &response))
+	require.Equal(t, "thread/started", receiveEvent(t, firstStarted.Events()).Method)
+	require.Equal(t, "thread/started", receiveEvent(t, secondStarted.Events()).Method)
+	firstStarted.Close()
+	secondStarted.Close()
 	id := response.Thread.ID
 	var ignored any
 	require.NoError(t, first.Call(ctx, "thread/unsubscribe", map[string]any{"threadId": id}, &ignored))

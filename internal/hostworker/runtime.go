@@ -416,7 +416,7 @@ func (r *Runtime) handleServerRequest(ctx context.Context, request codex.ServerR
 			return nil, errors.New("当前 Thread 没有活动的工具授权")
 		}
 		return tool(ctx, call)
-	case "item/tool/requestUserInput":
+	case "item/tool/requestUserInput", "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 		if interactive == nil {
 			return nil, errors.New("当前 Thread 没有活动的交互控制器")
 		}

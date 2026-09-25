@@ -1315,7 +1315,7 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 	require.Equal(t, "desktop-user-item-1", initialBoundary)
 	require.Equal(t, "desktop-steer-item-1", steerBoundary)
 	require.True(t, steerTriggerMessage.Valid)
-	interactive, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-1"`),
+	interactive, err := client.RegisterInteractive(ctx, &task, "item/tool/requestUserInput", json.RawMessage(`"input-1"`),
 		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
 			`"itemId":"question-1","questions":[{"id":"choice","header":"Choose",`+
 			`"question":"Continue?","options":[{"label":"Yes","description":"Continue"},`+
@@ -1334,6 +1334,7 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 	_, err = client.RunHeartbeat(ctx, &task)
 	require.NoError(t, err, "等待用户回答时必须保留 Run 租约以接收停止和 steer 指令")
 	answered, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		RequestID: interactive.RequestID, AppServerGeneration: interactive.AppServerGeneration,
 		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-1", Surface: "discord",
 		Answer: json.RawMessage(`{"answers":{"choice":{"answers":["Yes"]}}}`),
@@ -1342,6 +1343,7 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 	require.True(t, answered.Accepted)
 	require.True(t, answered.Ready, "回答获胜后应在有空闲槽时恢复运行")
 	duplicate, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		RequestID: interactive.RequestID, AppServerGeneration: interactive.AppServerGeneration,
 		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-1", Surface: "desktop",
 		Answer: json.RawMessage(`{"answers":{"choice":{"answers":["No"]}}}`),
@@ -1350,7 +1352,7 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 	require.False(t, duplicate.Accepted, "并发或重复回答必须 first-answer-wins")
 	require.JSONEq(t, string(answered.Answer), string(duplicate.Answer))
 
-	secretInput, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-secret"`),
+	secretInput, err := client.RegisterInteractive(ctx, &task, "item/tool/requestUserInput", json.RawMessage(`"input-secret"`),
 		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
 			`"itemId":"question-secret","questions":[{"id":"token","header":"Secret",`+
 			`"question":"Token?","isSecret":true}],"autoResolutionMs":60000}`), 1)
@@ -1358,11 +1360,13 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 	require.True(t, secretInput.Secret)
 	secretAnswer := json.RawMessage(`{"answers":{"token":{"answers":["not-plaintext-secret"]}}}`)
 	_, err = client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		RequestID: secretInput.RequestID, AppServerGeneration: secretInput.AppServerGeneration,
 		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-secret", Surface: "discord", Answer: secretAnswer,
 	})
 	require.Error(t, err, "Secret 回答不得从 Discord 提交")
 	secretState, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		RequestID: secretInput.RequestID, AppServerGeneration: secretInput.AppServerGeneration,
 		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-secret", Surface: "desktop", Answer: secretAnswer,
 	})
@@ -1377,7 +1381,7 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 	require.False(t, plainAnswer.Valid)
 	require.NotContains(t, string(ciphertext), "not-plaintext-secret")
 
-	timed, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-timeout"`),
+	timed, err := client.RegisterInteractive(ctx, &task, "item/tool/requestUserInput", json.RawMessage(`"input-timeout"`),
 		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
 			`"itemId":"question-timeout","questions":[{"id":"late","header":"Wait",`+
 			`"question":"Answer?"}],"autoResolutionMs":1}`), 1)

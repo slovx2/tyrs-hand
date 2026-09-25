@@ -1179,7 +1179,8 @@
         "codex": [],
         "claude-code": [
           "PLAN-003",
-          "PERMISSION-006"
+          "PERMISSION-006",
+          "APPROVAL-006"
         ]
       },
       "schema": {
@@ -2243,7 +2244,8 @@
           "FAILURE-003",
           "PERMISSION-005",
           "PERMISSION-006",
-          "APPROVAL-005"
+          "APPROVAL-005",
+          "APPROVAL-006"
         ]
       },
       "callers": [

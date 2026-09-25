@@ -162,3 +162,28 @@ GOAL-001 验证原生 SDK 链路，GOAL-003 经真实 SSH 验证读写、分叉�
 `protocol/claude-inapplicable-requests.json` 列出 22 个 OpenAI 专属请求的有效参数。
 适配器合约与真实 SSH 用例均要求明确拒绝、无成功结果、无模型调用，并确认连接
 随后仍可使用。未知的插件/市场方法返回 `-32601`，不会按方法前缀伪装成已知能力。
+
+## 计划与审批
+
+Claude 的计划模式覆盖进入、原生计划文件、向用户提问、计划输出、确认退出与执行。
+拒绝退出会保持只读；用户原本选择只读时，确认计划也不会自动获得工作区写权限。
+计划状态在重启后恢复，PLAN-001/002/003 分别核对真实 SDK 与 SSH 的上下文和文件副作用。
+“完全访问”显式组合 `dangerFullAccess` 与 `approvalPolicy=never`；单独设置
+`never` 不会解除文件或网络边界。客户端恢复会话保留非内置权限组合，不折叠成免审批。
+
+原生命令与文件审批通过同一个 Hub 发送到已订阅的 Desktop/手机及 Worker→Control。
+Discord 使用实际帖子中的决策按钮回答，多端仲裁只接受首个有效答案。
+迁移 035 保存请求方法和原生参数，回答绑定运行时、Thread、Turn、Item、request ID
+及进程 generation；同一 Item 的不同命令审批分别保存。旧提问一次性回填协议字段。
+已结束 Run、旧进程或无效决策不能批准工具；命令策略修订必须完全匹配原生提案。
+审批早于 Discord 帖子绑定时，在绑定事务中补写 Outbox，避免卡片漏发。
+
+手机展示原生允许的决策、取消回合、单次/会话授权及规则的作用范围；显式空决策列表
+不会显示允许按钮。Control 明确拒绝的 4xx 答案不会在 Desktop 本地降级为成功。
+网络中断或 5xx 下的离线仲裁仍需单独完成故障验收。
+
+APPROVAL-006 经真实 Control、SSH、Hub、SDK/CLI 和 Mock LLM 验证命令/文件批准与拒绝，
+Discord 网络用本地 REST 替身，检查实际写文件次数及模型收到的 tool_result。
+这不等于 Discord Gateway 或 GUI 验收。
+`item/permissions/requestApproval` 和 MCP elicitation 的 Control/Discord 路由仍待补齐；
+手机 GUI、安装版 Desktop 和完整协议矩阵仍是独立发布门禁，不能由普通客户端单元测试替代。

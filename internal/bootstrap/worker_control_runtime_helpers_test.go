@@ -58,7 +58,7 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	require.NoError(t, err)
 	controlConfig := config.Config{LeaseDuration: time.Minute, CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}
 	control, err := httpapi.NewServer(controlConfig, db, cache, nil, nil, nil,
-		platformsettings.NewService(db), nil, nil, secrets.NewStore(db, box), zap.NewNop())
+		platformsettings.NewService(db), nil, nil, secrets.NewStore(db, box), zap.NewExample())
 	require.NoError(t, err)
 	router := control.Router()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,11 +127,11 @@ stream_max_retries=0
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(cfg.ClaudeConfigDir(), "settings.json"), settings, 0o600))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,enabled) VALUES ('protocol',true);
-		INSERT INTO discord_members(guild_id,discord_user_id,username) VALUES ('protocol','protocol','owner')`)
+		INSERT INTO discord_members(guild_id,discord_user_id,username) VALUES ('protocol','1001','owner')`)
 	require.NoError(t, err)
 	var workspaceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO worker_workspaces(worker_id,guild_id,owner_discord_user_id)
-		VALUES ($1,'protocol','protocol') RETURNING id`, registered.ID).Scan(&workspaceID))
+		VALUES ($1,'protocol','1001') RETURNING id`, registered.ID).Scan(&workspaceID))
 	_, err = db.ExecContext(ctx, `INSERT INTO workspace_projects(workspace_id,relative_path,name,project_kind,
 		availability_status,project_source,host_path) VALUES ($1,'workspaces','Workspace','directory','available','workspace_root',$2)`, workspaceID, cfg.WorkerWorkspaceRoot)
 	require.NoError(t, err)

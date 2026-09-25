@@ -590,9 +590,9 @@ func TestHubPreservesOrdinaryDesktopServerRequests(t *testing.T) {
 		Params: mustJSON(map[string]string{"threadId": threadID})})
 	require.Nil(t, desktop.response(t, rawID(2)).Error)
 
-	requestID := mock.RequestServer(threadID, "item/commandExecution/requestApproval",
+	requestID := mock.RequestServer(threadID, "unknown/desktop-request",
 		map[string]any{"turnId": "turn-approval", "itemId": "command-approval"})
-	request := desktop.serverRequest(t, "item/commandExecution/requestApproval")
+	request := desktop.serverRequest(t, "unknown/desktop-request")
 	desktop.write(t, rpcMessage{ID: request.ID, Result: mustJSON(map[string]string{
 		"decision": "accept",
 	})})
@@ -604,6 +604,53 @@ func TestHubPreservesOrdinaryDesktopServerRequests(t *testing.T) {
 	case request := <-workerCalls:
 		t.Fatalf("普通 Desktop Server Request 不应发送给 Worker: %s", request.Method)
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestHubNativeApprovalsReachWorkerAndDesktopWithOneWinner(t *testing.T) {
+	for _, method := range []string{"item/commandExecution/requestApproval", "item/fileChange/requestApproval"} {
+		t.Run(method, func(t *testing.T) {
+			mock, err := mockcodex.Start(t)
+			require.NoError(t, err)
+			hub := startHub(t, mock.SocketPath)
+			workerStarted := make(chan codex.ServerRequest, 1)
+			workerCancelled := make(chan struct{})
+			worker, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleWorker,
+				ServerRequestHandler: func(ctx context.Context, request codex.ServerRequest) (any, error) {
+					workerStarted <- request
+					<-ctx.Done()
+					close(workerCancelled)
+					return map[string]string{"decision": "decline"}, nil
+				}})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = worker.Close() })
+			desktop := connectDesktop(t, hub.SocketPath())
+			desktop.initialize(t, 1)
+			threadID, err := worker.StartThread(t.Context(), mustJSON(map[string]any{"cwd": t.TempDir()}))
+			require.NoError(t, err)
+			desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+				Params: mustJSON(map[string]string{"threadId": threadID})})
+			require.Nil(t, desktop.response(t, rawID(2)).Error)
+			requestID := mock.RequestServer(threadID, method, map[string]any{"turnId": "turn-approval", "itemId": "item-approval"})
+			request := desktop.serverRequest(t, method)
+			select {
+			case received := <-workerStarted:
+				require.Equal(t, method, received.Method)
+				require.JSONEq(t, string(request.ID), string(received.ID))
+			case <-time.After(3 * time.Second):
+				t.Fatal("Worker 必须与 Desktop 同时收到原生审批")
+			}
+			desktop.write(t, rpcMessage{ID: request.ID, Result: mustJSON(map[string]string{"decision": "accept"})})
+			require.Eventually(t, func() bool {
+				_, count, resolved := mock.ResolvedRequest(requestID)
+				return resolved && count == 1
+			}, 3*time.Second, 10*time.Millisecond)
+			select {
+			case <-workerCancelled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("已由 Desktop 回答的审批必须取消 Worker 等待")
+			}
+		})
 	}
 }
 

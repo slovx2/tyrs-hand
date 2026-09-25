@@ -338,6 +338,7 @@ func skipPendingInteractiveForClientMessageTx(ctx context.Context, tx *sql.Tx,
 		JOIN codex_thread_controls control ON control.id=request.control_id
 			AND control.active_intent_id=run.primary_intent_id
 		WHERE request.session_id=$1 AND request.status='pending'
+		  AND request.request_method='item/tool/requestUserInput'
 		  AND run.finished_at IS NULL
 		  AND run.status='waiting_for_user' AND control.status IN ('dispatching','active')
 		ORDER BY request.created_at DESC LIMIT 1 FOR UPDATE OF request,run`, sessionID).

@@ -122,4 +122,10 @@ RRULE:FREQ=HOURLY','UTC','interval',3600 FROM workspace_sessions;
 		FROM tool_calls call JOIN codex_turn_runs run ON run.id=call.run_id
 		JOIN codex_interactive_requests q ON q.run_id=run.id`).Scan(&retained))
 	require.True(t, retained, "迁移必须保留已确认的工具结果与交互答案")
+	var method, params string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT request_method,request_params::text
+		FROM codex_interactive_requests`).Scan(&method, &params))
+	require.Equal(t, "item/tool/requestUserInput", method)
+	require.JSONEq(t, `{"threadId":"legacy-thread","turnId":"turn","itemId":"item","questions":[]}`, params,
+		"旧交互必须一次性回填原生协议和完整身份，不能依赖运行时猜测")
 }

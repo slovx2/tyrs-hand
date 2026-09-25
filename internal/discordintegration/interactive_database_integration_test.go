@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -325,6 +326,11 @@ func claimOutboxOperation(t *testing.T, ctx context.Context, outbox *SQLoutbox,
 
 func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed) (uuid.UUID, uuid.UUID) {
 	t.Helper()
+	return insertInteractiveControlForEngine(t, db, seed, runtimeidentity.Codex)
+}
+
+func insertInteractiveControlForEngine(t *testing.T, db *sql.DB, seed discordManagerSeed, engine runtimeidentity.Engine) (uuid.UUID, uuid.UUID) {
+	t.Helper()
 	ctx := context.Background()
 	var profileID, workspaceID, conversationID, controlID, intentID, runID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name='Default'`).Scan(&profileID))
@@ -332,16 +338,16 @@ func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed)
 		WHERE id=$1`, seed.workspaceForumID).Scan(&workspaceID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 workspace_project_id, agent_profile_id, title)
-		VALUES ($1,$2,'interactive-thread','interactive-starter','1001',$3,$4,'Interactive') RETURNING id`,
-		testGuildID, seed.workspaceForumID, seed.workspaceProjectID, profileID).Scan(&conversationID))
+		 workspace_project_id, agent_profile_id, title, engine)
+		VALUES ($1,$2,'interactive-thread','interactive-starter','1001',$3,$4,'Interactive',$5) RETURNING id`,
+		testGuildID, seed.workspaceForumID, seed.workspaceProjectID, profileID, engine).Scan(&conversationID))
 	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
 		(source_type, discord_conversation_id, session_id, workspace_project_id, agent_profile_id,
-		 worker_id, workspace_id, external_thread_id)
-		VALUES ('workspace_session',$1,$2,$3,$4,$5,$6,'codex-interactive-thread') RETURNING id`,
+		 worker_id, workspace_id, external_thread_id, engine)
+		VALUES ('workspace_session',$1,$2,$3,$4,$5,$6,'codex-interactive-thread',$7) RETURNING id`,
 		conversationID, sessionID, seed.workspaceProjectID, profileID, seed.workerID,
-		workspaceID).Scan(&controlID))
+		workspaceID, engine).Scan(&controlID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id, session_id,
 		 workspace_project_id, agent_profile_id, idempotency_key, status)
@@ -366,8 +372,8 @@ func insertInteractiveRequest(t *testing.T, db *sql.DB, controlID, runID uuid.UU
 	var id uuid.UUID
 	require.NoError(t, db.QueryRow(`INSERT INTO codex_interactive_requests
 		(control_id, run_id, thread_id, turn_id, item_id, app_server_generation,
-		 app_server_request_id, questions)
-		VALUES ($1,$2,'codex-interactive-thread','turn-1',$3,1,'"request-1"',$4) RETURNING id`,
+		 app_server_request_id, questions, request_method, request_params)
+		VALUES ($1,$2,'codex-interactive-thread','turn-1',$3,1,'"request-1"',$4,'item/tool/requestUserInput','{}') RETURNING id`,
 		controlID, runID, itemID, questions).Scan(&id))
 	return id
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/interactiveprotocol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 const (
@@ -30,6 +32,10 @@ type InteractiveOption struct {
 }
 
 type InteractiveProjection struct {
+	Method            string
+	Params            json.RawMessage
+	Engine            runtimeidentity.Engine
+	RunFinished       bool
 	ID                uuid.UUID
 	GuildID           string
 	ThreadID          string
@@ -48,6 +54,15 @@ func ProjectInteractiveRequest(ctx context.Context, db *sql.DB, id uuid.UUID) er
 	if err != nil {
 		return err
 	}
+	return enqueueInteractiveProjection(ctx, request, func(key, operationType, routeKey string, payload any, nonce string) error {
+		return enqueueDiscordOutbox(ctx, db, key, operationType, routeKey, payload, nonce)
+	})
+}
+
+func enqueueInteractiveProjection(ctx context.Context, request InteractiveProjection,
+	enqueue func(string, string, string, any, string) error,
+) error {
+	id := request.ID
 	if request.Status == "resolved" {
 		key := "interactive-answer:" + id.String()
 		operationType := "message.create"
@@ -57,12 +72,12 @@ func ProjectInteractiveRequest(ctx context.Context, db *sql.DB, id uuid.UUID) er
 			operationType, nonce = "message.update", ""
 			payload["messageId"] = request.AnswerMessageID
 		}
-		if err := NewSQLoutbox(db).Enqueue(ctx, key, operationType,
+		if err := enqueue(key, operationType,
 			"channels/"+request.ThreadID+"/messages", payload, nonce); err != nil {
 			return err
 		}
 		if request.AnswerMessageID != "" && request.MessageID != "" {
-			return enqueueInteractiveAnswerLink(ctx, db, request)
+			return enqueueInteractiveAnswerLinkWith(ctx, request, enqueue)
 		}
 		return nil
 	}
@@ -74,13 +89,49 @@ func ProjectInteractiveRequest(ctx context.Context, db *sql.DB, id uuid.UUID) er
 		operationType, nonce = "message.update", ""
 		payload["messageId"] = request.MessageID
 	}
-	return NewSQLoutbox(db).Enqueue(ctx, "interactive:"+id.String(), operationType,
+	return enqueue("interactive:"+id.String(), operationType,
 		"channels/"+request.ThreadID+"/messages", payload, nonce)
+}
+
+// 帖子绑定和已有交互投递在同一事务内提交，进程退出也不会漏掉早到的审批。
+func enqueueBoundInteractionsTx(ctx context.Context, tx *sql.Tx, controlID uuid.UUID) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM codex_interactive_requests WHERE control_id=$1
+		AND discord_message_id IS NULL AND discord_answer_message_id IS NULL ORDER BY created_at,id`, controlID)
+	if err != nil {
+		return err
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		request, err := loadInteractiveProjectionTx(ctx, tx, id, false)
+		if err != nil {
+			return err
+		}
+		if err := enqueueInteractiveProjection(ctx, request, func(key, operationType, routeKey string, payload any, nonce string) error {
+			return enqueueDiscordOutbox(ctx, tx, key, operationType, routeKey, payload, nonce)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type InteractiveAnswerResult struct {
 	Card     ComponentCardPayload
 	Complete bool
+	Engine   runtimeidentity.Engine
 }
 
 func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid.UUID,
@@ -100,12 +151,18 @@ func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid
 	}
 	if request.Status != "pending" {
 		return InteractiveAnswerResult{Card: interactiveCard(request),
-			Complete: request.Status == "resolved"}, tx.Commit()
+			Complete: request.Status == "resolved", Engine: request.Engine}, tx.Commit()
+	}
+	if request.RunFinished {
+		return InteractiveAnswerResult{}, errors.New("交互请求所属任务已结束")
 	}
 	if questionIndex < 0 || questionIndex >= len(request.Questions) {
 		return InteractiveAnswerResult{}, errors.New("交互问题序号无效")
 	}
 	question := request.Questions[questionIndex]
+	if interactiveprotocol.IsApproval(request.Method) && optionIndex < 0 {
+		return InteractiveAnswerResult{}, errors.New("审批必须通过明确的决策按钮回答")
+	}
 	if question.IsSecret {
 		return InteractiveAnswerResult{}, errors.New("secret 问题只能在 Codex Desktop 回答")
 	}
@@ -131,6 +188,12 @@ func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid
 		if marshalErr != nil {
 			return InteractiveAnswerResult{}, marshalErr
 		}
+		if interactiveprotocol.IsApproval(request.Method) {
+			finalAnswer, err = interactiveprotocol.NormalizeAnswer(request.Method, request.Params, finalAnswer)
+			if err != nil {
+				return InteractiveAnswerResult{}, err
+			}
+		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
 			draft_answers=$2, answer=$3, status='resolved', answer_surface='discord',
 			resolved_at=now(), updated_at=now() WHERE id=$1 AND status='pending'`, id, draft,
@@ -147,7 +210,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid
 	if err := tx.Commit(); err != nil {
 		return InteractiveAnswerResult{}, err
 	}
-	return InteractiveAnswerResult{Card: interactiveCard(request), Complete: complete}, nil
+	return InteractiveAnswerResult{Card: interactiveCard(request), Complete: complete, Engine: request.Engine}, nil
 }
 
 func loadInteractiveProjection(ctx context.Context, db *sql.DB, id uuid.UUID,
@@ -169,12 +232,14 @@ func interactiveProjectionQuery(lock bool) string {
 	query := `SELECT q.id, c.guild_id, c.thread_id, COALESCE(q.discord_message_id,''),
 		COALESCE(q.discord_answer_message_id,''),
 		q.status, COALESCE(q.answer_surface,''), run.collaboration_mode,
-		q.questions, q.draft_answers, COALESCE(q.answer,'null'::jsonb)
+		q.questions, q.draft_answers, COALESCE(q.answer,'null'::jsonb),
+		q.request_method, q.request_params, ct.engine,
+		run.finished_at IS NOT NULL OR run.status IN ('completed','failed','canceled')
 		FROM codex_interactive_requests q JOIN codex_thread_controls ct ON ct.id=q.control_id
 		JOIN codex_turn_runs run ON run.id=q.run_id
 		JOIN discord_conversations c ON c.id=ct.discord_conversation_id WHERE q.id=$1`
 	if lock {
-		query += " FOR UPDATE OF q"
+		query += " FOR UPDATE OF q,run"
 	}
 	return query
 }
@@ -189,7 +254,7 @@ func scanInteractiveProjection(row rowScanner) (InteractiveProjection, error) {
 	if err := row.Scan(&result.ID, &result.GuildID, &result.ThreadID, &result.MessageID,
 		&result.AnswerMessageID,
 		&result.Status, &result.Surface, &result.CollaborationMode, &questions, &draft,
-		&answer); err != nil {
+		&answer, &result.Method, &result.Params, &result.Engine, &result.RunFinished); err != nil {
 		return InteractiveProjection{}, err
 	}
 	result.Answer = answer
@@ -205,7 +270,12 @@ func scanInteractiveProjection(row rowScanner) (InteractiveProjection, error) {
 	return result, nil
 }
 
-func interactiveCard(request InteractiveProjection) ComponentCardPayload {
+func interactiveCard(request InteractiveProjection) (card ComponentCardPayload) {
+	defer func() {
+		if request.Engine == runtimeidentity.Claude {
+			card.Header = strings.ReplaceAll(card.Header, "Codex", "Claude Code")
+		}
+	}()
 	if request.Status == "resolved" {
 		source := request.Surface
 		switch source {
@@ -213,6 +283,8 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 			source = "Codex Desktop"
 		case "discord":
 			source = "Discord"
+		case "client":
+			source = "Tyrs Hand"
 		default:
 			source = "自动超时"
 		}
@@ -250,8 +322,11 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 	}
 	body := fmt.Sprintf("**%d / %d · %s**\n%s", index+1, len(request.Questions),
 		cardText(header, 128), cardText(question.Question, 3000))
-	card := ComponentCardPayload{AccentColor: cardColorYellow,
+	card = ComponentCardPayload{AccentColor: cardColorYellow,
 		Header: "❓ Codex · 等待输入", Body: body}
+	if interactiveprotocol.IsApproval(request.Method) {
+		card.Header = "🔐 Codex · 等待审批"
+	}
 	if request.CollaborationMode == "plan" {
 		card.Body = "`模式：Plan`\n\n" + card.Body
 	}
@@ -266,6 +341,9 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 		}
 		card.Buttons = append(card.Buttons, ComponentButtonPayload{Label: label,
 			CustomID: interactiveButtonID(request.ID, index, optionIndex), Style: "primary"})
+	}
+	if interactiveprotocol.IsApproval(request.Method) {
+		return card
 	}
 	label := "其他"
 	if len(question.Options) == 0 {
@@ -284,6 +362,9 @@ func interactiveQuestionTitle(question InteractiveQuestion) string {
 }
 
 func interactiveQuestionAnswer(request InteractiveProjection, question InteractiveQuestion) string {
+	if interactiveprotocol.IsApproval(request.Method) {
+		return cardText(interactiveprotocol.AnswerLabel(request.Answer), 0)
+	}
 	if question.IsSecret {
 		return "敏感回答已在 Codex Desktop 提交"
 	}
@@ -325,24 +406,21 @@ func splitInteractiveSection(value string) []string {
 }
 
 func interactiveAnswerLinkCard(request InteractiveProjection) ComponentCardPayload {
-	return ComponentCardPayload{AccentColor: cardColorGreen, Header: "Codex · 已回答问题",
+	return ComponentCardPayload{AccentColor: cardColorGreen, Header: interactiveEngineLabel(request.Engine) + " · 已回答问题",
 		Buttons: []ComponentButtonPayload{{Label: "查看已回答问题",
 			URL: replyJumpURL(request.GuildID, request.ThreadID, request.AnswerMessageID)}}}
 }
 
-func interactiveSubmittedCard() ComponentCardPayload {
+func interactiveSubmittedCard(engine runtimeidentity.Engine) ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorYellow,
-		Header: "Codex · 回答已提交", Body: "正在整理完整问答…"}
+		Header: interactiveEngineLabel(engine) + " · 回答已提交", Body: "正在整理完整问答…"}
 }
 
-func enqueueInteractiveAnswerLink(ctx context.Context, db *sql.DB,
-	request InteractiveProjection,
-) error {
-	return enqueueInteractiveAnswerLinkWith(ctx, request, func(key, operationType, routeKey string,
-		payload any, nonce string,
-	) error {
-		return NewSQLoutbox(db).Enqueue(ctx, key, operationType, routeKey, payload, nonce)
-	})
+func interactiveEngineLabel(engine runtimeidentity.Engine) string {
+	if engine == runtimeidentity.Claude {
+		return "Claude Code"
+	}
+	return "Codex"
 }
 
 func enqueueInteractiveAnswerLinkTx(ctx context.Context, tx *sql.Tx,

@@ -1389,8 +1389,8 @@ paths:
       operationId: workerRegisterInteractive
       security: [{ workerBearer: [] }]
       parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
-      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
-      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerInteractiveRegister" } } } }
+      responses: { "200": { $ref: "#/components/responses/WorkerInteractiveState" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/interactive/{id}:
     servers: [{ url: / }]
     get:
@@ -1398,7 +1398,7 @@ paths:
       operationId: workerInteractiveState
       security: [{ workerBearer: [] }]
       parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
-      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+      responses: { "200": { $ref: "#/components/responses/WorkerInteractiveState" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/interactive/answer:
     servers: [{ url: / }]
     post:
@@ -1406,8 +1406,8 @@ paths:
       operationId: workerAnswerInteractive
       security: [{ workerBearer: [] }]
       parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
-      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
-      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerInteractiveAnswer" } } } }
+      responses: { "200": { $ref: "#/components/responses/WorkerInteractiveState" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/heartbeat:
     servers: [{ url: / }]
     post:
@@ -1614,6 +1614,11 @@ components:
         application/json:
           schema: { type: object, additionalProperties: true }
   responses:
+    WorkerInteractiveState:
+      description: 按引擎及原生请求身份隔离的交互状态
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/WorkerInteractiveState" }
     Problem:
       description: RFC 9457 Problem Details
       content:
@@ -1696,6 +1701,73 @@ components:
               schema: { $ref: "#/components/schemas/IDResource" }
         default: { $ref: "#/components/responses/Problem" }
   schemas:
+    NativeRequestID:
+      oneOf:
+        - { type: string }
+        - { type: integer, format: int64 }
+    InteractiveMethod:
+      type: string
+      enum: [item/tool/requestUserInput, item/commandExecution/requestApproval, item/fileChange/requestApproval]
+    InteractiveQuestion:
+      type: object
+      required: [id, header, question]
+      properties:
+        id: { type: string }
+        header: { type: string }
+        question: { type: string }
+        isSecret: { type: boolean }
+        options:
+          type: array
+          items:
+            type: object
+            required: [label, description]
+            properties:
+              label: { type: string }
+              description: { type: string }
+    WorkerInteractiveRegister:
+      type: object
+      required: [method, requestId, params, appServerGeneration]
+      properties:
+        method: { $ref: "#/components/schemas/InteractiveMethod" }
+        requestId: { $ref: "#/components/schemas/NativeRequestID" }
+        appServerGeneration: { type: integer, format: int64, minimum: 1 }
+        params:
+          type: object
+          description: 对应原生方法的完整参数，审批选项和策略提案不能省略
+          required: [threadId, turnId, itemId]
+          additionalProperties: true
+          properties:
+            threadId: { type: string, minLength: 1 }
+            turnId: { type: string, minLength: 1 }
+            itemId: { type: string, minLength: 1 }
+    WorkerInteractiveAnswer:
+      type: object
+      required: [workspaceId, threadId, turnId, itemId, requestId, appServerGeneration, surface, answer]
+      properties:
+        workspaceId: { type: string, format: uuid }
+        threadId: { type: string, minLength: 1 }
+        turnId: { type: string, minLength: 1 }
+        itemId: { type: string, minLength: 1 }
+        requestId: { $ref: "#/components/schemas/NativeRequestID" }
+        appServerGeneration: { type: integer, format: int64, minimum: 1 }
+        surface: { type: string, enum: [desktop, discord, auto] }
+        answer: { type: object, additionalProperties: true, description: 原生 answers 或 decision，按已保存请求校验 }
+    WorkerInteractiveState:
+      type: object
+      required: [id, status, requestId, appServerGeneration, method, secret, ready]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, resolved, expired, interrupted] }
+        requestId: { $ref: "#/components/schemas/NativeRequestID" }
+        appServerGeneration: { type: integer, format: int64, minimum: 1 }
+        method: { $ref: "#/components/schemas/InteractiveMethod" }
+        questions: { type: array, items: { $ref: "#/components/schemas/InteractiveQuestion" } }
+        answer: { type: object, additionalProperties: true }
+        deadlineAt: { type: string, format: date-time }
+        secret: { type: boolean }
+        surface: { type: string }
+        accepted: { type: boolean }
+        ready: { type: boolean }
     WorkerRuntime:
       type: object
       required: [workerId, engine, enabled, status, sshListenAddress, sshHostKeyFingerprint, protocolVersion, build, capabilities, modelCatalog, releaseReady, heartbeatAt]

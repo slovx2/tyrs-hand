@@ -5,6 +5,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 
+import { approvalActions } from "./approvalActions";
+
 export function ServerRequestCard({ request, onAnswer }: {
   request: ServerRequest;
   onAnswer: (result: unknown) => void;
@@ -18,13 +20,22 @@ export function ServerRequestCard({ request, onAnswer }: {
     const title = request.method === "item/commandExecution/requestApproval"
       ? request.params.command ?? request.params.reason ?? "AI 请求执行命令"
       : request.params.reason ?? "AI 请求修改文件";
+    const actions = approvalActions(request);
+    const location = request.method === "item/commandExecution/requestApproval"
+      ? request.params.cwd : request.params.grantRoot;
     return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
       <Title>需要确认</Title><Muted selectable>{title}</Muted>
+      {location && <Muted selectable>目录：{location}</Muted>}
+      {request.method === "item/commandExecution/requestApproval" && request.params.additionalPermissions &&
+        <Muted selectable>额外权限：{JSON.stringify(request.params.additionalPermissions)}</Muted>}
+      {actions.length === 0 && <Muted>引擎没有提供可用的审批选项，请中断回合后重试。</Muted>}
       <View style={styles.actions}>
-        <Button testID={`interactive:${String(request.id)}:decline`} title="拒绝"
-          variant="secondary" onPress={() => onAnswer({ decision: "decline" })} />
-        <Button testID={`interactive:${String(request.id)}:accept`} title="允许"
-          onPress={() => onAnswer({ decision: "accept" })} />
+        {actions.map((action) => <View key={action.id} style={styles.approvalAction}>
+          {action.detail && <Muted selectable>{action.detail}</Muted>}
+          <Button testID={`interactive:${String(request.id)}:${action.id}`} title={action.title}
+            variant={action.decision === "accept" ? "primary" : "secondary"}
+            onPress={() => onAnswer({ decision: action.decision })} />
+        </View>)}
       </View>
     </Card>;
   }
@@ -36,6 +47,7 @@ export function ServerRequestCard({ request, onAnswer }: {
     return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
       <Title>额外权限</Title>
       <Muted>{request.params.reason ?? "AI 请求扩大本轮权限"}</Muted>
+      <Muted selectable>{JSON.stringify(permissions)}</Muted>
       <View style={styles.actions}>
         <Button testID={`interactive:${String(request.id)}:decline`} title="拒绝" variant="secondary"
           onPress={() => onAnswer({ permissions: {}, scope: "turn" })} />
@@ -94,7 +106,8 @@ function QuestionRequest({ request, onAnswer }: {
 
 const styles = StyleSheet.create({
   card: { marginHorizontal: 12, marginVertical: 6, padding: 13, gap: 10 },
-  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8 },
+  approvalAction: { maxWidth: "100%", gap: 4 },
   question: { gap: 7 },
   option: { minHeight: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: 7,
     paddingHorizontal: 11, paddingVertical: 8, gap: 2 },

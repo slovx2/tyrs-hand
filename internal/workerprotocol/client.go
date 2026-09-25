@@ -403,11 +403,11 @@ func (c *Client) RecordDesktopSteer(ctx context.Context,
 }
 
 func (c *Client) RegisterInteractive(ctx context.Context, task *Task,
-	requestID, params json.RawMessage, generation int64,
+	method string, requestID, params json.RawMessage, generation int64,
 ) (InteractiveState, error) {
 	var result InteractiveState
 	err := c.call(ctx, http.MethodPost, runPath(task, "/interactive"),
-		InteractiveRegisterRequest{RequestID: requestID,
+		InteractiveRegisterRequest{Method: method, RequestID: requestID,
 			Params: params, AppServerGeneration: generation}, &result, true)
 	return result, err
 }

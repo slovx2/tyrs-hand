@@ -444,11 +444,15 @@ func (c *desktopController) ResolveInteractive(ctx context.Context,
 	}
 	threadID, turnID, itemID := serverRequestScope(request.Params)
 	input := workerprotocol.InteractiveAnswerRequest{
+		RequestID: request.ID, AppServerGeneration: c.workspace.currentGeneration(),
 		WorkspaceID: c.workspace.runtime.WorkspaceID, ThreadID: threadID,
 		TurnID: turnID, ItemID: itemID, Surface: "desktop", Answer: answer,
 	}
 	state, err := c.answerDesktopInteractive(ctx, input)
 	if err != nil {
+		if ctx.Err() != nil || definitiveInteractiveError(err) {
+			return false, nil, err
+		}
 		// Control 不可用不能让用户刚刚提交的 Desktop 答案失效；后台继续补记仲裁结果。
 		go c.compensateDesktopInteractive(input)
 		return true, answer, nil
@@ -1275,11 +1279,21 @@ func (c *desktopController) answerDesktopInteractive(ctx context.Context,
 		if err == nil {
 			return state, nil
 		}
+		var response *workerprotocol.HTTPError
+		if definitiveInteractiveError(err) && (!errors.As(err, &response) || response.StatusCode != http.StatusNotFound) {
+			break
+		}
 		if !waitContext(ctx, 100*time.Millisecond) {
 			break
 		}
 	}
 	return workerprotocol.InteractiveState{}, err
+}
+
+func definitiveInteractiveError(err error) bool {
+	var response *workerprotocol.HTTPError
+	return errors.As(err, &response) && response.StatusCode >= 400 && response.StatusCode < 500 &&
+		response.StatusCode != http.StatusRequestTimeout && response.StatusCode != http.StatusTooManyRequests
 }
 
 func (c *desktopController) compensateDesktopInteractive(input workerprotocol.InteractiveAnswerRequest) {
@@ -1289,7 +1303,7 @@ func (c *desktopController) compensateDesktopInteractive(input workerprotocol.In
 		requestCtx, requestCancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		_, err := c.processor.client.AnswerInteractive(requestCtx, input)
 		requestCancel()
-		if err == nil {
+		if err == nil || definitiveInteractiveError(err) {
 			return
 		}
 		if !waitContext(ctx, time.Second) {

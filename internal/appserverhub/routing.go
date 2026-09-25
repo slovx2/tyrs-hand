@@ -501,14 +501,13 @@ func (r *Hub) handleServerRequest(ctx context.Context,
 	switch request.Method {
 	case "item/tool/call":
 		return r.routeToolCall(ctx, request)
-	case "item/tool/requestUserInput":
+	case "item/tool/requestUserInput", "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 		return r.firstInteractiveAnswer(ctx, request, threadID)
-	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval",
-		"item/permissions/requestApproval", "mcpServer/elicitation/request",
+	case "item/permissions/requestApproval", "mcpServer/elicitation/request",
 		"execCommandApproval", "applyPatchApproval":
 		return r.waitInteractiveAnswer(ctx, request, threadID, false)
 	default:
-		// 普通 Codex 能力（例如命令审批）优先保持 Desktop 原生行为；共享配置仍由客户端方法分类控制。
+		// 其他原生能力保持 Desktop 行为；共享配置仍由客户端方法分类控制。
 		return r.firstDesktopAnswer(ctx, request, threadID)
 	}
 }

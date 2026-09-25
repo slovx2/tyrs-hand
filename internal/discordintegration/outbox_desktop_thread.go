@@ -163,7 +163,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		}
 	}
 	_ = workspaceID
-	return nil
+	return enqueueBoundInteractionsTx(ctx, tx, controlID)
 }
 
 func enqueuePendingDesktopInputs(ctx context.Context, tx *sql.Tx, controlID uuid.UUID,

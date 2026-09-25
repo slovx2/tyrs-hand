@@ -422,30 +422,36 @@ type DesktopSteerRecordRequest struct {
 }
 
 type InteractiveRegisterRequest struct {
+	Method              string          `json:"method"`
 	RequestID           json.RawMessage `json:"requestId"`
 	Params              json.RawMessage `json:"params"`
 	AppServerGeneration int64           `json:"appServerGeneration"`
 }
 
 type InteractiveAnswerRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	ThreadID    string          `json:"threadId"`
-	TurnID      string          `json:"turnId"`
-	ItemID      string          `json:"itemId"`
-	Surface     string          `json:"surface"`
-	Answer      json.RawMessage `json:"answer"`
+	RequestID           json.RawMessage `json:"requestId"`
+	AppServerGeneration int64           `json:"appServerGeneration"`
+	WorkspaceID         uuid.UUID       `json:"workspaceId"`
+	ThreadID            string          `json:"threadId"`
+	TurnID              string          `json:"turnId"`
+	ItemID              string          `json:"itemId"`
+	Surface             string          `json:"surface"`
+	Answer              json.RawMessage `json:"answer"`
 }
 
 type InteractiveState struct {
-	ID         uuid.UUID       `json:"id"`
-	Status     string          `json:"status"`
-	Questions  json.RawMessage `json:"questions,omitempty"`
-	Answer     json.RawMessage `json:"answer,omitempty"`
-	DeadlineAt *time.Time      `json:"deadlineAt,omitempty"`
-	Secret     bool            `json:"secret"`
-	Surface    string          `json:"surface,omitempty"`
-	Accepted   bool            `json:"accepted,omitempty"`
-	Ready      bool            `json:"ready"`
+	RequestID           json.RawMessage `json:"requestId"`
+	AppServerGeneration int64           `json:"appServerGeneration"`
+	Method              string          `json:"method"`
+	ID                  uuid.UUID       `json:"id"`
+	Status              string          `json:"status"`
+	Questions           json.RawMessage `json:"questions,omitempty"`
+	Answer              json.RawMessage `json:"answer,omitempty"`
+	DeadlineAt          *time.Time      `json:"deadlineAt,omitempty"`
+	Secret              bool            `json:"secret"`
+	Surface             string          `json:"surface,omitempty"`
+	Accepted            bool            `json:"accepted,omitempty"`
+	Ready               bool            `json:"ready"`
 }
 
 type Task struct {

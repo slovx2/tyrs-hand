@@ -233,8 +233,8 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	questions := json.RawMessage(`[ {"id":"choice","question":"Continue?","options":[]} ]`)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
 		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
-		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-1','turn-1','item-1',1,
-		'1'::jsonb,$5) RETURNING id`, interactiveID, claimed.ControlID, claimed.RunID,
+		app_server_request_id,questions,request_method,request_params) VALUES ($1,$2,$3,$4,'thread-1','turn-1','item-1',1,
+		'1'::jsonb,$5,'item/tool/requestUserInput','{}') RETURNING id`, interactiveID, claimed.ControlID, claimed.RunID,
 		sessionID, questions).Scan(&interactiveID))
 	require.NoError(t, db.QueryRowContext(ctx, `UPDATE codex_turn_runs
 		SET status='waiting_for_user',active_slot=NULL WHERE id=$1 RETURNING id`, claimed.RunID).
@@ -283,8 +283,8 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	cleanupInteractiveID := uuid.New()
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
 		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
-		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-1','turn-1',
-		'cleanup-item',1,'3'::jsonb,$5) RETURNING id`, cleanupInteractiveID,
+		app_server_request_id,questions,request_method,request_params) VALUES ($1,$2,$3,$4,'thread-1','turn-1',
+		'cleanup-item',1,'3'::jsonb,$5,'item/tool/requestUserInput','{}') RETURNING id`, cleanupInteractiveID,
 		claimed.ControlID, claimed.RunID, sessionID, questions).Scan(&cleanupInteractiveID))
 	require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
 		TurnID: "turn-1", FinalAnswer: "final answer for every client",
@@ -296,8 +296,8 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	terminalInteractiveID := uuid.New()
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
 		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
-		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-1','turn-1',
-		'terminal-item',1,'2'::jsonb,$5) RETURNING id`, terminalInteractiveID,
+		app_server_request_id,questions,request_method,request_params) VALUES ($1,$2,$3,$4,'thread-1','turn-1',
+		'terminal-item',1,'2'::jsonb,$5,'item/tool/requestUserInput','{}') RETURNING id`, terminalInteractiveID,
 		claimed.ControlID, claimed.RunID, sessionID, questions).Scan(&terminalInteractiveID))
 	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='running',active_slot=1
 		WHERE id=$1`, claimed.RunID)
@@ -613,8 +613,8 @@ func TestClientMessageSkipsPendingInteractiveAndContinues(t *testing.T) {
 	questions := json.RawMessage(`[{"id":"choice","question":"Continue?","options":[]}]`)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
 		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
-		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-skip','turn-skip',
-		'item-skip',1,'1'::jsonb,$5) RETURNING id`, interactiveID, claimed.ControlID,
+		app_server_request_id,questions,request_method,request_params) VALUES ($1,$2,$3,$4,'thread-skip','turn-skip',
+		'item-skip',1,'1'::jsonb,$5,'item/tool/requestUserInput','{}') RETURNING id`, interactiveID, claimed.ControlID,
 		claimed.RunID, sessionID, questions).Scan(&interactiveID))
 	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='waiting_for_user',
 		active_slot=NULL WHERE id=$1`, claimed.RunID)

@@ -26,21 +26,22 @@ func TestWorkerSessionRuntimeMetadataAndLifecycleIsolation(t *testing.T) {
 			Events: []workerprotocol.ThreadMetadataEvent{
 				{Kind: "name", ThreadID: "same-thread", Sequence: 1, Name: string(engine)},
 				{Kind: "settings", ThreadID: "same-thread", Sequence: 2,
-					Model: "model-" + string(engine), Source: "desktop", ServiceTier: "standard"},
+					Model: "model-" + string(engine), Source: "desktop"},
 			}}
 		require.NoError(t, client.RecordThreadMetadata(ctx, metadata))
 		require.NoError(t, client.RecordThreadMetadata(ctx, metadata))
 	}
 	for engine, state := range states {
-		var name, model string
+		var name, model, serviceTier string
 		var revision int64
 		require.NoError(t, f.db.QueryRowContext(ctx, `SELECT session.title,session.model,
-			control.desired_thread_name_revision FROM workspace_sessions session
+			control.desired_thread_name_revision,session.service_tier FROM workspace_sessions session
 			JOIN codex_thread_controls control ON control.session_id=session.id WHERE control.id=$1`,
-			state.ControlID).Scan(&name, &model, &revision))
+			state.ControlID).Scan(&name, &model, &revision, &serviceTier))
 		require.Equal(t, string(engine), name)
 		require.Equal(t, "model-"+string(engine), model)
 		require.EqualValues(t, 1, revision)
+		require.Equal(t, "standard", serviceTier, "原生缺省档位必须映射为可持久化的标准档")
 	}
 	_, err := f.db.ExecContext(ctx, `UPDATE codex_thread_controls SET desired_thread_name_source='fallback'`)
 	require.NoError(t, err)

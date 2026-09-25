@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"github.com/slovx2/tyrs-hand/internal/interactiveprotocol"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -48,8 +49,8 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 		remoteRunError(c, "校验交互请求所属 Run 失败", err)
 		return
 	}
-	params, secret, err := parseInteractiveParams(request.Params)
-	if err != nil || request.AppServerGeneration < 1 || len(request.RequestID) == 0 {
+	params, secret, err := parseInteractiveRequest(request.Method, request.Params)
+	if err != nil || request.AppServerGeneration < 1 || !interactiveprotocol.ValidRequestID(request.RequestID) {
 		if err == nil {
 			err = errors.New("交互请求缺少 app-server generation 或 request ID")
 		}
@@ -75,24 +76,52 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	// 与 Discord 帖子绑定按同一 Control 串行，避免交互登记落在绑定事务快照之后。
+	var lockedControl uuid.UUID
+	if err := tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_thread_controls WHERE id=$1 FOR UPDATE`, claimed.ControlID).Scan(&lockedControl); err != nil {
+		problem(c, http.StatusInternalServerError, "锁定交互会话失败", err)
+		return
+	}
+	var activeRun uuid.UUID
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_turn_runs
+		WHERE id=$1 AND finished_at IS NULL AND status IN ('starting','running','waiting_for_user') FOR UPDATE`, runID).Scan(&activeRun)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusConflict, "任务已结束，不能登记交互", nil)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "锁定交互所属任务失败", err)
+		return
+	}
+	var changedGeneration bool
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT EXISTS(SELECT 1 FROM codex_interactive_requests
+		WHERE run_id=$1 AND app_server_generation<>$2)`, runID, request.AppServerGeneration).Scan(&changedGeneration)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "校验交互运行代次失败", err)
+		return
+	}
+	if changedGeneration {
+		problem(c, http.StatusConflict, "旧 Run 不能登记重启后的交互", nil)
+		return
+	}
 	var id uuid.UUID
 	var inserted bool
 	err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO codex_interactive_requests
 		(control_id, run_id, session_id, thread_id, turn_id, item_id, app_server_generation,
-		 app_server_request_id, questions, deadline_at)
-		VALUES ($1,$2,NULLIF($3::text,'')::uuid,$4,$5,$6,$7,$8,$9,$10)
-		ON CONFLICT(control_id, thread_id, turn_id, item_id) DO NOTHING RETURNING id`,
+		 app_server_request_id, questions, deadline_at, request_method, request_params)
+		VALUES ($1,$2,NULLIF($3::text,'')::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		ON CONFLICT DO NOTHING RETURNING id`,
 		claimed.ControlID, runID, nilUUIDString(claimed.SessionID), params.ThreadID,
 		params.TurnID, params.ItemID,
-		request.AppServerGeneration, request.RequestID, questions, nullableTime(deadline)).
+		request.AppServerGeneration, request.RequestID, questions, nullableTime(deadline), request.Method, request.Params).
 		Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 仅同一次原生请求可重放；重启后的旧审批不能回答新请求。
 		err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_interactive_requests
 			WHERE thread_id=$1 AND turn_id=$2 AND item_id=$3 AND control_id=$4
 			AND run_id=$5 AND app_server_generation=$6 AND app_server_request_id=$7::jsonb
-			AND questions=$8::jsonb`, params.ThreadID, params.TurnID, params.ItemID,
-			claimed.ControlID, runID, request.AppServerGeneration, request.RequestID, questions).Scan(&id)
+			AND questions=$8::jsonb AND request_method=$9 AND request_params=$10::jsonb`, params.ThreadID, params.TurnID, params.ItemID,
+			claimed.ControlID, runID, request.AppServerGeneration, request.RequestID, questions, request.Method, request.Params).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			problem(c, http.StatusConflict, "交互请求 ID 与既有请求不一致或已失效", nil)
 			return
@@ -113,7 +142,7 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 				SET status='waiting_for_user', updated_at=now() WHERE id=$1`, claimed.ID)
 		}
 		if err == nil && claimed.SessionID != uuid.Nil {
-			payload, _ := json.Marshal(gin.H{"requestId": id, "questions": params.Questions,
+			payload, _ := json.Marshal(gin.H{"requestId": id, "method": request.Method, "questions": params.Questions,
 				"deadlineAt": nullableTime(deadline), "secret": secret})
 			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
 				session_id,update_type,entity_type,entity_id,entity_version,payload)
@@ -194,8 +223,8 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 	}
 	if request.WorkspaceID == uuid.Nil || strings.TrimSpace(request.ThreadID) == "" ||
 		strings.TrimSpace(request.TurnID) == "" || strings.TrimSpace(request.ItemID) == "" ||
-		(request.Surface != "desktop" && request.Surface != "discord" && request.Surface != "auto") ||
-		!validInteractiveAnswer(request.Answer) {
+		request.AppServerGeneration < 1 || !interactiveprotocol.ValidRequestID(request.RequestID) ||
+		(request.Surface != "desktop" && request.Surface != "discord" && request.Surface != "auto") {
 		badRequest(c, errors.New("交互回答参数无效"))
 		return
 	}
@@ -210,17 +239,25 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 	var status, runStatus string
 	var runFinishedAt sql.NullTime
 	var questions json.RawMessage
+	var method string
+	var nativeParams json.RawMessage
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT q.id, q.status, q.questions,
-		r.status, r.finished_at
+		r.status, r.finished_at, q.request_method, q.request_params
 		FROM codex_interactive_requests q
 		JOIN codex_thread_controls ct ON ct.id=q.control_id
 		JOIN codex_turn_runs r ON r.id=q.run_id
 		WHERE q.thread_id=$1 AND q.turn_id=$2 AND q.item_id=$3
 		AND ct.workspace_id=$4 AND ct.worker_id=$5 AND ct.engine=$6
+		AND q.app_server_request_id=$7::jsonb AND q.app_server_generation=$8
 		FOR UPDATE OF q,r`, request.ThreadID, request.TurnID, request.ItemID,
-		request.WorkspaceID, worker.ID, currentWorkerEngine(c)).Scan(&id, &status, &questions, &runStatus, &runFinishedAt)
+		request.WorkspaceID, worker.ID, currentWorkerEngine(c), request.RequestID, request.AppServerGeneration).Scan(&id, &status, &questions, &runStatus, &runFinishedAt, &method, &nativeParams)
 	if err != nil {
 		remoteRunError(c, "交互请求不存在", err)
+		return
+	}
+	request.Answer, err = normalizeInteractiveAnswer(method, nativeParams, request.Answer)
+	if err != nil {
+		badRequest(c, err)
 		return
 	}
 	secret := interactiveQuestionsSecret(questions)
@@ -315,6 +352,38 @@ func parseInteractiveParams(raw json.RawMessage) (interactiveParams, bool, error
 	return value, secret, nil
 }
 
+func parseInteractiveRequest(method string, raw json.RawMessage) (interactiveParams, bool, error) {
+	if method == interactiveprotocol.UserInput {
+		return parseInteractiveParams(raw)
+	}
+	if !interactiveprotocol.IsApproval(method) {
+		return interactiveParams{}, false, errors.New("不支持的交互请求类型")
+	}
+	var value interactiveParams
+	if json.Unmarshal(raw, &value) != nil || strings.TrimSpace(value.ThreadID) == "" ||
+		strings.TrimSpace(value.TurnID) == "" || strings.TrimSpace(value.ItemID) == "" {
+		return interactiveParams{}, false, errors.New("审批请求缺少会话、回合或条目标识")
+	}
+	questions, err := interactiveprotocol.Questions(method, raw)
+	if err != nil {
+		return interactiveParams{}, false, err
+	}
+	err = json.Unmarshal(questions, &value.Questions)
+	// 原生命令/文件审批没有自动允许，超时只可取消。
+	value.AutoResolutionMS = 0
+	return value, false, err
+}
+
+func normalizeInteractiveAnswer(method string, params, answer json.RawMessage) (json.RawMessage, error) {
+	if method == interactiveprotocol.UserInput {
+		if !validInteractiveAnswer(answer) {
+			return nil, errors.New("交互回答参数无效")
+		}
+		return answer, nil
+	}
+	return interactiveprotocol.NormalizeAnswer(method, params, answer)
+}
+
 func validInteractiveAnswer(raw json.RawMessage) bool {
 	var value struct {
 		Answers map[string]struct {
@@ -364,12 +433,12 @@ func (s *Server) loadInteractiveState(ctx context.Context, id, workerID uuid.UUI
 	var answer json.RawMessage
 	var secretID sql.NullString
 	var deadline sql.NullTime
-	err := s.db.QueryRowContext(ctx, `SELECT q.id, q.status, q.questions,
+	err := s.db.QueryRowContext(ctx, `SELECT q.id, q.status, q.questions, q.request_method, q.app_server_request_id, q.app_server_generation,
 		COALESCE(q.answer,'null'::jsonb), q.answer_secret_id::text, q.deadline_at,
 		COALESCE(q.answer_surface,''), COALESCE(r.active_slot=1,false)
 		FROM codex_interactive_requests q JOIN codex_turn_runs r ON r.id=q.run_id
 		WHERE q.id=$1 AND r.worker_id=$2`, id, workerID).Scan(&state.ID, &state.Status,
-		&state.Questions, &answer, &secretID, &deadline, &state.Surface, &state.Ready)
+		&state.Questions, &state.Method, &state.RequestID, &state.AppServerGeneration, &answer, &secretID, &deadline, &state.Surface, &state.Ready)
 	if err != nil {
 		return workerprotocol.InteractiveState{}, err
 	}
@@ -394,7 +463,8 @@ func (s *Server) loadInteractiveState(ctx context.Context, id, workerID uuid.UUI
 
 func (s *Server) expireInteractive(ctx context.Context, id, workerID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE codex_interactive_requests q SET
-		status='expired', answer='{"answers":{}}'::jsonb, answer_surface='auto',
+		status='expired', answer=CASE WHEN q.request_method='item/tool/requestUserInput'
+		THEN '{"answers":{}}'::jsonb ELSE '{"decision":"cancel"}'::jsonb END, answer_surface='auto',
 		resolved_at=now(), updated_at=now()
 		FROM codex_turn_runs r WHERE q.id=$1 AND q.run_id=r.id AND r.worker_id=$2
 		AND q.status='pending' AND q.deadline_at IS NOT NULL AND q.deadline_at <= now()`, id, workerID)

@@ -25,6 +25,11 @@ import (
 
 func connectBootstrapSSH(t *testing.T, ctx context.Context, entry *hostworker.RuntimeEntry, signer ssh.Signer) (*codex.SocketClient, <-chan struct{}) {
 	t.Helper()
+	return connectBootstrapSSHWithOptions(t, ctx, entry, signer, codex.SocketClientOptions{})
+}
+
+func connectBootstrapSSHWithOptions(t *testing.T, ctx context.Context, entry *hostworker.RuntimeEntry, signer ssh.Signer, options codex.SocketClientOptions) (*codex.SocketClient, <-chan struct{}) {
+	t.Helper()
 	connection, err := ssh.Dial("tcp", entry.SSH.Addr().String(), &ssh.ClientConfig{
 		User: "test", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, Timeout: 5 * time.Second,
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
@@ -56,7 +61,8 @@ func connectBootstrapSSH(t *testing.T, ctx context.Context, entry *hostworker.Ru
 		defer trace.mu.Unlock()
 		saveBootstrapArtifact(t, "wire", entry.Runtime.Info().Engine, map[string]any{"messages": trace.messages, "protocolErrors": []string{}})
 	})
-	client, err := codex.ConnectTransport(ctx, trace, codex.SocketClientOptions{RequestTimeout: 10 * time.Second})
+	options.RequestTimeout = 10 * time.Second
+	client, err := codex.ConnectTransport(ctx, trace, options)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client, closed
@@ -102,7 +108,7 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	if t.Name() == "TestWorkerControlRealSSHBothEngines" {
 		cases = []string{"CHANNELS-002"}
 		if engine == runtimeidentity.Claude {
-			cases = append(cases, "AUTOMATION-002")
+			cases = append(cases, "AUTOMATION-002", "APPROVAL-006")
 		}
 	}
 	data, err := json.MarshalIndent(map[string]any{"formatVersion": 1,

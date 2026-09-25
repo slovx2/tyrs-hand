@@ -253,7 +253,7 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions session SET
 			model=COALESCE(NULLIF($2,''),session.model),
 			reasoning_effort=CASE WHEN $2<>'' THEN NULLIF($3,'') ELSE session.reasoning_effort END,
-			service_tier=CASE WHEN $2<>'' THEN $4 ELSE session.service_tier END,
+			service_tier=CASE WHEN $2<>'' THEN COALESCE(NULLIF($4,''),'standard') ELSE session.service_tier END,
 			collaboration_mode=control.collaboration_mode, settings_version=$5, updated_at=now()
 			FROM codex_thread_controls control
 			WHERE control.id=$1 AND session.id=control.session_id`, controlID, event.Model,
