@@ -53,6 +53,8 @@ const suites = controlOnly ? [
     cases: ['HISTORY-002'], engines: ['claude-code'] },
   { name: 'session', pkg: './internal/hostworker', test: 'TestRuntimeSessionRealSSH',
     cases: ['SESSION-001', 'GOAL-003'], engines: ['claude-code'] },
+  { name: 'turn-control', pkg: './internal/hostworker', test: 'TestRuntimeTurnControlRealSSHBothEngines',
+    cases: ['SUBMIT-004', 'EVENTS-005'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]

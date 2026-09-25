@@ -1136,7 +1136,8 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "EVENTS-004"
         ]
       },
       "callers": [
@@ -1307,7 +1308,8 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "EVENTS-004"
         ]
       },
       "callers": [
@@ -1336,7 +1338,8 @@
         "codex": [],
         "claude-code": [
           "TOOLS-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "EVENTS-004"
         ]
       },
       "callers": [
@@ -2066,7 +2069,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "APPROVAL-003"
+          "APPROVAL-003",
+          "EVENTS-004"
         ]
       },
       "callers": [
@@ -2581,14 +2585,18 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "SUBMIT-004"
         ],
         "claude-code": [
           "HISTORY-002",
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "SUBMIT-003",
+          "EVENTS-004",
+          "SUBMIT-004"
         ]
       },
       "callers": [
@@ -2613,12 +2621,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SUBMIT-004"
+        ],
         "claude-code": [
           "HISTORY-001",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-004",
+          "SUBMIT-004"
         ]
       },
       "callers": [
@@ -2740,7 +2752,8 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "SUBMIT-004"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -2749,7 +2762,10 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "SUBMIT-003",
+          "EVENTS-004",
+          "SUBMIT-004"
         ]
       },
       "callers": [
@@ -2802,11 +2818,13 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "EVENTS-005"
         ],
         "claude-code": [
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "EVENTS-005"
         ]
       },
       "schema": {
@@ -3018,7 +3036,8 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "EVENTS-005"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3026,7 +3045,10 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "SUBMIT-003",
+          "EVENTS-004",
+          "EVENTS-005"
         ]
       },
       "callers": [
@@ -3055,8 +3077,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "EVENTS-005"
+        ],
+        "claude-code": [
+          "EVENTS-004",
+          "EVENTS-005"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -3077,7 +3104,8 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "SUBMIT-004"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3085,7 +3113,10 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "SUBMIT-003",
+          "EVENTS-004",
+          "SUBMIT-004"
         ]
       },
       "callers": [
@@ -3110,7 +3141,8 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "EVENTS-005"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3118,7 +3150,9 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "SUBMIT-003",
+          "EVENTS-005"
         ]
       },
       "callers": [
@@ -3144,8 +3178,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "SUBMIT-004"
+        ],
+        "claude-code": [
+          "SUBMIT-003",
+          "SUBMIT-004"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",

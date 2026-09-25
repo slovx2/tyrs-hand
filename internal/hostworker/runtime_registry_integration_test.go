@@ -41,6 +41,10 @@ func TestRuntimeSessionRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "session")
 }
 
+func TestRuntimeTurnControlRealSSHBothEngines(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "turn-control")
+}
+
 // macOS 不允许叠加 sandbox-exec。此用例仅调用独立 command RPC，不创建 Turn，
 // 用真实运行时的 OS 沙箱验证文件和网络限制；模型请求数必须始终为零。
 func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
@@ -49,6 +53,7 @@ func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
 
 func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	commandPermissions, historyOnly, sessionOnly := mode == "command-permissions", mode == "history", mode == "session"
+	turnControlOnly := mode == "turn-control"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -65,6 +70,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	modelRequests := map[runtimeidentity.Engine][]json.RawMessage{}
 	history := &runtimeHistoryFixture{t: t, root: root}
 	lifecycle := &runtimeSessionFixture{started: make(chan struct{}), release: make(chan struct{})}
+	turnControl := newRuntimeTurnControlFixture()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -83,6 +89,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if turnControlOnly {
+				turnControl.model(t, w, request, engine, body)
+				return
+			}
 			if historyOnly && engine == runtimeidentity.Claude {
 				history.model(w, body)
 				return
@@ -95,6 +105,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	}))
 	t.Cleanup(upstream.Close)
 	t.Cleanup(lifecycle.unblock)
+	t.Cleanup(turnControl.unblock)
 	t.Cleanup(func() {
 		if directory := os.Getenv("PROTOCOL_ARTIFACT_DIR"); directory != "" {
 			requestsMu.Lock()
@@ -216,7 +227,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			require.Equal(t, entry.Runtime.Info().CLISHA256, live.CLISHA256)
 			require.False(t, live.ReleaseReady)
 		}
-		if historyOnly || sessionOnly {
+		if historyOnly || sessionOnly || turnControlOnly {
 			continue
 		}
 		if commandPermissions {
@@ -241,6 +252,13 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if turnControlOnly {
+		for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude} {
+			verifyRuntimeTurnControl(t, ctx, registry, clients[engine], protocol[engine], engine, turnControl.engines[engine])
+		}
+		require.Equal(t, int64(8), modelCalls.Load(), "两引擎只执行明确提交或追加的四次模型请求")
+		return
 	}
 	if sessionOnly {
 		verifyClaudeSessionLifecycle(t, ctx, registry, clients[runtimeidentity.Claude], protocol[runtimeidentity.Claude], signer, lifecycle)
@@ -429,6 +447,14 @@ func TestRuntimeEntryHelperProcess(t *testing.T) {
 }
 
 func dualEngineModel(w http.ResponseWriter, request *http.Request) {
+	text := "CODEX_OK"
+	if request.URL.Path == "/v1/messages" {
+		text = "CLAUDE_OK"
+	}
+	runtimeTextModel(w, request, text, "test")
+}
+
+func runtimeTextModel(w http.ResponseWriter, request *http.Request, text, id string) {
 	if request.URL.Path == "/api/hello" {
 		_, _ = io.WriteString(w, "{}")
 		return
@@ -444,9 +470,9 @@ func dualEngineModel(w http.ResponseWriter, request *http.Request) {
 		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, body)
 	}
 	if request.URL.Path == "/v1/messages" {
-		event("message_start", map[string]any{"message": map[string]any{"id": "msg_test", "type": "message", "role": "assistant", "model": "claude-sonnet-4-6", "content": []any{}, "stop_reason": nil, "usage": map[string]int{"input_tokens": 10, "output_tokens": 1}}})
+		event("message_start", map[string]any{"message": map[string]any{"id": "msg_" + id, "type": "message", "role": "assistant", "model": "claude-sonnet-4-6", "content": []any{}, "stop_reason": nil, "usage": map[string]int{"input_tokens": 10, "output_tokens": 1}}})
 		event("content_block_start", map[string]any{"index": 0, "content_block": map[string]any{"type": "text", "text": ""}})
-		event("content_block_delta", map[string]any{"index": 0, "delta": map[string]any{"type": "text_delta", "text": "CLAUDE_OK"}})
+		event("content_block_delta", map[string]any{"index": 0, "delta": map[string]any{"type": "text_delta", "text": text}})
 		event("content_block_stop", map[string]any{"index": 0})
 		event("message_delta", map[string]any{"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil}, "usage": map[string]int{"output_tokens": 5}})
 		event("message_stop", map[string]any{})
@@ -456,7 +482,7 @@ func dualEngineModel(w http.ResponseWriter, request *http.Request) {
 		w.WriteHeader(404)
 		return
 	}
-	event("response.created", map[string]any{"response": map[string]any{"id": "resp-test"}})
-	event("response.output_item.done", map[string]any{"item": map[string]any{"id": "msg-test", "type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": "CODEX_OK"}}}})
-	event("response.completed", map[string]any{"response": map[string]any{"id": "resp-test", "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "input_tokens_details": nil, "output_tokens_details": nil}}})
+	event("response.created", map[string]any{"response": map[string]any{"id": "resp-" + id}})
+	event("response.output_item.done", map[string]any{"item": map[string]any{"id": "msg-" + id, "type": "message", "role": "assistant", "content": []map[string]any{{"type": "output_text", "text": text}}}})
+	event("response.completed", map[string]any{"response": map[string]any{"id": "resp-" + id, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "input_tokens_details": nil, "output_tokens_details": nil}}})
 }
