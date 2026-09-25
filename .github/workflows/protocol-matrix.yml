@@ -24,12 +24,30 @@ jobs:
           cache-dependency-path: go.sum
       - name: Control runtime isolation, automation and migration
         run: make test-control-runtime
+      - id: adapter
+        name: Read pinned adapter for Control E2E
+        run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: slovx2/claude-codex
+          ref: ${{ steps.adapter.outputs.commit }}
+          path: .local/protocol-adapter
+      - name: Install native SDK and CLI
+        run: |
+          npm install --global @openai/codex@0.147.0
+          npm ci --prefix .local/protocol-adapter
+      - name: Real Control, SSH, SDK and automation after Worker restart
+        env:
+          TYRS_HAND_ADAPTER_ROOT: ${{ github.workspace }}/.local/protocol-adapter
+        run: make test-control-runtime-e2e
       - name: Preserve Control acceptance evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: control-runtime
-          path: .artifacts/control-runtime
+          path: |
+            .artifacts/control-runtime
+            .artifacts/protocol
           if-no-files-found: error
   protocol:
     strategy:

@@ -100,7 +100,14 @@ Control 必需用例包含实际定时任务记录、重复工具提交及交互
 启用 Claude 时，其 Controller 与 Control 同步也启用。Live 的绑定、可选会话列表
 和跨会话工具限定 Codex；不能从 Live 转入 Claude 会话。
 
+`make test-control-runtime-e2e` 启动临时 PostgreSQL 与 Redis，经 Unix socket 代理
+连接在隔离网络中运行的真实 Control 和 Worker。真实 SSH 客户端分别提交两引擎任务；
+Claude SDK 调用平台工具创建 heartbeat，Worker 重启后调度器恢复同一原生会话。
+断言包含实际调度记录、工具结果进入模型上下文、追加的用户消息、Worker ID 不变和
+Codex 未收到 Claude 任务。脚本固定镜像 digest，保存本轮 JUnit、wire、模型请求及
+数据库断言证据，并清理本轮临时容器。该用例也纳入完整协议矩阵与 Ubuntu CI。
+
 当前发布状态：`releaseReady=false`。Control 数据层已覆盖领取、事件幂等与终态隔离；
-仍需补齐在线 Control→真实双运行时的全链路故障验收，手机运行时关联、Discord 引擎
+在线 Control→真实双运行时的正向链路及重启后调度已验证，仍需补齐全部故障路径、手机运行时关联、Discord 引擎
 选择和完整协议矩阵。未启用的 runtime 重启会明确报错。
 这部分验收通过不代表完整双引擎协议矩阵或移动/桌面 GUI 发布验收通过。

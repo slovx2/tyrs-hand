@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { startControlInfrastructure } from './protocol-control-infra.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
@@ -11,10 +12,11 @@ const runId = randomUUID()
 const artifacts = resolve(artifactsRoot, 'runs', runId)
 const codex = process.env.TYRS_HAND_TEST_CODEX_BIN ?? 'codex'
 const go = process.env.GO ?? 'go'
+const controlOnly = process.argv.includes('--control-only')
 if (process.versions.node !== '24.14.0') throw new Error('协议矩阵必须使用 Node 24.14.0')
 mkdirSync(artifacts, { recursive: true })
 writeFileSync(resolve(artifactsRoot, 'latest.json'), JSON.stringify({ runId, directory: artifacts,
-  scope: process.argv.includes('--runtime-only') ? 'runtime-only' : 'full-matrix' }))
+  scope: controlOnly ? 'control-runtime-e2e' : process.argv.includes('--runtime-only') ? 'runtime-only' : 'full-matrix' }))
 const env = { ...process.env, PROTOCOL_ARTIFACT_DIR: artifacts,
   CODEX_SCHEMA_DIR: resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'),
   PROTOCOL_RUN_ID: runId, TYRS_HAND_TEST_CODEX_BIN: codex,
@@ -37,12 +39,19 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 }, null, 2))
 
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
-const suites = [
+const suites = controlOnly ? [
+  { name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
+    cases: ['CHANNELS-002', 'AUTOMATION-002'] },
+] : [
   { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
     cases: ['ENTRY-001', 'ISOLATION-001', 'FAILURE-001'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]
+if (!controlOnly && !process.argv.includes('--runtime-only')) {
+  suites.push({ name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
+    cases: ['CHANNELS-002', 'AUTOMATION-002'] })
+}
 for (const suite of suites) {
   suite.binary = resolve(artifacts, `${suite.name}.test`)
   run(go, ['test', '-c', '-tags=integration', '-o', suite.binary, suite.pkg])
@@ -53,10 +62,13 @@ const isolation = process.platform === 'darwin'
   : ['--user', '--map-root-user', '--net', '/bin/sh', '-ec', 'ip link set lo up; exec "$@"', 'runtime-test']
 const xml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')
 let runtimeExecutions = ''
+const infrastructure = suites.some(suite => suite.name === 'bootstrap-control') ? await startControlInfrastructure() : undefined
+Object.assign(env, infrastructure?.env ?? {})
+try {
 for (const suite of suites) {
   const runtime = spawnSync(command, [...isolation, go, 'tool', 'test2json', '-t', '-p', `${suite.name}-e2e`, suite.binary,
-    '-test.v', `-test.run=^${suite.test}$`, '-test.timeout=90s'],
-    { cwd: root, env, encoding: 'utf8', timeout: 110_000, maxBuffer: 16 * 1024 * 1024 })
+    '-test.v', `-test.run=^${suite.test}$`, '-test.timeout=180s'],
+    { cwd: root, env, encoding: 'utf8', timeout: 200_000, maxBuffer: 16 * 1024 * 1024 })
   writeFileSync(resolve(artifacts, `${suite.name}.jsonl`), runtime.stdout ?? '')
   const events = (runtime.stdout ?? '').split('\n').filter(Boolean).map(line => JSON.parse(line))
   const succeeded = events.some(event => event.Action === 'pass' && event.Test === suite.test)
@@ -69,12 +81,15 @@ for (const suite of suites) {
   }
   runtimeExecutions += ['codex', 'claude-code'].map(engine => JSON.stringify({
     runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
-    caseIds: [...suite.cases, ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001'] : [])], status: 'passed',
+    caseIds: [...suite.cases.filter(id => id !== 'AUTOMATION-002' || engine === 'claude-code'),
+      ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001'] : [])], status: 'passed',
   })).join('\n') + '\n'
 }
-console.log('真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
+} finally { infrastructure?.close() }
+console.log(controlOnly ? '真实 Control、双 SSH、SDK 与 Worker 重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
+  '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
 writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
-if (!process.argv.includes('--runtime-only')) {
+if (!process.argv.includes('--runtime-only') && !controlOnly) {
   let adapterFailure
   try { run('npm', ['run', 'test:protocol'], adapter) } catch (error) { adapterFailure = error }
   const executionPath = resolve(artifacts, 'executions.jsonl')

@@ -98,9 +98,16 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	if directory == "" {
 		return
 	}
+	cases := []string{"ENTRY-002", "TOOLS-002"}
+	if t.Name() == "TestWorkerControlRealSSHBothEngines" {
+		cases = []string{"CHANNELS-002"}
+		if engine == runtimeidentity.Claude {
+			cases = append(cases, "AUTOMATION-002")
+		}
+	}
 	data, err := json.MarshalIndent(map[string]any{"formatVersion": 1,
 		"runId": os.Getenv("PROTOCOL_RUN_ID"), "engine": engine, "caseName": t.Name(),
-		"caseIds": []string{"ENTRY-002", "TOOLS-002"}, "kind": kind, "payload": payload}, "", "  ")
+		"caseIds": cases, "kind": kind, "payload": payload}, "", "  ")
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(directory, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(directory, kind+"-bootstrap-"+string(engine)+"-"+uuid.NewString()+".json"), data, 0o600))
