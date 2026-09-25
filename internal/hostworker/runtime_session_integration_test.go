@@ -96,6 +96,18 @@ func verifyClaudeSessionLifecycle(t *testing.T, ctx context.Context, registry *R
 	git := map[string]any{"sha": strings.Repeat("a", 40), "branch": "main", "originUrl": "/local/bare.git"}
 	patched := readSessionThread(t, ctx, client, "thread/metadata/update", map[string]any{"threadId": id, "gitInfo": git})
 	require.Equal(t, git, patched.GitInfo)
+	goalCall := func(client *codex.SocketClient, method, threadID string, extra map[string]any) map[string]any {
+		params := map[string]any{"threadId": threadID}
+		for key, value := range extra {
+			params[key] = value
+		}
+		var result map[string]any
+		require.NoError(t, client.Call(ctx, method, params, &result))
+		return result
+	}
+	goal := goalCall(client, "thread/goal/set", id, map[string]any{
+		"objective": "SSH 暂停目标", "status": "paused", "tokenBudget": 2000,
+	})["goal"]
 	var started struct {
 		Turn struct{ ID string } `json:"turn"`
 	}
@@ -133,11 +145,17 @@ func verifyClaudeSessionLifecycle(t *testing.T, ctx context.Context, registry *R
 	fork := readSessionThread(t, ctx, client, "thread/fork", map[string]any{"threadId": id})
 	require.NotEqual(t, id, fork.ID)
 	require.Equal(t, id, fork.ForkedFromID)
+	forkGoal := goalCall(client, "thread/goal/get", fork.ID, nil)["goal"].(map[string]any)
+	require.Equal(t, fork.ID, forkGoal["threadId"])
+	require.Equal(t, "SSH 暂停目标", forkGoal["objective"])
+	goalCall(client, "thread/goal/set", fork.ID, map[string]any{"objective": "独立分支目标", "tokenBudget": nil})
+	require.Equal(t, goal, goalCall(client, "thread/goal/get", id, nil)["goal"])
 	require.NoError(t, client.Call(ctx, "turn/start", map[string]any{"threadId": fork.ID,
 		"input": []map[string]any{{"type": "text", "text": "SESSION_FORK"}}}, &started))
 	require.Len(t, waitSessionTurn(t, ctx, client, fork.ID, started.Turn.ID).Turns, 2)
 	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": id, "includeTurns": true}).Turns, 1)
 	require.NoError(t, client.Call(ctx, "thread/archive", map[string]any{"threadId": id}, &ignored))
+	require.Equal(t, goal, goalCall(client, "thread/goal/get", id, nil)["goal"])
 	for _, archived := range []bool{false, true} {
 		var listed struct{ Data []sessionThread }
 		require.NoError(t, client.Call(ctx, "thread/list", map[string]any{"archived": archived}, &listed))
@@ -161,11 +179,18 @@ func verifyClaudeSessionLifecycle(t *testing.T, ctx context.Context, registry *R
 	observed := observer.Subscribe(codex.ThreadFilter{ThreadID: id})
 	defer observed.Close()
 	require.NoError(t, observer.Call(ctx, "thread/name/set", map[string]any{"threadId": id, "name": "SSH 生命周期"}, &ignored))
-	select {
-	case event := <-observed.Events():
-		require.Equal(t, "thread/name/updated", event.Method)
-	case <-ctx.Done():
-		t.Fatal("另一端的订阅被错误取消")
+	for renamed := false; !renamed; {
+		select {
+		case event := <-observed.Events():
+			if event.Method == "thread/tokenUsage/updated" {
+				// 恢复的用量快照可能在订阅建立后送达，随后仍须收到名称事件。
+				continue
+			}
+			require.Equal(t, "thread/name/updated", event.Method)
+			renamed = true
+		case <-ctx.Done():
+			t.Fatal("另一端的订阅被错误取消")
+		}
 	}
 	select {
 	case event := <-quiet.Events():
@@ -178,12 +203,31 @@ func verifyClaudeSessionLifecycle(t *testing.T, ctx context.Context, registry *R
 	resumed = readSessionThread(t, ctx, client, "thread/resume", map[string]any{"threadId": id})
 	require.Equal(t, git, resumed.GitInfo)
 	require.Equal(t, "SSH 生命周期", resumed.Name)
+	require.Equal(t, goal, goalCall(client, "thread/goal/get", id, nil)["goal"])
 	require.NoError(t, client.Call(ctx, "thread/delete", map[string]any{"threadId": id}, &ignored))
+	forkGoal = goalCall(client, "thread/goal/get", fork.ID, nil)["goal"].(map[string]any)
+	require.Equal(t, "独立分支目标", forkGoal["objective"])
+	require.Nil(t, forkGoal["tokenBudget"])
+	readSessionThread(t, ctx, client, "thread/resume", map[string]any{"threadId": fork.ID})
+	goalEvents := client.Subscribe(codex.ThreadFilter{ThreadID: fork.ID})
+	defer goalEvents.Close()
+	require.Equal(t, true, goalCall(client, "thread/goal/clear", fork.ID, nil)["cleared"])
+	for cleared := false; !cleared; {
+		select {
+		case event := <-goalEvents.Events():
+			cleared = event.Method == "thread/goal/cleared"
+		case <-ctx.Done():
+			t.Fatal("目标清除后未通知已订阅的 SSH 客户端")
+		}
+	}
+	require.Equal(t, false, goalCall(client, "thread/goal/clear", fork.ID, nil)["cleared"])
 	require.NoError(t, client.Call(ctx, "thread/loaded/list", map[string]any{}, &loaded))
 	require.NotContains(t, loaded.Data, id)
 	require.NoError(t, registry.Restart(runtimeidentity.Claude))
 	client = reconnect()
 	require.Error(t, client.Call(ctx, "thread/read", map[string]any{"threadId": id, "includeTurns": true}, &ignored))
+	require.Error(t, client.Call(ctx, "thread/goal/get", map[string]any{"threadId": id}, &ignored))
+	require.Nil(t, goalCall(client, "thread/goal/get", fork.ID, nil)["goal"])
 	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": fork.ID, "includeTurns": true}).Turns, 2)
 	require.Equal(t, int64(2), fixture.calls.Load())
 	require.Equal(t, before, registry.entries[runtimeidentity.Codex].Runtime.Generation())

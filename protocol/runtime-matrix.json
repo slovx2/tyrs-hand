@@ -545,7 +545,13 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "FAILURE-401",
+          "FAILURE-429",
+          "FAILURE-500",
+          "FAILURE-503",
+          "FAILURE-SSE"
+        ]
       },
       "callers": [
         "internal/codexcontrol/repository.go",
@@ -740,8 +746,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/FsChangedNotification",
@@ -1012,9 +1022,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ENTRY-001"
+        ],
         "claude-code": [
-          "CONTEXT-001"
+          "CONTEXT-001",
+          "ENTRY-001"
         ]
       },
       "callers": [
@@ -1037,8 +1050,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "ENTRY-001"
+        ],
+        "claude-code": [
+          "ENTRY-001"
+        ]
       },
       "callers": [
         "internal/appserverhub/routing.go",
@@ -1063,7 +1080,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CONTEXT-001"
+          "CONTEXT-001",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -1108,12 +1127,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "TOOLS-001",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -1275,12 +1298,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "TOOLS-001",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -2289,7 +2316,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "GOAL-001",
+          "GOAL-003"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2300,6 +2330,27 @@
       }
     },
     {
+      "method": "thread/goal/cleared",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "GOAL-001",
+          "GOAL-003"
+        ]
+      },
+      "callers": [
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadGoalClearedNotification",
+        "response": null
+      }
+    },
+    {
       "method": "thread/goal/get",
       "engines": {
         "codex": "required",
@@ -2307,7 +2358,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "GOAL-001",
+          "GOAL-003"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2325,7 +2379,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "GOAL-001",
+          "GOAL-003"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2333,6 +2390,27 @@
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadGoalSetParams",
         "response": "v2/ThreadGoalSetResponse.json"
+      }
+    },
+    {
+      "method": "thread/goal/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "GOAL-001",
+          "GOAL-003"
+        ]
+      },
+      "callers": [
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadGoalUpdatedNotification",
+        "response": null
       }
     },
     {
@@ -2502,11 +2580,15 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -2657,13 +2739,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "HISTORY-003",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -2715,8 +2801,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "EVENTS-003"
+        ],
+        "claude-code": [
+          "EVENTS-003",
+          "EVENTS-002"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadStatusChangedNotification",
@@ -2734,8 +2825,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "EVENTS-003"
+        ],
+        "claude-code": [
+          "EVENTS-003",
+          "EVENTS-002"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadTokenUsageUpdatedNotification",
@@ -2921,12 +3017,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -2976,12 +3076,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "SUBMIT-001",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [
@@ -3005,12 +3109,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-003"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "HISTORY-002",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-003",
+          "EVENTS-002"
         ]
       },
       "callers": [

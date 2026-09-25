@@ -280,26 +280,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			} `json:"turn"`
 		}
 		require.NoError(t, client.Call(ctx, "turn/start", map[string]any{"threadId": threads[engine], "clientUserMessageId": "same-message-id", "input": []map[string]any{{"type": "text", "text": "hello", "text_elements": []any{}}}}, &started))
-		completed := false
-		for !completed {
-			select {
-			case <-ctx.Done():
-				t.Fatal("真实模型链路超时")
-			case event := <-subscription.Events():
-				if event.Method == "turn/completed" {
-					var result struct {
-						Turn struct {
-							ID, Status string
-							Error      any
-						} `json:"turn"`
-					}
-					require.NoError(t, json.Unmarshal(event.Params, &result))
-					require.Equal(t, started.Turn.ID, result.Turn.ID)
-					require.Equal(t, "completed", result.Turn.Status, "%v", result.Turn.Error)
-					completed = true
-				}
-			}
-		}
+		verifyRuntimeTurnEvents(t, ctx, client, subscription, engine, threads[engine], started.Turn.ID)
 	}
 	// 手机使用正式 Go SSH Transport，再接入已由桌面创建的同一 Claude Thread。
 	// 模拟控制台更新后的原生文件，下一轮 SDK 必须读取新认证，不能使用缓存密钥。
