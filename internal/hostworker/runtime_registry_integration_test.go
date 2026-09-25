@@ -45,6 +45,10 @@ func TestRuntimeTurnControlRealSSHBothEngines(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "turn-control")
 }
 
+func TestRuntimeMcpRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "mcp")
+}
+
 // macOS 不允许叠加 sandbox-exec。此用例仅调用独立 command RPC，不创建 Turn，
 // 用真实运行时的 OS 沙箱验证文件和网络限制；模型请求数必须始终为零。
 func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
@@ -54,6 +58,7 @@ func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
 func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	commandPermissions, historyOnly, sessionOnly := mode == "command-permissions", mode == "history", mode == "session"
 	turnControlOnly := mode == "turn-control"
+	mcpOnly := mode == "mcp"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -71,6 +76,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	history := &runtimeHistoryFixture{t: t, root: root}
 	lifecycle := &runtimeSessionFixture{started: make(chan struct{}), release: make(chan struct{})}
 	turnControl := newRuntimeTurnControlFixture()
+	mcp := &runtimeMcpFixture{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -89,6 +95,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if mcpOnly {
+				require.Equal(t, runtimeidentity.Claude, engine, "MCP 回调不能调用另一个引擎")
+				mcp.model(t, w, request, body)
+				return
+			}
 			if turnControlOnly {
 				turnControl.model(t, w, request, engine, body)
 				return
@@ -227,7 +238,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			require.Equal(t, entry.Runtime.Info().CLISHA256, live.CLISHA256)
 			require.False(t, live.ReleaseReady)
 		}
-		if historyOnly || sessionOnly || turnControlOnly {
+		if historyOnly || sessionOnly || turnControlOnly || mcpOnly {
 			continue
 		}
 		if commandPermissions {
@@ -252,6 +263,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if mcpOnly {
+		verifyRuntimeMcpElicitation(t, ctx, registry, clients[runtimeidentity.Claude])
+		require.Equal(t, int64(2), modelCalls.Load(), "只能请求模型工具调用及一次结果续写")
+		return
 	}
 	if turnControlOnly {
 		for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude} {

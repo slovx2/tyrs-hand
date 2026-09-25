@@ -1462,7 +1462,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "MCP-004",
+          "MCP-005"
+        ]
       },
       "schema": {
         "params": "ServerRequest.json#/definitions/McpServerElicitationRequestParams",
@@ -2070,7 +2073,9 @@
         "codex": [],
         "claude-code": [
           "APPROVAL-003",
-          "EVENTS-004"
+          "EVENTS-004",
+          "MCP-004",
+          "MCP-005"
         ]
       },
       "callers": [

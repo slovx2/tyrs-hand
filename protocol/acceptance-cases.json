@@ -13,7 +13,7 @@
     { "id": "APPROVAL", "description": "多端仲裁、取消、超时、重启失效与真实用户回答", "cases": ["APPROVAL-001", "APPROVAL-002", "APPROVAL-003", "APPROVAL-004"] },
     { "id": "PERMISSION", "description": "实际文件写入、工作区边界、网络和审批权限变更", "cases": ["PERMISSION-read-only", "PERMISSION-plan", "PERMISSION-001", "PERMISSION-command"] },
     { "id": "TOOLS", "description": "所有业务工具的成功副作用、错误、拒绝和取消", "cases": ["TOOLS-001", "TOOLS-002"] },
-    { "id": "MCP", "description": "HTTP、stdio、资源、elicitation、配置隔离及 Skills", "cases": ["MCP-001", "MCP-002", "MCP-003"] },
+    { "id": "MCP", "description": "HTTP、stdio、资源、elicitation、配置隔离及 Skills；004 原生回答与取消副作用；005 双 SSH 首次回答仲裁", "cases": ["MCP-001", "MCP-002", "MCP-003", "MCP-004", "MCP-005"] },
     { "id": "FILES", "description": "文件 RPC、watch、进程、上传下载与边界", "cases": ["FILES-001", "FILES-002", "FILES-003", "FILES-004", "FILES-005"] },
     { "id": "CHANNELS", "description": "桌面、手机、Discord 三端接力与身份投影；002 单独验证 SSH 与真实 Control", "cases": ["CHANNELS-001", "CHANNELS-002"] },
     { "id": "AUTOMATION", "description": "创建、修改、暂停、到期、重试和结果继承引擎；002 验证原生工具创建及 Worker 重启后执行", "cases": ["AUTOMATION-001", "AUTOMATION-002"] },
