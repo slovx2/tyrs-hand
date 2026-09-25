@@ -144,6 +144,11 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 					(*request.Namespace == "tyrs_hand" || request.Tool == "publish_branch") {
 					return codex.TextToolResult("Workspace 绑定已失效，Control 工具不可用", false), nil
 				}
+				if request.Namespace != nil && (*request.Namespace == "tyrs_hand" || request.Tool == "publish_branch") {
+					if err := state.reporter.waitControlRegistration(ctx); err != nil {
+						return codex.ToolCallResult{}, err
+					}
+				}
 				return c.processor.handleRemoteHostDiscordTool(ctx, runtime.task,
 					runtime.runtime, request)
 			case <-ctx.Done():
@@ -164,6 +169,9 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 					}
 					if !c.controlEnabled() {
 						return nil, errors.New("当前 Workspace 绑定已失效，请在桌面端回答")
+					}
+					if err := state.reporter.waitControlRegistration(ctx); err != nil {
+						return nil, err
 					}
 					return c.processor.handleRemoteInteractive(ctx, runtime.task,
 						c.workspace.currentGeneration(), request)
@@ -283,7 +291,9 @@ func (c *desktopController) CompleteCall(_ context.Context, call appserverhub.Ca
 		return result, cause
 	}
 	if state, ok := plan.State.(*desktopThreadCallState); ok {
-		c.startThreadRegistration(state.request, result)
+		if err := c.startThreadRegistration(state.request, result); err != nil {
+			return result, fmt.Errorf("持久化原生 Thread 登记失败: %w", err)
+		}
 	}
 	switch call.Method {
 	case "thread/start", "thread/fork":
@@ -628,6 +638,9 @@ func (c *desktopController) controlTimeout() time.Duration {
 }
 
 func retryableControlError(err error) bool {
+	if errors.Is(err, errInvalidThreadRegistration) {
+		return false
+	}
 	var response *workerprotocol.HTTPError
 	if !errors.As(err, &response) {
 		return true
@@ -849,7 +862,7 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 			if len(images) > 0 {
 				c.syncDesktopImages(state.task, append([]workerprotocol.DesktopImage(nil), images...))
 			}
-			state.reporter.finishRegistration()
+			state.reporter.confirmRegistration()
 			state.reporter.Flush()
 			return
 		}
@@ -1329,14 +1342,15 @@ func callScope(raw json.RawMessage) (string, string) {
 }
 
 type desktopEventReporter struct {
-	ctx              context.Context
-	processor        *Processor
-	task             *workerprotocol.Task
-	journal          *runJournal
-	lastFlush        time.Time
-	flushStop        chan struct{}
-	flushClose       sync.Once
-	registrationDone chan struct{}
+	ctx                   context.Context
+	processor             *Processor
+	task                  *workerprotocol.Task
+	journal               *runJournal
+	lastFlush             time.Time
+	flushStop             chan struct{}
+	flushClose            sync.Once
+	registrationDone      chan struct{}
+	registrationConfirmed bool
 }
 
 // desktopEventFlushInterval 是 Desktop 事件上报的去抖窗口。

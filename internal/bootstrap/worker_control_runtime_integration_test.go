@@ -28,6 +28,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Second)
 	defer cancel()
 	var requestedTool, toolResultSeen, followupSeen atomic.Bool
+	firstToolRequested := make(chan struct{})
 	var mu sync.Mutex
 	requests := map[runtimeidentity.Engine][]json.RawMessage{}
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -64,15 +65,28 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if strings.Contains(string(payload.Messages), "tool_result") && strings.Contains(string(payload.Messages), "CONTROL_AUTOMATION") {
-				toolResultSeen.Store(true)
-			}
 			var messages []struct {
 				Role    string
 				Content json.RawMessage
 			}
 			if json.Unmarshal(payload.Messages, &messages) == nil {
 				for _, message := range messages {
+					var blocks []struct {
+						Type      string          `json:"type"`
+						ToolUseID string          `json:"tool_use_id"`
+						IsError   bool            `json:"is_error"`
+						Content   json.RawMessage `json:"content"`
+					}
+					if json.Unmarshal(message.Content, &blocks) == nil {
+						for _, block := range blocks {
+							if block.Type == "tool_result" && block.ToolUseID == "toolu_control" {
+								if block.IsError {
+									t.Error("真实调度工具返回失败，不能仅在原始 tool_use 参数中寻找任务名")
+								}
+								toolResultSeen.Store(!block.IsError && strings.Contains(string(block.Content), "CONTROL_AUTOMATION"))
+							}
+						}
+					}
 					var text string
 					if message.Role == "user" && json.Unmarshal(message.Content, &text) == nil &&
 						strings.Contains(text, "<scheduled_task>") && strings.Contains(text, "CONTROL_AUTOMATION_FOLLOWUP") &&
@@ -83,6 +97,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 			}
 			for _, tool := range payload.Tools {
 				if strings.Contains(tool.Description, "[tyrs_hand.automation_update]") && requestedTool.CompareAndSwap(false, true) {
+					close(firstToolRequested)
 					bootstrapClaudeStart(w)
 					bootstrapEvent(w, "content_block_start", map[string]any{"index": 0, "content_block": map[string]any{
 						"type": "tool_use", "id": "toolu_control", "name": tool.Name, "input": map[string]any{}}})
@@ -96,7 +111,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 		bootstrapModelText(w, engine == runtimeidentity.Claude)
 	}))
 	t.Cleanup(model.Close)
-	f := newControlRuntimeFixture(t, ctx, model.URL)
+	f := newControlRuntimeFixture(t, ctx, model.URL, firstToolRequested)
 	startWorker := func() (*WorkerApp, func()) {
 		workerCtx, cancelWorker := context.WithCancel(ctx)
 		app, cleanup, err := InitializeWorker(workerCtx, f.cfg)

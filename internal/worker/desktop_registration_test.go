@@ -96,3 +96,39 @@ func TestDesktopReporterDefersEventsAndTerminalUntilRegistration(t *testing.T) {
 	require.EqualValues(t, 1, events.Load())
 	require.EqualValues(t, 1, completed.Load())
 }
+
+func TestControlToolWaitsForConfirmedRegistration(t *testing.T) {
+	for _, outcome := range []string{"confirmed", "failed", "canceled"} {
+		t.Run(outcome, func(t *testing.T) {
+			reporter := &desktopEventReporter{journal: &runJournal{}}
+			reporter.holdRegistration()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- reporter.waitControlRegistration(ctx) }()
+			select {
+			case err := <-done:
+				t.Fatalf("登记未确认时提前放行工具: %v", err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			switch outcome {
+			case "confirmed":
+				reporter.confirmRegistration()
+			case "failed":
+				reporter.finishRegistration()
+			case "canceled":
+				cancel()
+			}
+			select {
+			case err := <-done:
+				if outcome == "confirmed" {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("登记结果没有解除等待")
+			}
+		})
+	}
+}

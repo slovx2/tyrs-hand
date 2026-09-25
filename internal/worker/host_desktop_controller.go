@@ -206,7 +206,7 @@ func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
 		}
 		integration, _ := c.snapshot()
 		if integration != nil {
-			if err := errors.Join(c.processor.applyPendingThreadNames(ctx), c.processor.applyPendingThreadLifecycles(ctx)); err != nil && ctx.Err() == nil {
+			if err := errors.Join(integration.recoverThreadRegistrations(), c.processor.applyPendingThreadNames(ctx), c.processor.applyPendingThreadLifecycles(ctx)); err != nil && ctx.Err() == nil {
 				c.processor.logger.Warn("同步宿主 Desktop Thread 状态失败", zap.Error(err))
 			}
 		}

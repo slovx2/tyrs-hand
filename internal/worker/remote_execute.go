@@ -50,14 +50,30 @@ func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 		logger.Error("持久化恢复后的 Run 状态失败", zap.Error(err))
 		return
 	}
-	if len(journal.PendingEvents) > 0 {
-		r.flushEvents(ctx, journal, logger)
-	}
 	if journal.Result != nil || journal.Failure != "" {
 		r.releaseRun(journal)
 		releaseSlot()
 		r.deliverTerminal(ctx, journal, logger)
 		return
+	}
+	if journal.DesktopRequest != nil {
+		// 重启丢失了首次提交的内存屏障。完成持久化身份的补登记后才允许恢复观察和上传事件。
+		for {
+			err := r.syncRunState(ctx, journal, commands, logger)
+			if err == nil {
+				break
+			}
+			if !retryableControlError(err) {
+				abandonRunJournal(r.journals, journal)
+				return
+			}
+			if !waitScheduledControlRetry(ctx, r.journals, journal, logger, err) {
+				return
+			}
+		}
+	}
+	if len(journal.PendingEvents) > 0 {
+		r.flushEvents(ctx, journal, logger)
 	}
 
 	processCtx, cancel := context.WithCancel(ctx)
@@ -126,6 +142,7 @@ func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 ) error {
 	journal.mu.Lock()
 	task := journal.Task
+	terminal := journal.Result != nil || journal.Failure != ""
 	var desktopRequest *workerprotocol.DesktopTurnPrepareRequest
 	if journal.DesktopRequest != nil {
 		copyRequest := *journal.DesktopRequest
@@ -133,6 +150,11 @@ func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 	}
 	decisions := append([]appliedInputDecision(nil), journal.AppliedInputs...)
 	journal.mu.Unlock()
+	if desktopRequest != nil {
+		if err := r.restoreDesktopThread(ctx, *desktopRequest); err != nil {
+			return err
+		}
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
 	var err error
 	if desktopRequest != nil {
@@ -145,6 +167,23 @@ func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 		logger.Warn("补报 Worker 本地 Run 失败，本地任务继续运行", zap.Error(err))
 		return err
 	}
+	if desktopRequest != nil {
+		if desktopRequest.TurnID == "" || (task.Claimed.ConfirmedTurnID != "" && task.Claimed.ConfirmedTurnID != desktopRequest.TurnID) {
+			return errors.New("Desktop Journal 原生 Turn ID 缺失或冲突，禁止推断确认结果")
+		}
+		requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
+		err = r.client.RecordSubmission(requestCtx, &task, desktopRequest.TurnID)
+		cancel()
+		if err != nil {
+			return err
+		}
+		requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
+		err = r.client.ConfirmTurn(requestCtx, &task, desktopRequest.TurnID)
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
 	for _, decision := range decisions {
 		decisionTask := task
 		decisionTask.Claimed.ID = decision.InputID
@@ -155,6 +194,10 @@ func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 			logger.Warn("补报 Worker 本地输入决议失败", zap.Error(err))
 			return err
 		}
+	}
+	// 已完成的 Desktop Journal 只补报登记、事件和终态，不再对终态 Run 发送运行心跳。
+	if desktopRequest != nil && terminal {
+		return nil
 	}
 	requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
 	response, err := r.client.RunHeartbeat(requestCtx, &task)
@@ -254,6 +297,12 @@ func (r *runtimeExecutor) deliverTerminal(ctx context.Context, journal *runJourn
 				logger.Warn("Desktop Run 补登记被 Control 永久拒绝，停止补报", zap.Error(syncErr))
 				abandonRunJournal(r.journals, journal)
 				return
+			}
+			if journal.DesktopRequest != nil && syncErr != nil {
+				if !waitScheduledControlRetry(ctx, r.journals, journal, logger, syncErr) {
+					return
+				}
+				continue
 			}
 		}
 		flushErr := r.flushEvents(ctx, journal, logger)

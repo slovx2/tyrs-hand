@@ -140,7 +140,11 @@ func (s *journalStore) save(journal *runJournal) error {
 	if err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(s.directory, ".journal-*")
+	return writeJournalFile(s.directory, s.path(journal.Task.Claimed.RunID), data)
+}
+
+func writeJournalFile(directory, target string, data []byte) error {
+	temporary, err := os.CreateTemp(directory, ".journal-*")
 	if err != nil {
 		return err
 	}
@@ -161,10 +165,10 @@ func (s *journalStore) save(journal *runJournal) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(name, s.path(journal.Task.Claimed.RunID)); err != nil {
+	if err := os.Rename(name, target); err != nil {
 		return err
 	}
-	return syncDirectory(s.directory)
+	return syncDirectory(directory)
 }
 
 func (s *journalStore) remove(runID uuid.UUID) error {

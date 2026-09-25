@@ -39,7 +39,7 @@ type controlRuntimeFixture struct {
 	signer ssh.Signer
 }
 
-func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string) controlRuntimeFixture {
+func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string, firstToolRequested <-chan struct{}) controlRuntimeFixture {
 	t.Helper()
 	bin, adapter := os.Getenv("TYRS_HAND_TEST_CODEX_BIN"), os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN")
 	require.NotEmpty(t, bin, "必须使用固定 Codex CLI")
@@ -63,6 +63,14 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	router := control.Router()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/worker/v1/desktop-thread-requests/") && strings.HasSuffix(r.URL.Path, "/complete") {
+			if r.Header.Get(workerprotocol.EngineHeader) == "claude-code" {
+				// 先让真实模型请求发出工具调用，再完成登记，确定性覆盖工具快于 Control 的竞态。
+				select {
+				case <-firstToolRequested:
+				case <-r.Context().Done():
+					return
+				}
+			}
 			// 稳定覆盖“模型已完成、会话登记仍在网络中”的先后顺序，不能依赖机器快慢。
 			select {
 			case <-time.After(300 * time.Millisecond):
