@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -179,25 +180,29 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 	if err := c.conversations.PersistAttachments(ctx, &input); err != nil {
 		return err
 	}
-	var exists bool
-	if err := c.manager.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_conversations
-		WHERE guild_id = $1 AND thread_id = $2)`, c.guildID, input.ThreadID).Scan(&exists); err != nil {
-		return err
+	var engine runtimeidentity.Engine
+	lookupErr := c.manager.db.QueryRowContext(ctx, `SELECT engine FROM discord_conversations
+		WHERE guild_id = $1 AND thread_id = $2`, c.guildID, input.ThreadID).Scan(&engine)
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return lookupErr
 	}
-	if exists {
+	if lookupErr == nil {
+		if err := engine.Validate(); err != nil {
+			return err
+		}
 		err := c.conversations.Reply(ctx, input)
 		if errors.Is(err, codexcontrol.ErrControlTerminated) {
 			return NewSQLoutbox(c.manager.db).Enqueue(ctx,
 				"conversation:terminated-rejection:"+input.MessageID,
 				"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
-					"channelId": input.ThreadID, "card": terminatedControlCard(),
+					"channelId": input.ThreadID, "card": terminatedControlCard(engine),
 				}, "conversation-terminated-"+input.MessageID)
 		}
 		if errors.Is(err, codexcontrol.ErrControlArchived) {
 			return NewSQLoutbox(c.manager.db).Enqueue(ctx,
 				"conversation:archived-rejection:"+input.MessageID,
 				"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
-					"channelId": input.ThreadID, "card": archivedConversationCard(),
+					"channelId": input.ThreadID, "card": archivedConversationCard(engine),
 				}, "conversation-archived-"+input.MessageID)
 		}
 		return err
@@ -309,7 +314,7 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 				if state.Status == "completed" {
 					content = "会话已经处于可用状态。"
 				} else {
-					content = "恢复请求已提交；Codex 确认恢复后会自动解锁原 Post。"
+					content = "恢复请求已提交；运行时确认恢复后会自动解锁原 Post。"
 				}
 			}
 		}
@@ -328,7 +333,7 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 				case "waiting_for_turn":
 					content = "归档请求已提交；当前 Turn 完成后会自动归档并隐藏原 Post。"
 				default:
-					content = "归档请求已提交；Codex 确认归档后会自动锁定并隐藏原 Post。"
+					content = "归档请求已提交；运行时确认归档后会自动锁定并隐藏原 Post。"
 				}
 			}
 		}
@@ -537,7 +542,16 @@ func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, 
 	if err != nil || page >= len(timeline.Pages) {
 		return ComponentCardPayload{}, errors.New("discord 翻页目标不存在")
 	}
-	return conversationProgressCard(desired.Progress.State, timeline, page, runID.String(),
+	var engine runtimeidentity.Engine
+	err = c.manager.db.QueryRowContext(ctx, `SELECT control.engine FROM codex_turn_runs run
+		JOIN codex_thread_controls control ON control.id=run.control_id
+		JOIN discord_conversations conversation ON conversation.id=control.discord_conversation_id
+		WHERE run.id=$1 AND conversation.guild_id=$2 AND conversation.thread_id=$3`,
+		runID, guildID, channelID).Scan(&engine)
+	if err != nil {
+		return ComponentCardPayload{}, err
+	}
+	return conversationProgressCard(engine, desired.Progress.State, timeline, page, runID.String(),
 		desired.Progress.CollaborationMode, desired.Progress.Error), nil
 }
 
@@ -570,7 +584,7 @@ func (c *DisgoConnector) changeConversationMode(event *events.ComponentInteracti
 	} else if len(result.Changes) == 0 {
 		notice = "设置没有变化。"
 	} else if announceErr := c.announceConversationConfig(ctx, event.Channel().ID().String(),
-		event.ID().String(), event.User().ID.String(), result.Changes); announceErr != nil {
+		event.ID().String(), event.User().ID.String(), result.State.Engine, result.Changes); announceErr != nil {
 		notice += " 公开结果暂时发送失败。"
 	}
 	components, err := discordCardComponents(conversationModeCard(state, notice))
@@ -632,7 +646,7 @@ func (c *DisgoConnector) changeTriggerMode(event *events.ComponentInteractionCre
 	} else if len(result.Changes) == 0 {
 		notice = "设置没有变化。"
 	} else if announceErr := c.announceConversationConfig(ctx, event.Channel().ID().String(),
-		event.ID().String(), event.User().ID.String(), result.Changes); announceErr != nil {
+		event.ID().String(), event.User().ID.String(), result.State.Engine, result.Changes); announceErr != nil {
 		notice += " 公开结果暂时发送失败。"
 	}
 	components, err := discordCardComponents(conversationModeCard(state, notice))
@@ -697,16 +711,16 @@ func safeDiscordInteractionResponseError(err error) error {
 }
 
 func (c *DisgoConnector) announceConversationConfig(ctx context.Context, threadID,
-	interactionID, actorID string, changes []ConfigurationChange,
+	interactionID, actorID string, engine runtimeidentity.Engine, changes []ConfigurationChange,
 ) error {
 	if len(changes) == 0 {
 		return nil
 	}
-	botMention := "@Codex"
+	botMention := "@机器人"
 	if botID := connectorUserID(c.client); botID != 0 {
 		botMention = "<@" + botID.String() + ">"
 	}
-	content := configurationAnnouncement(actorID, botMention, changes)
+	content := configurationAnnouncement(engine, actorID, botMention, changes)
 	key := "conversation-config-result:" + interactionID
 	return NewSQLoutbox(c.manager.db).Enqueue(ctx, key, "message.create",
 		"channels/"+threadID+"/messages", map[string]any{
@@ -715,22 +729,23 @@ func (c *DisgoConnector) announceConversationConfig(ctx context.Context, threadI
 		}, key)
 }
 
-func configurationAnnouncement(actorID, botMention string, changes []ConfigurationChange) string {
-	lines := []string{"<@" + actorID + "> 已更新 Codex 设置"}
+func configurationAnnouncement(engine runtimeidentity.Engine, actorID, botMention string, changes []ConfigurationChange) string {
+	name := engineDisplayName(engine)
+	lines := []string{"<@" + actorID + "> 已更新 " + name + " 设置"}
 	for _, change := range changes {
 		switch change.Field {
 		case "trigger_mode":
 			if change.After == "discussion" {
-				lines = append(lines, "【当前为讨论模式，必须 "+botMention+" 才会触发 Codex】")
+				lines = append(lines, "【当前为讨论模式，必须 "+botMention+" 才会触发 "+name+"】")
 			} else {
-				lines = append(lines, "【当前为交互模式，发送消息会直接触发 Codex】")
+				lines = append(lines, "【当前为交互模式，发送消息会直接触发 "+name+"】")
 			}
 		case "collaboration_mode":
 			lines = append(lines, "协作模式：`"+collaborationModeLabel(change.After)+"`")
 		case "model":
 			value := change.After
 			if value == "" {
-				value = "Codex 默认"
+				value = name + " 默认"
 			}
 			lines = append(lines, "模型：`"+cardText(value, 128)+"`")
 		case "reasoning_effort":
@@ -793,7 +808,7 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 			discord.ApplicationCommandOptionSubCommand{Name: "bind", Description: "绑定 GitHub 身份"},
 			discord.ApplicationCommandOptionSubCommand{Name: "unbind", Description: "解绑 GitHub 身份"},
 		}},
-		discord.SlashCommandCreate{Name: "codex", Description: "管理当前 Codex 会话", Options: []discord.ApplicationCommandOption{
+		discord.SlashCommandCreate{Name: "codex", Description: "管理当前引擎会话", Options: []discord.ApplicationCommandOption{
 			discord.ApplicationCommandOptionSubCommand{Name: "new", Description: "选择引擎新建 Forum 帖子", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionChannel{Name: "forum", Description: "目标开发 Forum", Required: true,
 					ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildForum}},
@@ -806,10 +821,10 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 			}},
 			discord.ApplicationCommandOptionSubCommand{Name: "config", Description: "查看或调整当前会话设置"},
 			discord.ApplicationCommandOptionSubCommand{Name: "stop", Description: "停止当前会话的活动任务"},
-			discord.ApplicationCommandOptionSubCommand{Name: "archive", Description: "归档 Codex 会话并隐藏原 Post", Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionSubCommand{Name: "archive", Description: "归档会话并隐藏原 Post", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionString{Name: "post", Description: "原 Post mention 或 ID；在原 Post 内可省略"},
 			}},
-			discord.ApplicationCommandOptionSubCommand{Name: "restore", Description: "恢复已归档的 Codex 会话", Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionSubCommand{Name: "restore", Description: "恢复已归档的会话", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionString{Name: "post", Description: "原 Post mention 或 ID；在原 Post 内可省略"},
 			}},
 		}},
@@ -853,7 +868,7 @@ func (c *DisgoConnector) restoreConversationComponent(event *events.ComponentInt
 	var threadID string
 	err = c.manager.db.QueryRowContext(ctx, `SELECT thread_id FROM discord_conversations
 		WHERE id = $1 AND guild_id = $2`, conversationID, c.guildID).Scan(&threadID)
-	content := "恢复请求已提交；Codex 确认恢复后会自动解锁原 Post。"
+	content := "恢复请求已提交；运行时确认恢复后会自动解锁原 Post。"
 	if err == nil {
 		var state workerprotocol.ThreadLifecycleState
 		state, err = c.conversations.Restore(ctx, c.guildID, threadID,

@@ -46,7 +46,7 @@ func TestConversationModeSwitching(t *testing.T) {
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000499", "1001")
-	require.ErrorContains(t, err, "不是 Codex 会话 Post")
+	require.ErrorContains(t, err, "不是会话 Post")
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
 		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000401", MessageID: "100000000000000402",
@@ -1505,7 +1505,7 @@ func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) 
 		WHERE projection.guild_id=$1 AND projection.projection_key=$2`, testGuildID,
 		projectionKey).Scan(&desiredPayload, &operationType))
 	require.Equal(t, "message.update", operationType)
-	require.Contains(t, string(desiredPayload), `"formatVersion": 5`)
+	require.Contains(t, string(desiredPayload), `"formatVersion": 6`)
 	require.Contains(t, string(desiredPayload), "项动态")
 	require.NotContains(t, string(desiredPayload), "条更新")
 }
@@ -1536,7 +1536,7 @@ func TestReconcileConversationProgressCardsUpdatesOrphanedRun(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload::text
 		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
 		testGuildID, projectionKey).Scan(&desiredPayload))
-	require.Contains(t, desiredPayload, `"formatVersion": 5`)
+	require.Contains(t, desiredPayload, `"formatVersion": 6`)
 	require.NotContains(t, desiredPayload, `"footer"`)
 	var outboxStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox

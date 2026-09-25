@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"regexp"
 	"strings"
 	"testing"
@@ -33,7 +34,7 @@ func TestPreserveTerminalConversationProjectionOnlyChangesStatus(t *testing.T) {
 		},
 	}
 
-	card, progress, preserved := preserveTerminalConversationProjection(
+	card, progress, preserved := preserveTerminalConversationProjection(runtimeidentity.Codex,
 		ConversationCanceled, "本轮已停止。", runID, "default", existing)
 	require.True(t, preserved)
 	require.Equal(t, "⏹️ Codex · 已停止", card.Header)
@@ -47,7 +48,7 @@ func TestPreserveTerminalConversationProjectionOnlyChangesStatus(t *testing.T) {
 	require.Nil(t, progress.Error)
 
 	codexError := &ComponentErrorPayload{Message: "模型不可用"}
-	card, progress, preserved = preserveTerminalConversationProjection(
+	card, progress, preserved = preserveTerminalConversationProjection(runtimeidentity.Codex,
 		ConversationFailed, "本轮处理未完成。", runID, "default", existing, codexError)
 	require.True(t, preserved)
 	require.Equal(t, "❌ Codex · 处理失败", card.Header)
@@ -219,22 +220,24 @@ func TestConversationReplyModeUsesRunSnapshot(t *testing.T) {
 	conversationID, runID := uuid.New(), uuid.New()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT conversation.guild_id, run.collaboration_mode")).
 		WithArgs(runID, conversationID, "thread-1").
-		WillReturnRows(sqlmock.NewRows([]string{"guild_id", "collaboration_mode"}).
-			AddRow("guild-1", "plan"))
-	guildID, mode, err := conversationReplyMode(context.Background(), db,
+		WillReturnRows(sqlmock.NewRows([]string{"guild_id", "collaboration_mode", "engine"}).
+			AddRow("guild-1", "plan", "claude-code"))
+	guildID, mode, engine, err := conversationReplyIdentity(context.Background(), db,
 		conversationID, "thread-1", runID)
 	require.NoError(t, err)
 	require.Equal(t, "guild-1", guildID)
+	require.Equal(t, runtimeidentity.Claude, engine)
 	require.Equal(t, "plan", mode)
 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT guild_id, collaboration_mode")).
 		WithArgs(conversationID, "thread-1").
-		WillReturnRows(sqlmock.NewRows([]string{"guild_id", "collaboration_mode"}).
-			AddRow("guild-1", "default"))
-	guildID, mode, err = conversationReplyMode(context.Background(), db,
+		WillReturnRows(sqlmock.NewRows([]string{"guild_id", "collaboration_mode", "engine"}).
+			AddRow("guild-1", "default", "claude-code"))
+	guildID, mode, engine, err = conversationReplyIdentity(context.Background(), db,
 		conversationID, "thread-1", uuid.Nil)
 	require.NoError(t, err)
 	require.Equal(t, "guild-1", guildID)
+	require.Equal(t, runtimeidentity.Claude, engine)
 	require.Equal(t, "default", mode)
 	mock.ExpectClose()
 }
@@ -331,7 +334,7 @@ func TestExpireConversationPlanCardsPropagatesDatabaseErrors(t *testing.T) {
 
 func TestPlanExecutionCards(t *testing.T) {
 	runID := uuid.New()
-	completed := planCompletedCard(runID)
+	completed := planCompletedCard(runtimeidentity.Codex, runID)
 	require.Equal(t, "📋 Codex · Plan 已完成", completed.Header)
 	require.Len(t, completed.Buttons, 1)
 	require.Equal(t, planExecuteButtonPrefix+runID.String(), completed.Buttons[0].CustomID)
@@ -366,9 +369,9 @@ func TestProjectConversationStatusUsesSingleProjectionOutboxKey(t *testing.T) {
 	})
 	conversationID := uuid.New()
 	projectionKey := "conversation:" + conversationID.String() + ":message:message-1"
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT collaboration_mode FROM discord_conversations")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT collaboration_mode, engine FROM discord_conversations")).
 		WithArgs(conversationID).
-		WillReturnRows(sqlmock.NewRows([]string{"collaboration_mode"}).AddRow("default"))
+		WillReturnRows(sqlmock.NewRows([]string{"collaboration_mode", "engine"}).AddRow("default", "codex"))
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO discord_projections")).
 		WithArgs("guild-1", projectionKey, "thread-1", sqlmock.AnyArg()).

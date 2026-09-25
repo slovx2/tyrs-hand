@@ -7,12 +7,13 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
-func lifecycleCard(conversationID uuid.UUID, revision int64,
+func lifecycleCard(engine runtimeidentity.Engine, conversationID uuid.UUID, revision int64,
 ) ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorGray,
-		Header: "🔒 Codex · 会话已归档",
+		Header: "🔒 " + engineDisplayName(engine) + " · 会话已归档",
 		Body:   "该会话已关闭，历史消息仍然保留。",
 		Buttons: []ComponentButtonPayload{{
 			Label:    "恢复会话",
@@ -33,12 +34,13 @@ func EnqueueConversationLifecycleTx(ctx context.Context, tx *sql.Tx,
 ) error {
 	var threadID, state, cardMessageID string
 	var revision int64
+	var engine runtimeidentity.Engine
 	err := tx.QueryRowContext(ctx, `SELECT thread_id, lifecycle_state,
 		lifecycle_revision,
-		COALESCE(lifecycle_card_message_id,'')
+		COALESCE(lifecycle_card_message_id,''), engine
 		FROM discord_conversations WHERE id = $1 FOR UPDATE`,
 		conversationID).Scan(&threadID, &state, &revision,
-		&cardMessageID)
+		&cardMessageID, &engine)
 	if err != nil {
 		return err
 	}
@@ -54,7 +56,7 @@ func EnqueueConversationLifecycleTx(ctx context.Context, tx *sql.Tx,
 	if state == "active" {
 		return enqueueThreadLifecycle(ctx, tx, conversationID, threadID, state, revision)
 	}
-	card := lifecycleCard(conversationID, revision)
+	card := lifecycleCard(engine, conversationID, revision)
 	cardKey := "conversation-lifecycle-card:" + conversationID.String()
 	cardPayload := map[string]any{
 		"channelId": threadID, "card": card, "conversationId": conversationID.String(),

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 // ResolveConversationStatusBoundaryTx 用 Codex userMessage 事件确定 steer 前后的时间线边界。
@@ -121,8 +122,10 @@ func refreshConversationStatusCardTx(ctx context.Context, tx *sql.Tx, runID uuid
 	}
 	_ = json.Unmarshal(raw, &desired)
 	var mode, runStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT collaboration_mode, status FROM codex_turn_runs
-		WHERE id=$1`, runID).Scan(&mode, &runStatus); err != nil {
+	var engine runtimeidentity.Engine
+	if err := tx.QueryRowContext(ctx, `SELECT run.collaboration_mode, run.status, control.engine FROM codex_turn_runs run
+		JOIN codex_thread_controls control ON control.id=run.control_id
+		WHERE run.id=$1`, runID).Scan(&mode, &runStatus, &engine); err != nil {
 		return err
 	}
 	var hasLater bool
@@ -144,7 +147,7 @@ func refreshConversationStatusCardTx(ctx context.Context, tx *sql.Tx, runID uuid
 	desired.Progress.State = state
 	desired.Progress.Page = len(timeline.Pages) - 1
 	desired.Progress.CollaborationMode = mode
-	card := conversationProgressCard(state, timeline, desired.Progress.Page, runID.String(), mode,
+	card := conversationProgressCard(engine, state, timeline, desired.Progress.Page, runID.String(), mode,
 		desired.Progress.Error)
 	return updateStatusProjectionTx(ctx, tx, guildID, key,
 		map[string]any{"card": card, "progress": desired.Progress})

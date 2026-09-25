@@ -50,10 +50,15 @@ func forumEngine(ctx context.Context, db *sql.DB, forumID uuid.UUID,
 }
 
 func engineDisplayName(engine runtimeidentity.Engine) string {
-	if engine == runtimeidentity.Claude {
+	switch engine {
+	case runtimeidentity.Claude:
 		return "Claude"
+	case runtimeidentity.Codex:
+		return "Codex"
+	default:
+		// 已删除会话的孤立历史卡片不能猜测归属于哪个引擎。
+		return "运行时"
 	}
-	return "Codex"
 }
 
 func (m *Manager) SetWorkspaceForumEngine(ctx context.Context, forumID uuid.UUID, engine runtimeidentity.Engine) error {

@@ -63,11 +63,15 @@ func TestConversationProgressPageValidatesMessageAndRun(t *testing.T) {
 		WithArgs(runID, int64(0), int64(0)).
 		WillReturnRows(sqlmock.NewRows([]string{"event_type", "payload"}).
 			AddRow("item/completed", commentary))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT control.engine FROM codex_turn_runs run")).
+		WithArgs(runID, "guild", "channel").
+		WillReturnRows(sqlmock.NewRows([]string{"engine"}).AddRow("claude-code"))
 	connector := &DisgoConnector{manager: &Manager{db: db}}
 	card, err := connector.conversationProgressPage(context.Background(), "guild", "channel",
 		"message", runID, 0)
 	require.NoError(t, err)
 	require.Contains(t, card.Header, "已完成")
+	require.Contains(t, card.Header, "Claude")
 	require.NotEmpty(t, card.Timeline)
 	require.Len(t, card.Buttons, 4)
 	require.Contains(t, card.Buttons[1].Label, "1 /")

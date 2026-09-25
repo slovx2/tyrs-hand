@@ -15,6 +15,7 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 var discordSecretPattern = regexp.MustCompile(`(?i)\b(?:sk|ghp|github_pat)_[a-z0-9_-]{12,}\b|\bBearer\s+[a-z0-9._~+/-]{12,}`)
@@ -37,14 +38,16 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 ) error {
 	rawRunID := ""
 	mode := "default"
+	var engine runtimeidentity.Engine
 	var err error
 	if runID != uuid.Nil {
 		rawRunID = runID.String()
-		err = db.QueryRowContext(ctx, `SELECT collaboration_mode FROM codex_turn_runs
-			WHERE id = $1`, runID).Scan(&mode)
+		err = db.QueryRowContext(ctx, `SELECT run.collaboration_mode, control.engine FROM codex_turn_runs run
+			JOIN codex_thread_controls control ON control.id=run.control_id
+			WHERE run.id = $1`, runID).Scan(&mode, &engine)
 	} else {
-		err = db.QueryRowContext(ctx, `SELECT collaboration_mode FROM discord_conversations
-			WHERE id = $1`, conversationID).Scan(&mode)
+		err = db.QueryRowContext(ctx, `SELECT collaboration_mode, engine FROM discord_conversations
+			WHERE id = $1`, conversationID).Scan(&mode, &engine)
 	}
 	if err != nil {
 		return err
@@ -74,7 +77,7 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 		} else if err == nil {
 			var existing conversationProjectionPayload
 			if json.Unmarshal(rawExisting, &existing) == nil {
-				card, progress, preserved = preserveTerminalConversationProjection(state, detail,
+				card, progress, preserved = preserveTerminalConversationProjection(engine, state, detail,
 					rawRunID, mode, &existing, errorDetails...)
 			}
 		}
@@ -90,7 +93,7 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 			return err
 		}
 		page := len(timeline.Pages) - 1
-		card = conversationProgressCard(state, timeline, page, rawRunID, mode, errorDetails...)
+		card = conversationProgressCard(engine, state, timeline, page, rawRunID, mode, errorDetails...)
 		progress = conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
 			RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
 		if len(errorDetails) > 0 {
@@ -133,12 +136,13 @@ func ProjectConversationThinkingTx(ctx context.Context, tx *sql.Tx, guildID, thr
 	conversationID uuid.UUID, inputMessageID string,
 ) error {
 	var mode string
-	if err := tx.QueryRowContext(ctx, `SELECT collaboration_mode FROM discord_conversations
-		WHERE id = $1`, conversationID).Scan(&mode); err != nil {
+	var engine runtimeidentity.Engine
+	if err := tx.QueryRowContext(ctx, `SELECT collaboration_mode, engine FROM discord_conversations
+		WHERE id = $1`, conversationID).Scan(&mode, &engine); err != nil {
 		return err
 	}
 	timeline := ConversationTimeline{Duration: time.Second}
-	card := conversationProgressCard(ConversationRunning, timeline, 0, "", mode)
+	card := conversationProgressCard(engine, ConversationRunning, timeline, 0, "", mode)
 	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
 		State: ConversationRunning, CollaborationMode: mode}
 	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
@@ -255,7 +259,7 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	}
 	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
 	payload := conversationReplyPayload(threadID, content, mentionUserID)
-	guildID, mode, err := conversationReplyMode(ctx, db, conversationID, threadID, runID)
+	guildID, mode, engine, err := conversationReplyIdentity(ctx, db, conversationID, threadID, runID)
 	if err != nil {
 		return err
 	}
@@ -263,14 +267,14 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	if mode != "plan" &&
 		utf8.RuneCountInString(textValue(payload["content"])) <= discordReplyMessageBudget {
 		return projectConversationReplyPages(ctx, db, guildID, threadID, key, mentionUserID,
-			[]string{content}, actionablePlan, runID)
+			[]string{content}, actionablePlan, runID, engine)
 	}
 	chunks := splitConversationReply(content, guildID, threadID, mentionUserID)
 	if len(chunks) == 0 || (mode != "plan" && len(chunks) < 2) {
 		return errors.New("discord 长回复分片失败")
 	}
 	return projectConversationReplyPages(ctx, db, guildID, threadID, key, mentionUserID,
-		chunks, actionablePlan, runID)
+		chunks, actionablePlan, runID, engine)
 }
 
 // ProjectConversationReplyRegenerating 原位失效旧结果和 Plan 按钮。
@@ -278,17 +282,18 @@ func ProjectConversationReplyRegenerating(ctx context.Context, db *sql.DB, threa
 	conversationID uuid.UUID, inputMessageID string,
 ) error {
 	var guildID string
-	if err := db.QueryRowContext(ctx, `SELECT guild_id FROM discord_conversations
-		WHERE id=$1 AND thread_id=$2`, conversationID, threadID).Scan(&guildID); err != nil {
+	var engine runtimeidentity.Engine
+	if err := db.QueryRowContext(ctx, `SELECT guild_id, engine FROM discord_conversations
+		WHERE id=$1 AND thread_id=$2`, conversationID, threadID).Scan(&guildID, &engine); err != nil {
 		return err
 	}
 	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
 	return projectConversationReplyPages(ctx, db, guildID, threadID, key, "",
-		[]string{"消息已编辑，正在重新生成。"}, false, uuid.Nil)
+		[]string{"消息已编辑，正在重新生成。"}, false, uuid.Nil, engine)
 }
 
 func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, threadID,
-	baseKey, mentionUserID string, chunks []string, actionablePlan bool, runID uuid.UUID,
+	baseKey, mentionUserID string, chunks []string, actionablePlan bool, runID uuid.UUID, engine runtimeidentity.Engine,
 ) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -308,14 +313,14 @@ func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, thr
 		if page < len(chunks) {
 			content := chunks[page]
 			if len(chunks) > 1 {
-				content = fmt.Sprintf("**Codex 回复 · %d/%d**\n%s", page+1, len(chunks), content)
+				content = fmt.Sprintf("**%s 回复 · %d/%d**\n%s", engineDisplayName(engine), page+1, len(chunks), content)
 			}
 			payload = conversationReplyPayload(threadID, content, "")
 			if page == 0 && mentionUserID != "" {
 				payload = conversationReplyPayload(threadID, content, mentionUserID)
 			}
 		} else {
-			payload["card"] = planCompletedCard(runID)
+			payload["card"] = planCompletedCard(engine, runID)
 		}
 		var messageID string
 		if err := tx.QueryRowContext(ctx, `INSERT INTO discord_projections
@@ -389,28 +394,29 @@ func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, thr
 	return tx.Commit()
 }
 
-func conversationReplyMode(ctx context.Context, db *sql.DB, conversationID uuid.UUID,
+func conversationReplyIdentity(ctx context.Context, db *sql.DB, conversationID uuid.UUID,
 	threadID string, runID uuid.UUID,
-) (string, string, error) {
+) (string, string, runtimeidentity.Engine, error) {
 	var guildID, mode string
+	var engine runtimeidentity.Engine
 	if runID == uuid.Nil {
-		err := db.QueryRowContext(ctx, `SELECT guild_id, collaboration_mode
+		err := db.QueryRowContext(ctx, `SELECT guild_id, collaboration_mode, engine
 			FROM discord_conversations WHERE id = $1 AND thread_id = $2`,
-			conversationID, threadID).Scan(&guildID, &mode)
-		return guildID, mode, err
+			conversationID, threadID).Scan(&guildID, &mode, &engine)
+		return guildID, mode, engine, err
 	}
-	err := db.QueryRowContext(ctx, `SELECT conversation.guild_id, run.collaboration_mode
+	err := db.QueryRowContext(ctx, `SELECT conversation.guild_id, run.collaboration_mode, control.engine
 		FROM codex_turn_runs run
 		JOIN codex_thread_controls control ON control.id = run.control_id
 		JOIN discord_conversations conversation
 			ON conversation.id = control.discord_conversation_id
 		WHERE run.id = $1 AND conversation.id = $2 AND conversation.thread_id = $3`,
-		runID, conversationID, threadID).Scan(&guildID, &mode)
-	return guildID, mode, err
+		runID, conversationID, threadID).Scan(&guildID, &mode, &engine)
+	return guildID, mode, engine, err
 }
 
-func planCompletedCard(runID uuid.UUID) ComponentCardPayload {
-	return ComponentCardPayload{AccentColor: cardColorGreen, Header: "📋 Codex · Plan 已完成",
+func planCompletedCard(engine runtimeidentity.Engine, runID uuid.UUID) ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorGreen, Header: "📋 " + engineDisplayName(engine) + " · Plan 已完成",
 		Buttons: []ComponentButtonPayload{{Label: "执行计划",
 			CustomID: "codex-plan-execute:" + runID.String(), Style: "primary"}}}
 }
@@ -629,7 +635,7 @@ type conversationProjectionPayload struct {
 }
 
 // preserveTerminalConversationProjection 终止 Run 时只切换状态展示，保留已投影的过程内容。
-func preserveTerminalConversationProjection(state ConversationProgress, detail, runID, mode string,
+func preserveTerminalConversationProjection(engine runtimeidentity.Engine, state ConversationProgress, detail, runID, mode string,
 	existing *conversationProjectionPayload, errorDetails ...*ComponentErrorPayload,
 ) (ComponentCardPayload, conversationProgressPayload, bool) {
 	if (state != ConversationCanceled && state != ConversationFailed) || existing == nil ||
@@ -643,7 +649,7 @@ func preserveTerminalConversationProjection(state ConversationProgress, detail, 
 	progress.Summary = detail
 	progress.CollaborationMode = mode
 	card := existing.Card
-	card.Header, card.AccentColor = conversationProgressCardPresentation(state)
+	card.Header, card.AccentColor = conversationProgressCardPresentation(engine, state)
 	if state == ConversationCanceled {
 		progress.Error = nil
 		card.Error = nil
@@ -656,7 +662,7 @@ func preserveTerminalConversationProjection(state ConversationProgress, detail, 
 	return card, progress, true
 }
 
-const conversationProgressFormatVersion = 5
+const conversationProgressFormatVersion = 6
 
 type conversationQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -798,6 +804,7 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		return err
 	}
 	runID := uuid.Nil
+	var engine runtimeidentity.Engine
 	if desired.Progress.RunID != "" {
 		parsed, err := uuid.Parse(desired.Progress.RunID)
 		if err != nil {
@@ -806,9 +813,9 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		runID = parsed
 		var runStatus, mode string
 		var codexErrorJSON []byte
-		err = db.QueryRowContext(ctx, `SELECT status, collaboration_mode, codex_error
-			FROM codex_turn_runs WHERE id = $1`, runID).
-			Scan(&runStatus, &mode, &codexErrorJSON)
+		err = db.QueryRowContext(ctx, `SELECT run.status, run.collaboration_mode, run.codex_error, control.engine
+			FROM codex_turn_runs run JOIN codex_thread_controls control ON control.id=run.control_id
+			WHERE run.id = $1`, runID).Scan(&runStatus, &mode, &codexErrorJSON, &engine)
 		if errors.Is(err, sql.ErrNoRows) {
 			runID = uuid.Nil
 		} else if err != nil {
@@ -829,14 +836,17 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 			desired.Progress.Summary = "本轮处理未完成。"
 		}
 	}
-	if desired.Progress.CollaborationMode == "" {
+	if runID == uuid.Nil {
 		parts := strings.Split(projectionKey, ":")
 		if len(parts) >= 2 {
 			conversationID, parseErr := uuid.Parse(parts[1])
 			if parseErr == nil {
-				_ = db.QueryRowContext(ctx, `SELECT collaboration_mode
+				err := db.QueryRowContext(ctx, `SELECT collaboration_mode, engine
 					FROM discord_conversations WHERE id = $1`, conversationID).
-					Scan(&desired.Progress.CollaborationMode)
+					Scan(&desired.Progress.CollaborationMode, &engine)
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return err
+				}
 			}
 		}
 	}
@@ -850,7 +860,7 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		}
 	}
 	var err error
-	card, terminalProgress, preserved := preserveTerminalConversationProjection(desired.Progress.State,
+	card, terminalProgress, preserved := preserveTerminalConversationProjection(engine, desired.Progress.State,
 		desired.Progress.Summary, desired.Progress.RunID, desired.Progress.CollaborationMode,
 		&desired, desired.Progress.Error)
 	if !preserved {
@@ -866,7 +876,7 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		}
 		desired.Progress.FormatVersion = conversationProgressFormatVersion
 		desired.Progress.Page = len(timeline.Pages) - 1
-		card = conversationProgressCard(desired.Progress.State, timeline, desired.Progress.Page,
+		card = conversationProgressCard(engine, desired.Progress.State, timeline, desired.Progress.Page,
 			desired.Progress.RunID, desired.Progress.CollaborationMode, desired.Progress.Error)
 	} else {
 		desired.Progress = terminalProgress

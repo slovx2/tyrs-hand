@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"encoding/json"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"strings"
 	"testing"
 	"time"
@@ -14,27 +15,27 @@ import (
 
 func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"working"}, Updates: 2, Duration: 3 * time.Second}
-	running := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
+	running := conversationProgressCard(runtimeidentity.Codex, ConversationRunning, timeline, 0, "", "default")
 	require.Contains(t, running.Header, "思考中")
 	require.Contains(t, running.Body, "2 项动态")
 	require.NotContains(t, running.Body, "条更新")
 	require.Equal(t, cardColorBlurple, running.AccentColor)
 
-	completed := conversationProgressCard(ConversationCompleted, timeline, 0, "", "default")
+	completed := conversationProgressCard(runtimeidentity.Codex, ConversationCompleted, timeline, 0, "", "default")
 	require.Equal(t, cardColorGreen, completed.AccentColor)
-	canceled := conversationProgressCard(ConversationCanceled, timeline, 0, "", "default")
+	canceled := conversationProgressCard(runtimeidentity.Codex, ConversationCanceled, timeline, 0, "", "default")
 	require.Equal(t, cardColorGray, canceled.AccentColor)
 	require.Contains(t, canceled.Header, "已停止")
-	failed := conversationProgressCard(ConversationFailed, timeline, 0, "", "default")
+	failed := conversationProgressCard(runtimeidentity.Codex, ConversationFailed, timeline, 0, "", "default")
 	require.Equal(t, cardColorRed, failed.AccentColor)
-	require.Contains(t, terminatedControlCard().Body, "没有进入执行队列")
+	require.Contains(t, terminatedControlCard(runtimeidentity.Codex).Body, "没有进入执行队列")
 }
 
 func TestConversationCardPaginationKeepsStatusAndUsesUniqueButtons(t *testing.T) {
 	runID := "00000000-0000-0000-0000-000000000001"
 	timeline := ConversationTimeline{Pages: []string{"older", "newer", "latest"}, Updates: 7,
 		Duration: time.Minute}
-	card := conversationProgressCard(ConversationCompleted, timeline, 1, runID, "default")
+	card := conversationProgressCard(runtimeidentity.Codex, ConversationCompleted, timeline, 1, runID, "default")
 	require.Contains(t, card.Header, "已完成")
 	require.Equal(t, "newer", card.Timeline)
 	require.Len(t, card.Buttons, 4)
@@ -94,7 +95,7 @@ func TestDiscordComponentsV2CardStructureAndLimits(t *testing.T) {
 	}}
 	_, err = discordCardComponents(duplicate)
 	require.ErrorContains(t, err, "重复")
-	guided := conversationProgressCard(ConversationGuided,
+	guided := conversationProgressCard(runtimeidentity.Codex, ConversationGuided,
 		ConversationTimeline{Pages: []string{"引导前动态"}, Updates: 1, Duration: time.Second},
 		0, "", "default")
 	require.Equal(t, "Codex · 已引导对话", guided.Header)
@@ -137,7 +138,7 @@ func TestFailedProgressCardAppendsCodexErrorAfterExistingTimeline(t *testing.T) 
 		CodexErrorInfo: json.RawMessage(`"serverOverloaded"`), AdditionalDetails: "try later",
 		WillRetry: false, ThreadID: "thread-1", TurnID: "turn-1",
 	}
-	card := conversationProgressCard(ConversationFailed, ConversationTimeline{
+	card := conversationProgressCard(runtimeidentity.Codex, ConversationFailed, ConversationTimeline{
 		Pages: []string{"已经存在的过程动态"}, Updates: 3, Duration: time.Second,
 	}, 0, "run-1", "default", errorDetails)
 	require.Equal(t, "已经存在的过程动态", card.Timeline)
@@ -173,7 +174,7 @@ func TestConversationCardsOmitInternalPlaceholderDetails(t *testing.T) {
 		"Codex Desktop 正在处理请求。"} {
 		timeline := tracker.Timeline(detail, time.Second)
 		require.Empty(t, timeline.Pages, detail)
-		card := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
+		card := conversationProgressCard(runtimeidentity.Codex, ConversationRunning, timeline, 0, "", "default")
 		require.Empty(t, card.Timeline, detail)
 	}
 	require.Equal(t, []string{"参数已确认"}, tracker.Timeline("参数已确认", time.Second).Pages)
@@ -190,15 +191,15 @@ func TestSystemCardSeverity(t *testing.T) {
 func TestEverySystemCardBuildsAsComponentsV2(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"timeline"}, Duration: time.Second}
 	cards := []ComponentCardPayload{
-		conversationProgressCard(ConversationRunning, timeline, 0, "", "default"),
-		conversationProgressCard(ConversationGuided, timeline, 0, "", "default"),
-		conversationProgressCard(ConversationCompleted, timeline, 0, "", "default"),
-		conversationProgressCard(ConversationCanceled, timeline, 0, "", "default"),
-		conversationProgressCard(ConversationFailed, timeline, 0, "", "default"),
-		terminatedControlCard(), conversationModeCard(ConversationModeState{ConversationID: uuid.New(),
+		conversationProgressCard(runtimeidentity.Codex, ConversationRunning, timeline, 0, "", "default"),
+		conversationProgressCard(runtimeidentity.Codex, ConversationGuided, timeline, 0, "", "default"),
+		conversationProgressCard(runtimeidentity.Codex, ConversationCompleted, timeline, 0, "", "default"),
+		conversationProgressCard(runtimeidentity.Codex, ConversationCanceled, timeline, 0, "", "default"),
+		conversationProgressCard(runtimeidentity.Codex, ConversationFailed, timeline, 0, "", "default"),
+		terminatedControlCard(runtimeidentity.Codex), conversationModeCard(ConversationModeState{ConversationID: uuid.New(),
 			Mode: "default", TriggerMode: "interactive", Model: "gpt-5.6-sol",
 			ReasoningEffort: "high", ServiceTier: "fast", Awaiting: true}, ""),
-		archivedConversationCard(), lifecycleCard(uuid.New(), 1),
+		archivedConversationCard(runtimeidentity.Codex), lifecycleCard(runtimeidentity.Codex, uuid.New(), 1),
 		DesktopInputCards("Avery", "hello")[0],
 		interactiveCard(InteractiveProjection{Status: "pending", Questions: []InteractiveQuestion{{
 			ID: "confirm", Header: "确认", Question: "继续吗？",

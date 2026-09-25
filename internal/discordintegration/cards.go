@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 const (
@@ -60,10 +62,10 @@ const (
 	ConversationFailed    ConversationProgress = "failed"
 )
 
-func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
+func conversationProgressCard(engine runtimeidentity.Engine, state ConversationProgress, timeline ConversationTimeline,
 	page int, runID, mode string, errorDetails ...*ComponentErrorPayload,
 ) ComponentCardPayload {
-	header, color := conversationProgressCardPresentation(state)
+	header, color := conversationProgressCardPresentation(engine, state)
 	card := ComponentCardPayload{AccentColor: color, Header: header,
 		Body: fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates)}
 	if len(timeline.Pages) > 0 {
@@ -89,29 +91,30 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 	return card
 }
 
-func conversationProgressCardPresentation(state ConversationProgress) (string, int) {
-	header, color := "⚙️ Codex · 思考中", cardColorBlurple
+func conversationProgressCardPresentation(engine runtimeidentity.Engine, state ConversationProgress) (string, int) {
+	name := engineDisplayName(engine)
+	header, color := "⚙️ "+name+" · 思考中", cardColorBlurple
 	switch state {
 	case ConversationGuided:
-		header = "Codex · 已引导对话"
+		header = name + " · 已引导对话"
 	case ConversationCompleted:
-		header, color = "✅ Codex · 已完成", cardColorGreen
+		header, color = "✅ "+name+" · 已完成", cardColorGreen
 	case ConversationCanceled:
-		header, color = "⏹️ Codex · 已停止", cardColorGray
+		header, color = "⏹️ "+name+" · 已停止", cardColorGray
 	case ConversationFailed:
-		header, color = "❌ Codex · 处理失败", cardColorRed
+		header, color = "❌ "+name+" · 处理失败", cardColorRed
 	}
 	return header, color
 }
 
-func terminatedControlCard() ComponentCardPayload {
-	return ComponentCardPayload{AccentColor: cardColorRed, Header: "⛔ Codex · 会话已终止",
+func terminatedControlCard(engine runtimeidentity.Engine) ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorRed, Header: "⛔ " + engineDisplayName(engine) + " · 会话已终止",
 		Body: "此会话此前发生了不可恢复错误，当前消息没有进入执行队列。请新建一个 Post 后重试。"}
 }
 
-func archivedConversationCard() ComponentCardPayload {
+func archivedConversationCard(engine runtimeidentity.Engine) ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorGray,
-		Header: "🔒 Codex · 会话已归档",
+		Header: "🔒 " + engineDisplayName(engine) + " · 会话已归档",
 		Body:   "当前消息没有进入执行队列。请先恢复这个会话，再继续对话。"}
 }
 

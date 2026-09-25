@@ -110,9 +110,10 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 			return
 		}
 	}
+	var engine runtimeidentity.Engine
 	if err == nil {
-		err = c.manager.db.QueryRowContext(context.Background(), `SELECT collaboration_mode
-			FROM discord_conversations WHERE id = $1`, id).Scan(&mode)
+		err = c.manager.db.QueryRowContext(context.Background(), `SELECT collaboration_mode, engine
+			FROM discord_conversations WHERE id = $1`, id).Scan(&mode, &engine)
 	}
 	if err != nil {
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
@@ -120,7 +121,7 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 	}
 	timeline := ConversationTimeline{Pages: []string{"已使用当前设置启动"},
 		Duration: time.Second}
-	components, componentErr := discordCardComponents(conversationProgressCard(ConversationRunning,
+	components, componentErr := discordCardComponents(conversationProgressCard(engine, ConversationRunning,
 		timeline, 0, "", mode))
 	if componentErr != nil {
 		return
@@ -223,7 +224,7 @@ func (c *DisgoConnector) saveRuntimeConfiguration(event *events.ModalSubmitInter
 		notice = "设置没有变化。"
 	} else if announceErr := c.announceConversationConfig(context.Background(),
 		event.Channel().ID().String(), event.ID().String(), event.User().ID.String(),
-		result.Changes); announceErr != nil {
+		state.Engine, result.Changes); announceErr != nil {
 		notice += " 公开结果暂时发送失败。"
 	}
 	components, componentErr := discordCardComponents(conversationModeCard(state, notice))
@@ -238,7 +239,7 @@ func (c *DisgoConnector) saveRuntimeConfiguration(event *events.ModalSubmitInter
 func (c *DisgoConnector) showForumSelector(event *events.ComponentInteractionCreate) {
 	selector := discord.NewChannelSelectMenu("codex-new-forum", "选择开发 Forum").
 		WithChannelTypes(discord.ChannelTypeGuildForum).WithRequired(true)
-	message := discord.NewMessageCreate().WithContent("选择要创建 Codex 帖子的开发 Forum：").
+	message := discord.NewMessageCreate().WithContent("选择要创建会话帖子的开发 Forum：").
 		WithComponents(discord.NewActionRow(selector)).WithEphemeral(true)
 	_ = event.CreateMessage(message)
 }
@@ -317,7 +318,7 @@ func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, us
 			Scan(&operator)
 		if err != nil || !operator {
 			return uuid.Nil, uuid.Nil, uuid.Nil, uuid.Nil,
-				errors.New("当前用户没有在该 Forum 新建 Codex 会话的权限")
+				errors.New("当前用户没有在该 Forum 新建会话的权限")
 		}
 	}
 	return forumID, uuid.Nil, profileID, workspaceID, nil

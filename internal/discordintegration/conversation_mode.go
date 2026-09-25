@@ -71,7 +71,7 @@ func (s *ConversationService) SetConversationMode(ctx context.Context, guildID, 
 		return ConfigurationUpdate{}, err
 	}
 	if state.ConversationID != expectedConversationID {
-		return ConfigurationUpdate{}, errors.New("这个模式按钮不属于当前 Codex 会话")
+		return ConfigurationUpdate{}, errors.New("这个模式按钮不属于当前会话")
 	}
 	if state.SettingsRevision != expectedRevision {
 		return ConfigurationUpdate{State: state, Stale: true}, tx.Commit()
@@ -131,7 +131,7 @@ func (s *ConversationService) SetTriggerMode(ctx context.Context, guildID, threa
 		return ConfigurationUpdate{}, err
 	}
 	if state.ConversationID != expectedConversationID {
-		return ConfigurationUpdate{}, errors.New("这个模式按钮不属于当前 Codex 会话")
+		return ConfigurationUpdate{}, errors.New("这个模式按钮不属于当前会话")
 	}
 	if state.SettingsRevision != expectedRevision {
 		return ConfigurationUpdate{State: state, Stale: true}, tx.Commit()
@@ -186,7 +186,7 @@ func (s *ConversationService) SetRuntimePreferences(ctx context.Context, guildID
 		return ConfigurationUpdate{}, err
 	}
 	if state.ConversationID != expectedConversationID {
-		return ConfigurationUpdate{}, errors.New("这个设置表单不属于当前 Codex 会话")
+		return ConfigurationUpdate{}, errors.New("这个设置表单不属于当前会话")
 	}
 	if state.SettingsRevision != expectedRevision {
 		return ConfigurationUpdate{State: state, Stale: true}, tx.Commit()
@@ -310,7 +310,7 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 		&state.ServiceTier, &state.SettingsRevision, &status, &configurationStatus,
 		&configuredBy, &controlRaw, &state.Engine)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ConversationModeState{}, uuid.Nil, errors.New("当前频道不是 Codex 会话 Post")
+		return ConversationModeState{}, uuid.Nil, errors.New("当前频道不是会话 Post")
 	}
 	if err != nil {
 		return ConversationModeState{}, uuid.Nil, err
@@ -333,7 +333,7 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 	if controlRaw != "" {
 		controlID, err = uuid.Parse(controlRaw)
 		if err != nil {
-			return ConversationModeState{}, uuid.Nil, fmt.Errorf("解析 Codex Control: %w", err)
+			return ConversationModeState{}, uuid.Nil, fmt.Errorf("解析会话 Control: %w", err)
 		}
 		if lock {
 			if err := tx.QueryRowContext(ctx, `SELECT id FROM codex_thread_controls
@@ -411,7 +411,7 @@ func effortLabel(value string) string {
 	case "xhigh":
 		return "极高"
 	default:
-		return "Codex 默认"
+		return "模型默认"
 	}
 }
 
@@ -449,7 +449,7 @@ func triggerModeLabel(mode string) string {
 
 func triggerModeDescription(mode string) string {
 	if mode == "discussion" {
-		return "普通消息只会加入讨论；直接 @ Codex 时才会提交最近的讨论。"
+		return "普通消息只会加入讨论；直接 @ 机器人时才会提交最近的讨论。"
 	}
 	return "每条用户消息都会立即启动或引导当前 Turn。"
 }

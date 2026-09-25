@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -738,7 +739,7 @@ func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
 	_, err = parseDiscordPostReference("not-a-post")
 	require.Error(t, err)
 	conversationID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	card := lifecycleCard(conversationID, 7)
+	card := lifecycleCard(runtimeidentity.Codex, conversationID, 7)
 	require.Len(t, card.Buttons, 1)
 	require.Equal(t, "codex-restore:"+conversationID.String()+":7",
 		card.Buttons[0].CustomID)

@@ -1,6 +1,7 @@
 package discordintegration
 
 import (
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 
 func TestModeButtonRevisionAndCard(t *testing.T) {
 	id := uuid.New()
-	state := ConversationModeState{ConversationID: id, Mode: "plan", Revision: 7,
+	state := ConversationModeState{Engine: runtimeidentity.Codex, ConversationID: id, Mode: "plan", Revision: 7,
 		TriggerMode: "interactive", TriggerRevision: 3, SettingsRevision: 7}
 	card := conversationModeCard(state, "")
 	require.Contains(t, card.Body, "`Plan`")
@@ -68,7 +69,7 @@ func TestModeButtonRevisionAndCard(t *testing.T) {
 	card = conversationModeCard(state, "状态已刷新。")
 	require.Contains(t, card.Body, "状态已刷新。")
 	require.Contains(t, card.Body, "`讨论模式`")
-	require.Contains(t, card.Body, "直接 @ Codex")
+	require.Contains(t, card.Body, "直接 @ 机器人")
 	require.False(t, card.Buttons[0].Disabled)
 	require.True(t, card.Buttons[1].Disabled)
 	require.True(t, card.Buttons[2].Disabled)
@@ -93,14 +94,14 @@ func TestModeCommandResponseIsEphemeral(t *testing.T) {
 }
 
 func TestConfigurationAnnouncementContainsOnlyChanges(t *testing.T) {
-	interactive := configurationAnnouncement("1001", "<@900>", []ConfigurationChange{{
+	interactive := configurationAnnouncement(runtimeidentity.Codex, "1001", "<@900>", []ConfigurationChange{{
 		Field: "trigger_mode", Before: "discussion", After: "interactive",
 	}})
 	require.Contains(t, interactive, "【当前为交互模式，发送消息会直接触发 Codex】")
 	require.NotContains(t, interactive, "模型：")
 	require.NotContains(t, interactive, "协作模式：")
 
-	discussion := configurationAnnouncement("1001", "<@900>", []ConfigurationChange{
+	discussion := configurationAnnouncement(runtimeidentity.Codex, "1001", "<@900>", []ConfigurationChange{
 		{Field: "trigger_mode", Before: "interactive", After: "discussion"},
 		{Field: "model", Before: "gpt-5.6-sol", After: "gpt-5.6-terra"},
 	})
@@ -111,9 +112,9 @@ func TestConfigurationAnnouncementContainsOnlyChanges(t *testing.T) {
 
 func TestProgressCardOnlyShowsPlanMode(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"处理中"}, Duration: time.Second, Updates: 1}
-	plan := conversationProgressCard(ConversationRunning, timeline, 0, "", "plan")
+	plan := conversationProgressCard(runtimeidentity.Codex, ConversationRunning, timeline, 0, "", "plan")
 	require.Contains(t, plan.Body, "模式：Plan")
-	defaultMode := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
+	defaultMode := conversationProgressCard(runtimeidentity.Codex, ConversationRunning, timeline, 0, "", "default")
 	require.NotContains(t, defaultMode.Body, "模式")
 
 	waiting := interactiveCard(InteractiveProjection{Status: "pending", CollaborationMode: "plan",
