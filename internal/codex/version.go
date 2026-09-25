@@ -18,7 +18,8 @@ func ValidateVersion(ctx context.Context, bin string) error {
 
 // ValidatedVersion 同时返回已验证的真实 CLI 版本，供运行时登记构建身份。
 func ValidatedVersion(ctx context.Context, bin string) (string, error) {
-	output, err := exec.CommandContext(ctx, bin, "--version").CombinedOutput()
+	// Linux CLI 可能向 stderr 输出 PATH helper 警告；版本只取 stdout，仍严格校验真实版本。
+	output, err := exec.CommandContext(ctx, bin, "--version").Output()
 	if err != nil {
 		return "", fmt.Errorf("读取 Codex 版本: %w", err)
 	}

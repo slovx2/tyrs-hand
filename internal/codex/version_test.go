@@ -38,3 +38,29 @@ func TestIsVersionAtLeast(t *testing.T) {
 	require.False(t, IsVersionAtLeast("0.147.0-beta.1", "0.147.0"))
 	require.False(t, IsVersionAtLeast("unknown", "0.147.0"))
 }
+
+func TestVersionProbeSeparatesWarningsFromVersion(t *testing.T) {
+	for _, test := range []struct {
+		name, stdout, stderr string
+		valid                bool
+	}{
+		{"stderr-warning", "codex-cli 0.147.0", "WARNING: unable to create PATH aliases", true},
+		{"old-version-with-warning", "codex-cli 0.146.9", "WARNING: codex-cli 0.147.0", false},
+		{"stderr-only-version", "", "codex-cli 0.147.0", false},
+		{"invalid-stdout", "unexpected output", "codex-cli 0.147.0", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "codex")
+			script := "#!/bin/sh\necho '" + test.stderr + "' >&2\necho '" + test.stdout + "'\n"
+			require.NoError(t, os.WriteFile(path, []byte(script), 0o700))
+			version, err := ValidatedVersion(t.Context(), path)
+			if test.valid {
+				require.NoError(t, err)
+				require.Equal(t, "0.147.0", version)
+			} else {
+				require.Error(t, err)
+				require.Empty(t, version)
+			}
+		})
+	}
+}
