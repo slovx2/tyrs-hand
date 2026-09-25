@@ -1110,7 +1110,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "TOOLS-001"
+          "TOOLS-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -1274,7 +1275,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "TOOLS-001"
+          "TOOLS-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -1302,7 +1304,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "TOOLS-001"
+          "TOOLS-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2007,8 +2010,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["ENTRY-001"],
-        "claude-code": ["ENTRY-001"]
+        "codex": [
+          "ENTRY-001"
+        ],
+        "claude-code": [
+          "ENTRY-001"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -2320,7 +2327,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-001"
+          "HISTORY-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2449,7 +2457,9 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "HISTORY-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -2475,7 +2485,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-001"
+          "HISTORY-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2595,7 +2606,8 @@
         "codex": [],
         "claude-code": [
           "CONTEXT-001",
-          "HISTORY-003"
+          "HISTORY-003",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2685,7 +2697,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-001"
+          "HISTORY-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2843,7 +2856,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CONTEXT-001"
+          "CONTEXT-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2895,7 +2909,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "SUBMIT-001"
+          "SUBMIT-001",
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -2921,7 +2936,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CONTEXT-001"
+          "CONTEXT-001",
+          "HISTORY-002"
         ]
       },
       "callers": [

@@ -30,16 +30,20 @@ import (
 )
 
 func TestRuntimeRegistryRealSSHBothEngines(t *testing.T) {
-	testRuntimeRegistryRealSSH(t, false)
+	testRuntimeRegistryRealSSH(t, false, false)
+}
+
+func TestRuntimeHistoryRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, false, true)
 }
 
 // macOS 不允许叠加 sandbox-exec。此用例仅调用独立 command RPC，不创建 Turn，
 // 用真实运行时的 OS 沙箱验证文件和网络限制；模型请求数必须始终为零。
 func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
-	testRuntimeRegistryRealSSH(t, true)
+	testRuntimeRegistryRealSSH(t, true, false)
 }
 
-func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
+func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions, historyOnly bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -54,6 +58,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 	var modelCalls atomic.Int64
 	var requestsMu sync.Mutex
 	modelRequests := map[runtimeidentity.Engine][]json.RawMessage{}
+	history := &runtimeHistoryFixture{t: t, root: root}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -72,6 +77,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if historyOnly && engine == runtimeidentity.Claude {
+				history.model(w, body)
+				return
+			}
 		}
 		dualEngineModel(w, request)
 	}))
@@ -177,7 +186,12 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 		require.NoError(t, err)
 		_, err = session.Output("exec 'codex' app-server --listen stdio://")
 		require.Error(t, err, "不允许包装器另启 app-server")
-		client := connectRuntimeSSH(t, ctx, connection, engine)
+		clientOptions := codex.SocketClientOptions{RequestTimeout: 10 * time.Second}
+		if historyOnly && engine == runtimeidentity.Claude {
+			clientOptions.ClientName = "Codex Desktop"
+			clientOptions.ServerRequestHandler = history.tool
+		}
+		client := connectRuntimeSSHWithOptions(t, ctx, connection, engine, clientOptions)
 		protocol[engine] = client
 		var live RuntimeInfo
 		require.NoError(t, client.Call(ctx, "runtime/info", map[string]any{}, &live))
@@ -191,6 +205,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 			require.Equal(t, "0.3.282", live.SDKVersion)
 			require.Equal(t, entry.Runtime.Info().CLISHA256, live.CLISHA256)
 			require.False(t, live.ReleaseReady)
+		}
+		if historyOnly {
+			continue
 		}
 		if commandPermissions {
 			verifyRuntimeCommandPermissions(t, ctx, client, filepath.Join(root, string(engine)), upstream.URL)
@@ -214,6 +231,18 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if historyOnly {
+		history.create(ctx, protocol[runtimeidentity.Claude])
+		calls := modelCalls.Load()
+		require.Equal(t, int64(8), calls)
+		codexGeneration := registry.entries[runtimeidentity.Codex].Runtime.Generation()
+		require.NoError(t, registry.Restart(runtimeidentity.Claude))
+		reconnected := connectRuntimeSSH(t, ctx, clients[runtimeidentity.Claude], runtimeidentity.Claude)
+		history.verify(ctx, reconnected)
+		require.Equal(t, calls, modelCalls.Load(), "重启后的完整历史读取不得调用模型")
+		require.Equal(t, codexGeneration, registry.entries[runtimeidentity.Codex].Runtime.Generation())
+		return
 	}
 	if commandPermissions {
 		require.Zero(t, modelCalls.Load(), "独立命令权限测试不得发起模型请求")
@@ -364,6 +393,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 }
 
 func connectRuntimeSSH(t *testing.T, ctx context.Context, connection *ssh.Client, engine runtimeidentity.Engine) *codex.SocketClient {
+	return connectRuntimeSSHWithOptions(t, ctx, connection, engine, codex.SocketClientOptions{RequestTimeout: 10 * time.Second})
+}
+
+func connectRuntimeSSHWithOptions(t *testing.T, ctx context.Context, connection *ssh.Client, engine runtimeidentity.Engine, options codex.SocketClientOptions) *codex.SocketClient {
 	t.Helper()
 	channel, requests, err := connection.OpenChannel("session", nil)
 	require.NoError(t, err)
@@ -380,7 +413,7 @@ func connectRuntimeSSH(t *testing.T, ctx context.Context, connection *ssh.Client
 	require.NoError(t, err)
 	trace := &protocolTraceTransport{MessageTransport: ws}
 	t.Cleanup(func() { trace.save(t, engine) })
-	client, err := codex.ConnectTransport(ctx, trace, codex.SocketClientOptions{RequestTimeout: 10 * time.Second})
+	client, err := codex.ConnectTransport(ctx, trace, options)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client

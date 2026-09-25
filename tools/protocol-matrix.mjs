@@ -49,6 +49,8 @@ const suites = controlOnly ? [
     cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004'] },
   { name: 'command-permissions', pkg: './internal/hostworker', test: 'TestRuntimeCommandPermissionsRealSSHBothEngines',
     cases: ['PERMISSION-command'] },
+  { name: 'history', pkg: './internal/hostworker', test: 'TestRuntimeHistoryRealSSH',
+    cases: ['HISTORY-002'], engines: ['claude-code'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]
@@ -86,7 +88,7 @@ for (const suite of suites) {
     process.stderr.write(runtime.stderr ?? '')
     throw runtime.error ?? new Error(`${suite.name} 真实 SSH 双引擎验收失败`)
   }
-  runtimeExecutions += ['codex', 'claude-code'].map(engine => JSON.stringify({
+  runtimeExecutions += (suite.engines ?? ['codex', 'claude-code']).map(engine => JSON.stringify({
     runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
     caseIds: [...suite.cases.filter(id => id !== 'AUTOMATION-002' || engine === 'claude-code'),
       ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001', 'CAPABILITY-002', 'HISTORY-003'] : [])], status: 'passed',
