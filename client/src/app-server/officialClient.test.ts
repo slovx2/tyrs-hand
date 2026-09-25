@@ -391,6 +391,40 @@ describe("OfficialAppServerClient", () => {
       input: [textInput("继续")], preferences: { ...preferences, runtimePermissions } });
   });
 
+  it.each(["codex", "claude-code"] as const)("%s 新建会话完整保存自定义权限边界", async (engine) => {
+    const runtimePermissions = { approvalPolicy: "on-request" as const,
+      sandboxPolicy: { type: "workspaceWrite" as const, writableRoots: ["/extra"],
+        networkAccess: false, excludeTmpdirEnvVar: true, excludeSlashTmp: true } };
+    let rejectSettings = false;
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "thread/items/list")
+        throw new JsonRpcRequestError("probe", method, "rejected", -32004);
+      if (method === "thread/start") {
+        expect(params).toMatchObject({ sandbox: "workspace-write", approvalPolicy: "on-request" });
+        expect(params).not.toHaveProperty("permissions");
+        expect(params).not.toHaveProperty("sandboxPolicy");
+        return { thread: officialThread([]) };
+      }
+      if (method === "thread/settings/update") {
+        expect(params).toEqual({ threadId: "thread-1", ...runtimePermissions });
+        if (rejectSettings) throw new Error("策略未保存");
+        return {};
+      }
+      throw new Error("unexpected " + method);
+    });
+    const client = new OfficialAppServerClient("profile-create", engine, rpc, new MemoryJournal());
+    const result = await client.startThread("/workspace", undefined, undefined,
+      ":workspace", runtimePermissions);
+    expect(result.sandbox).toEqual(runtimePermissions.sandboxPolicy);
+    expect(rpc.calls.map((call) => call.method)).toEqual([
+      "thread/items/list", "thread/start", "thread/settings/update",
+    ]);
+    rejectSettings = true;
+    await expect(client.startThread("/workspace", undefined, undefined,
+      ":workspace", runtimePermissions)).rejects.toThrow("策略未保存");
+    expect(rpc.calls.some((call) => call.method === "turn/start")).toBe(false);
+  });
+
   it("Plan 未回答时先清空 requestUserInput，再 steer 当前 Turn", async () => {
     const thread = officialThread([officialTurn("turn-plan", "inProgress", [])]);
     const rpc = new FakeRpc((method) => {

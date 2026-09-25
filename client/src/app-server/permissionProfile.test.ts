@@ -30,7 +30,11 @@ describe("permissionProfile", () => {
       sandboxPolicy: { type: "dangerFullAccess" } });
     expect(turnPermissionParams(selected)).toEqual(selected.runtimePermissions);
     expect(turnPermissionParams({ ...selected, runtimePermissions: undefined }))
-      .toEqual({ permissions: ":danger-full-access" });
+      .toEqual({ permissions: ":danger-full-access", approvalPolicy: "never" });
+    expect(turnPermissionParams({ permissions: ":workspace" }))
+      .toEqual({ permissions: ":workspace", approvalPolicy: "on-request" });
+    expect(turnPermissionParams({ permissions: ":read-only" }))
+      .toEqual({ permissions: ":read-only", approvalPolicy: "on-request" });
   });
 
   it("完全访问标准组合仍使用内置权限，未知运行时不会放大授权", () => {

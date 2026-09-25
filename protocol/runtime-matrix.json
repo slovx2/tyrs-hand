@@ -200,7 +200,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "PERMISSION-005",
+          "PERMISSION-006"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/AccountUpdatedNotification",
@@ -1057,7 +1060,9 @@
         "claude-code": [
           "CONTEXT-001",
           "ENTRY-001",
-          "FAILURE-003"
+          "FAILURE-003",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -1112,7 +1117,9 @@
         "claude-code": [
           "CONTEXT-001",
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -1140,7 +1147,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "PLAN-003"
+          "PLAN-003",
+          "PERMISSION-006"
         ]
       },
       "schema": {
@@ -1160,7 +1168,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "PLAN-003"
+          "PLAN-003",
+          "PERMISSION-006"
         ]
       },
       "schema": {
@@ -1190,7 +1199,9 @@
           "SESSION-002",
           "EVENTS-003",
           "EVENTS-002",
-          "EVENTS-004"
+          "EVENTS-004",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -1221,7 +1232,9 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "PERMISSION-005"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/FileChangePatchUpdatedNotification",
@@ -1243,7 +1256,8 @@
           "APPROVAL-004",
           "PLAN-003",
           "PERMISSION-004",
-          "FAILURE-003"
+          "FAILURE-003",
+          "PERMISSION-005"
         ]
       },
       "schema": {
@@ -1286,7 +1300,8 @@
         "claude-code": [
           "PLAN-001",
           "PLAN-002",
-          "PLAN-003"
+          "PLAN-003",
+          "PERMISSION-006"
         ]
       },
       "schema": {
@@ -1372,7 +1387,9 @@
           "SESSION-002",
           "EVENTS-003",
           "EVENTS-002",
-          "EVENTS-004"
+          "EVENTS-004",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -2187,7 +2204,9 @@
           "MCP-005",
           "PLAN-001",
           "PLAN-003",
-          "FAILURE-003"
+          "FAILURE-003",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -2420,7 +2439,8 @@
         "claude-code": [
           "CONTEXT-001",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "PERMISSION-005"
         ]
       },
       "callers": [
@@ -2641,7 +2661,8 @@
         "codex": [],
         "claude-code": [
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "PERMISSION-005"
         ]
       },
       "callers": [
@@ -2752,7 +2773,8 @@
       },
       "cases": {
         "codex": [
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "PERMISSION-007"
         ],
         "claude-code": [
           "HISTORY-001",
@@ -2761,7 +2783,9 @@
           "SESSION-002",
           "EVENTS-004",
           "SUBMIT-004",
-          "PERMISSION-004"
+          "PERMISSION-004",
+          "PERMISSION-005",
+          "PERMISSION-007"
         ]
       },
       "callers": [
@@ -2824,10 +2848,14 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PERMISSION-007"
+        ],
         "claude-code": [
           "PLAN-001",
-          "SESSION-002"
+          "SESSION-002",
+          "PERMISSION-005",
+          "PERMISSION-007"
         ]
       },
       "callers": [
@@ -2852,7 +2880,8 @@
           "PLAN-002",
           "PLAN-003",
           "SESSION-002",
-          "PERMISSION-004"
+          "PERMISSION-004",
+          "PERMISSION-005"
         ]
       },
       "callers": [
@@ -2893,7 +2922,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "PERMISSION-007"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -2907,7 +2937,10 @@
           "EVENTS-004",
           "SUBMIT-004",
           "PERMISSION-004",
-          "FAILURE-003"
+          "FAILURE-003",
+          "PERMISSION-005",
+          "PERMISSION-006",
+          "PERMISSION-007"
         ]
       },
       "callers": [
@@ -2936,7 +2969,9 @@
         "claude-code": [
           "CONTEXT-001",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -2966,7 +3001,9 @@
         "claude-code": [
           "EVENTS-003",
           "EVENTS-002",
-          "EVENTS-005"
+          "EVENTS-005",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "schema": {
@@ -2990,7 +3027,9 @@
         ],
         "claude-code": [
           "EVENTS-003",
-          "EVENTS-002"
+          "EVENTS-002",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "schema": {
@@ -3194,7 +3233,9 @@
           "SUBMIT-003",
           "EVENTS-004",
           "EVENTS-005",
-          "FAILURE-003"
+          "FAILURE-003",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [
@@ -3254,7 +3295,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "PERMISSION-007"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3267,7 +3309,10 @@
           "EVENTS-004",
           "SUBMIT-004",
           "PERMISSION-004",
-          "FAILURE-003"
+          "FAILURE-003",
+          "PERMISSION-005",
+          "PERMISSION-006",
+          "PERMISSION-007"
         ]
       },
       "callers": [
@@ -3303,7 +3348,9 @@
           "EVENTS-003",
           "EVENTS-002",
           "SUBMIT-003",
-          "EVENTS-005"
+          "EVENTS-005",
+          "PERMISSION-005",
+          "PERMISSION-006"
         ]
       },
       "callers": [

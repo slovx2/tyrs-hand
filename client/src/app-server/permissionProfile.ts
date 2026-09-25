@@ -63,5 +63,11 @@ export function runtimePermissionPreferences(profile: { id?: string } | null | u
 
 export function turnPermissionParams(value: { permissions: PermissionProfile;
   runtimePermissions?: RuntimePermissions | undefined }) {
-  return value.runtimePermissions ?? { permissions: normalizePermissionProfile(value.permissions) };
+  const permissions = normalizePermissionProfile(value.permissions);
+  return value.runtimePermissions ?? { permissions, approvalPolicy: profileApprovalPolicy(permissions) };
+}
+
+// 原生 permissions 仅切换文件权限，必须显式指定审批策略以免继承旧值。
+export function profileApprovalPolicy(profile: PermissionProfile): AskForApproval {
+  return profile === ":danger-full-access" ? "never" : "on-request";
 }

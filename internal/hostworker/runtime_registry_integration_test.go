@@ -53,6 +53,10 @@ func TestRuntimePlanApprovalRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "plan-approval")
 }
 
+func TestRuntimeThreadPermissionsRealSSHBothEngines(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "thread-permissions")
+}
+
 // macOS 不允许叠加 sandbox-exec。此用例仅调用独立 command RPC，不创建 Turn，
 // 用真实运行时的 OS 沙箱验证文件和网络限制；模型请求数必须始终为零。
 func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
@@ -64,6 +68,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	turnControlOnly := mode == "turn-control"
 	mcpOnly := mode == "mcp"
 	planOnly := mode == "plan-approval"
+	threadPermissions := mode == "thread-permissions"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -249,6 +254,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			require.Equal(t, entry.Runtime.Info().CLISHA256, live.CLISHA256)
 			require.False(t, live.ReleaseReady)
 		}
+		if threadPermissions {
+			verifyRuntimeThreadPermissions(t, ctx, client, root)
+			continue
+		}
 		if historyOnly || sessionOnly || turnControlOnly || mcpOnly || planOnly {
 			continue
 		}
@@ -278,6 +287,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if mcpOnly {
 		verifyRuntimeMcpElicitation(t, ctx, registry, clients[runtimeidentity.Claude])
 		require.Equal(t, int64(2), modelCalls.Load(), "只能请求模型工具调用及一次结果续写")
+		return
+	}
+	if threadPermissions {
+		require.Equal(t, int64(2), modelCalls.Load(), "每个引擎只执行一次显式 Turn，配置和恢复不能调用模型")
 		return
 	}
 	if planOnly {

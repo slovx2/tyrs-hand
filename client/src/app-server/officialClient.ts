@@ -10,6 +10,7 @@ import type { ThreadReadResponse } from "@codex-app-server/v2/ThreadReadResponse
 import type { ThreadResumeResponse } from "@codex-app-server/v2/ThreadResumeResponse";
 import type { ThreadStartResponse } from "@codex-app-server/v2/ThreadStartResponse";
 import type { ThreadStartParams } from "@codex-app-server/v2/ThreadStartParams";
+import type { ThreadSettingsUpdateParams } from "@codex-app-server/v2/ThreadSettingsUpdateParams";
 import type { ThreadTurnsListResponse } from "@codex-app-server/v2/ThreadTurnsListResponse";
 import type { Turn } from "@codex-app-server/v2/Turn";
 import type { TurnItemsView } from "@codex-app-server/v2/TurnItemsView";
@@ -21,7 +22,7 @@ import type { UserInput } from "@codex-app-server/v2/UserInput";
 import { JsonRpcRequestError } from "./jsonRpc";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import { DEFAULT_PERMISSION_PROFILE, normalizePermissionProfile,
-  runtimePermissionPreferences, turnPermissionParams, type PermissionProfile,
+  runtimePermissionPreferences, turnPermissionParams, profileApprovalPolicy, type PermissionProfile,
   type RuntimePermissions } from "./permissionProfile";
 import type { SubmissionJournal } from "./submissions";
 import type { MobileThread, ThreadPreferences } from "./types";
@@ -262,6 +263,7 @@ export class OfficialAppServerClient {
     const params: ThreadStartParams = model
       ? { cwd, model, runtimeWorkspaceRoots: [cwd], historyMode, permissions: permissionProfile }
       : { cwd, runtimeWorkspaceRoots: [cwd], historyMode, permissions: permissionProfile };
+    params.approvalPolicy = profileApprovalPolicy(permissionProfile);
     if (runtimePermissions) {
       const modes = { dangerFullAccess: "danger-full-access", workspaceWrite: "workspace-write",
         readOnly: "read-only" } as const;
@@ -275,7 +277,17 @@ export class OfficialAppServerClient {
       (params as ThreadStartParams & { threadSource: string }).threadSource = threadSource;
     }
     const response = await this.rpc.request<ThreadStartResponse>("thread/start", params);
-    return { ...response, thread: projectThreadForMobile(response.thread) };
+    if (runtimePermissions) {
+      // thread/start 只接受档位；使用原生设置协议保存目录、网络和临时目录边界。
+      const settings: ThreadSettingsUpdateParams = {
+        threadId: response.thread.id, ...runtimePermissions,
+      };
+      await this.rpc.request("thread/settings/update", settings);
+    }
+    return { ...response,
+      ...(runtimePermissions ? { approvalPolicy: runtimePermissions.approvalPolicy,
+        sandbox: runtimePermissions.sandboxPolicy } : {}),
+      thread: projectThreadForMobile(response.thread) };
   }
 
   async findThreadBySource(threadSource: string): Promise<Thread | null> {
