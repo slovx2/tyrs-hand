@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
 
@@ -33,20 +34,22 @@ type clientDevice struct {
 }
 
 type clientDevicePairing struct {
-	ID                    uuid.UUID  `json:"id"`
-	Status                string     `json:"status"`
-	DeviceID              *uuid.UUID `json:"deviceId,omitempty"`
-	DeviceName            *string    `json:"deviceName,omitempty"`
-	Platform              *string    `json:"platform,omitempty"`
-	WorkerID              uuid.UUID  `json:"workerId"`
-	WorkerName            string     `json:"workerName"`
-	SSHHostKeyFingerprint string     `json:"sshHostKeyFingerprint"`
-	ExpiresAt             time.Time  `json:"expiresAt"`
-	CreatedAt             time.Time  `json:"createdAt"`
+	ID                    uuid.UUID              `json:"id"`
+	Status                string                 `json:"status"`
+	DeviceID              *uuid.UUID             `json:"deviceId,omitempty"`
+	DeviceName            *string                `json:"deviceName,omitempty"`
+	Platform              *string                `json:"platform,omitempty"`
+	WorkerID              uuid.UUID              `json:"workerId"`
+	Engine                runtimeidentity.Engine `json:"engine"`
+	WorkerName            string                 `json:"workerName"`
+	SSHHostKeyFingerprint string                 `json:"sshHostKeyFingerprint"`
+	ExpiresAt             time.Time              `json:"expiresAt"`
+	CreatedAt             time.Time              `json:"createdAt"`
 }
 
 type createClientDevicePairingRequest struct {
-	WorkerID uuid.UUID `json:"workerId" binding:"required"`
+	WorkerID uuid.UUID              `json:"workerId" binding:"required"`
+	Engine   runtimeidentity.Engine `json:"engine" binding:"required"`
 }
 
 type claimClientDeviceRequest struct {
@@ -86,11 +89,12 @@ func (s *Server) listClientDevices(c *gin.Context) {
 		return
 	}
 	machineRows, err := s.db.QueryContext(c.Request.Context(), `
-		SELECT binding.device_id,worker.id,worker.name,binding.ssh_host_key_fingerprint,
-			worker.status,worker.heartbeat_at,workspace.id,binding.approved_at
+		SELECT binding.device_id,worker.id,binding.engine,worker.name,binding.ssh_host_key_fingerprint,
+			runtime.status,runtime.heartbeat_at,workspace.id,binding.approved_at
 		FROM client_device_workers binding
 		JOIN client_devices device ON device.id=binding.device_id
 		JOIN workers worker ON worker.id=binding.worker_id
+		JOIN worker_runtimes runtime ON runtime.worker_id=binding.worker_id AND runtime.engine=binding.engine
 		LEFT JOIN worker_workspaces workspace ON workspace.worker_id=worker.id
 		WHERE device.administrator_id=$1
 			AND ($2::boolean OR EXISTS (
@@ -109,7 +113,7 @@ func (s *Server) listClientDevices(c *gin.Context) {
 		var item clientMachine
 		var heartbeat sql.NullTime
 		var workspaceID uuid.NullUUID
-		if err := machineRows.Scan(&deviceID, &item.WorkerID, &item.Name,
+		if err := machineRows.Scan(&deviceID, &item.WorkerID, &item.Engine, &item.Name,
 			&item.SSHHostKeyFingerprint, &item.Status, &heartbeat, &workspaceID,
 			&item.ApprovedAt); err != nil {
 			problem(c, http.StatusInternalServerError, "读取设备机器列表失败", err)
@@ -135,13 +139,18 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 		badRequest(c, errors.New("必须选择 Worker"))
 		return
 	}
+	if err := request.Engine.Validate(); err != nil {
+		badRequest(c, err)
+		return
+	}
 	if !s.requireWorkerAccess(c, request.WorkerID) {
 		return
 	}
 	var workerName, fingerprint string
-	err := s.db.QueryRowContext(c.Request.Context(), `SELECT name,
-		COALESCE(ssh_host_key_fingerprint,'') FROM workers WHERE id=$1 AND enabled`,
-		request.WorkerID).Scan(&workerName, &fingerprint)
+	err := s.db.QueryRowContext(c.Request.Context(), `SELECT worker.name, COALESCE(runtime.ssh_host_key_fingerprint,'')
+		FROM workers worker JOIN worker_runtimes runtime ON runtime.worker_id=worker.id
+		WHERE worker.id=$1 AND worker.enabled AND runtime.engine=$2 AND runtime.enabled`,
+		request.WorkerID, request.Engine).Scan(&workerName, &fingerprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Worker 不存在", err)
 		return
@@ -160,14 +169,14 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 		return
 	}
 	pairing := clientDevicePairing{ID: uuid.New(), Status: "waiting_scan",
-		WorkerID: request.WorkerID, WorkerName: workerName, SSHHostKeyFingerprint: fingerprint,
+		WorkerID: request.WorkerID, Engine: request.Engine, WorkerName: workerName, SSHHostKeyFingerprint: fingerprint,
 		ExpiresAt: time.Now().UTC().Add(clientDevicePairingLifetime), CreatedAt: time.Now().UTC()}
 	_, err = s.db.ExecContext(c.Request.Context(), `
 		INSERT INTO client_device_pairings(id,administrator_id,pairing_secret_hash,
-			worker_id,ssh_host_key_fingerprint,expires_at,created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`, pairing.ID, administratorID,
+			worker_id,ssh_host_key_fingerprint,expires_at,created_at,engine)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, pairing.ID, administratorID,
 		security.Digest(secret), pairing.WorkerID, pairing.SSHHostKeyFingerprint,
-		pairing.ExpiresAt, pairing.CreatedAt)
+		pairing.ExpiresAt, pairing.CreatedAt, pairing.Engine)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "创建设备绑定失败", err)
 		return
@@ -178,7 +187,7 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 		return
 	}
 	pairingURI := devicePairingURI(s.cfg.PublicURL, serverID, pairing.ID, secret,
-		pairing.WorkerID, pairing.WorkerName, pairing.SSHHostKeyFingerprint, pairing.ExpiresAt)
+		pairing.WorkerID, pairing.WorkerName, pairing.SSHHostKeyFingerprint, pairing.ExpiresAt, pairing.Engine)
 	qrDataURL, err := qrDataURL(pairingURI)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "生成设备二维码失败", err)
@@ -187,7 +196,7 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"id": pairing.ID, "status": pairing.Status, "expiresAt": pairing.ExpiresAt,
 		"createdAt": pairing.CreatedAt, "serverId": serverID,
-		"workerId": pairing.WorkerID, "workerName": pairing.WorkerName,
+		"workerId": pairing.WorkerID, "workerName": pairing.WorkerName, "engine": pairing.Engine,
 		"sshHostKeyFingerprint": pairing.SSHHostKeyFingerprint,
 		"pairingUri":            pairingURI, "qrDataUrl": qrDataURL,
 	})
@@ -323,17 +332,21 @@ func (s *Server) approveClientDevicePairing(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var device clientDevice
 	var workerID uuid.UUID
+	var engine runtimeidentity.Engine
 	var fingerprint string
 	err = tx.QueryRowContext(c.Request.Context(), `
 		UPDATE client_device_pairings SET status='approved',confirmed_at=now(),updated_at=now()
 		WHERE id=$1 AND administrator_id=$2 AND status='waiting_confirmation' AND expires_at>now()
+			AND EXISTS (SELECT 1 FROM worker_runtimes runtime JOIN workers worker ON worker.id=runtime.worker_id
+				WHERE runtime.worker_id=client_device_pairings.worker_id AND runtime.engine=client_device_pairings.engine
+				AND runtime.enabled AND worker.enabled AND runtime.ssh_host_key_fingerprint=client_device_pairings.ssh_host_key_fingerprint)
 			AND ($3::boolean OR EXISTS (
 				SELECT 1 FROM worker_administrators access_user
 				WHERE access_user.worker_id=client_device_pairings.worker_id
 					AND access_user.administrator_id=$2
 			))
-		RETURNING device_id,device_name,platform,worker_id,ssh_host_key_fingerprint,now(),now()`,
-		pairingID, administratorID, session.Role == "admin").Scan(&device.ID, &device.Name, &device.Platform, &workerID,
+		RETURNING device_id,device_name,platform,worker_id,engine,ssh_host_key_fingerprint,now(),now()`,
+		pairingID, administratorID, session.Role == "admin").Scan(&device.ID, &device.Name, &device.Platform, &workerID, &engine,
 		&fingerprint, &device.CreatedAt, &device.ApprovedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusConflict, "设备绑定已失效或当前不可确认", err)
@@ -357,12 +370,12 @@ func (s *Server) approveClientDevicePairing(c *gin.Context) {
 		return
 	}
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_device_workers(
-		device_id,worker_id,ssh_host_key_fingerprint,approved_at)
-		VALUES ($1,$2,$3,$4)
-		ON CONFLICT(device_id,worker_id) DO UPDATE SET
+		device_id,worker_id,ssh_host_key_fingerprint,approved_at,engine)
+		VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT(device_id,worker_id,engine) DO UPDATE SET
 			ssh_host_key_fingerprint=EXCLUDED.ssh_host_key_fingerprint,
 			approved_at=EXCLUDED.approved_at,updated_at=now()`, device.ID, workerID,
-		fingerprint, device.ApprovedAt)
+		fingerprint, device.ApprovedAt, engine)
 	if err != nil {
 		problem(c, http.StatusConflict, "设备与 Worker 绑定失败", err)
 		return
@@ -371,7 +384,7 @@ func (s *Server) approveClientDevicePairing(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "确认设备绑定失败", err)
 		return
 	}
-	device.Machines = []clientMachine{{WorkerID: workerID,
+	device.Machines = []clientMachine{{WorkerID: workerID, Engine: engine,
 		SSHHostKeyFingerprint: fingerprint, ApprovedAt: device.ApprovedAt}}
 	c.JSON(http.StatusOK, device)
 }
@@ -451,13 +464,13 @@ func (s *Server) loadAdministratorPairing(c *gin.Context, pairingID uuid.UUID) (
 	var pairing clientDevicePairing
 	err := s.db.QueryRowContext(c.Request.Context(), `
 		SELECT pairing.id,pairing.status,pairing.device_id,pairing.device_name,pairing.platform,
-			pairing.worker_id,worker.name,pairing.ssh_host_key_fingerprint,
+			pairing.worker_id,pairing.engine,worker.name,pairing.ssh_host_key_fingerprint,
 			pairing.expires_at,pairing.created_at
 		FROM client_device_pairings pairing JOIN workers worker ON worker.id=pairing.worker_id
 		WHERE pairing.id=$1 AND pairing.administrator_id=$2`,
 		pairingID, administratorID).
 		Scan(&pairing.ID, &pairing.Status, &pairing.DeviceID, &pairing.DeviceName,
-			&pairing.Platform, &pairing.WorkerID, &pairing.WorkerName,
+			&pairing.Platform, &pairing.WorkerID, &pairing.Engine, &pairing.WorkerName,
 			&pairing.SSHHostKeyFingerprint, &pairing.ExpiresAt, &pairing.CreatedAt)
 	if err == nil && time.Now().UTC().After(pairing.ExpiresAt) &&
 		pairing.Status != "approved" && pairing.Status != "rejected" {
@@ -501,10 +514,11 @@ func parseClientDeviceToken(token string) (uuid.UUID, bool) {
 }
 
 func devicePairingURI(serverURL string, serverID, pairingID uuid.UUID, secret string,
-	workerID uuid.UUID, workerName, sshHostKeyFingerprint string, expiresAt time.Time,
+	workerID uuid.UUID, workerName, sshHostKeyFingerprint string, expiresAt time.Time, engine runtimeidentity.Engine,
 ) string {
 	query := url.Values{}
-	query.Set("v", "3")
+	query.Set("v", "4")
+	query.Set("engine", string(engine))
 	query.Set("server", strings.TrimRight(serverURL, "/"))
 	query.Set("serverId", serverID.String())
 	query.Set("pairingId", pairingID.String())

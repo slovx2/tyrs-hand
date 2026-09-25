@@ -1,3 +1,5 @@
+import { engineSchema, type Engine } from "@/types/runtime";
+
 import { getControlDeviceToken, type ControlMachineLink } from "@/db/connections";
 
 export type ScheduledTaskProject = {
@@ -15,6 +17,7 @@ export type ScheduledTaskSession = {
 };
 
 export type ScheduledTask = {
+  engine: Engine;
   id: string;
   workspaceId: string;
   kind: "standalone" | "heartbeat";
@@ -83,22 +86,30 @@ async function controlRequest<T>(link: ControlMachineLink, path: string,
   return response.json() as Promise<T>;
 }
 
-export function listScheduledTasks(link: ControlMachineLink,
+export async function listScheduledTasks(link: ControlMachineLink,
   status?: ScheduledTask["status"]): Promise<Page<ScheduledTask>> {
   const query = status ? `?limit=100&status=${encodeURIComponent(status)}` : "?limit=100";
-  return controlRequest(link, `/machines/${link.workerId}/scheduled-tasks${query}`);
+  const page = await controlRequest<Page<ScheduledTask>>(link, `/machines/${link.workerId}/runtimes/${link.engine}/scheduled-tasks${query}`);
+  page.items.forEach(task => assertTaskEngine(task, link));
+  return page;
 }
 
-export function getScheduledTask(link: ControlMachineLink, taskId: string): Promise<ScheduledTask> {
-  return controlRequest(link, `/machines/${link.workerId}/scheduled-tasks/${taskId}`);
+export async function getScheduledTask(link: ControlMachineLink, taskId: string): Promise<ScheduledTask> {
+  const task = await controlRequest<ScheduledTask>(link, `/machines/${link.workerId}/runtimes/${link.engine}/scheduled-tasks/${taskId}`);
+  assertTaskEngine(task, link);
+  return task;
 }
 
 export function listScheduledTaskRuns(link: ControlMachineLink, taskId: string,
   cursor?: string): Promise<Page<ScheduledTaskRun>> {
   const query = cursor ? `?limit=30&cursor=${encodeURIComponent(cursor)}` : "?limit=30";
-  return controlRequest(link, `/machines/${link.workerId}/scheduled-tasks/${taskId}/runs${query}`);
+  return controlRequest(link, `/machines/${link.workerId}/runtimes/${link.engine}/scheduled-tasks/${taskId}/runs${query}`);
 }
 
 export function revokeScheduledTaskMachine(link: ControlMachineLink): Promise<void> {
-  return controlRequest(link, `/machines/${link.workerId}`, { method: "DELETE" });
+  return controlRequest(link, `/machines/${link.workerId}/runtimes/${link.engine}`, { method: "DELETE" });
+}
+
+function assertTaskEngine(task: ScheduledTask, link: ControlMachineLink): void {
+  if (engineSchema.parse(task.engine) !== link.engine) throw new Error("Control 返回的任务引擎与连接不一致");
 }

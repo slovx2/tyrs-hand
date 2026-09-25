@@ -19,10 +19,10 @@ vi.mock("expo-crypto", () => ({
   digestStringAsync: () => Promise.resolve("credential-hash"),
 }));
 
-const value = "tyrshand://device-pair?v=3&server=https%3A%2F%2Fcontrol.test" +
+const value = "tyrshand://device-pair?v=4&server=https%3A%2F%2Fcontrol.test" +
   "&serverId=11111111-1111-4111-8111-111111111111" +
   "&pairingId=22222222-2222-4222-8222-222222222222&secret=pairing-secret-value" +
-  "&workerId=44444444-4444-4444-8444-444444444444&workerName=Worker" +
+  "&workerId=44444444-4444-4444-8444-444444444444&workerName=Worker&engine=codex" +
   "&sshHostKeyFingerprint=SHA256%3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
   "&expiresAt=2026-08-15T02%3A00%3A00Z";
 
@@ -38,12 +38,12 @@ describe("定时任务扫码协议", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("只接受带 Worker Host Key 的 v3 二维码", () => {
+  it("只接受带 Worker Host Key 的 v4 二维码", () => {
     const parsed = parsePairingCode(value);
     expect(parsed.workerId).toBe("44444444-4444-4444-8444-444444444444");
     expect(parsed.sshHostKeyFingerprint).toBe(
       "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    expect(() => parsePairingCode(value.replace("v=3", "v=2"))).toThrow(
+    expect(() => parsePairingCode(value.replace("v=4", "v=2"))).toThrow(
       "无法识别这个定时任务授权二维码");
   });
 
@@ -53,6 +53,25 @@ describe("定时任务扫码协议", () => {
     const params = Object.fromEntries(new URL(second).searchParams.entries());
 
     expect(resolvePairingUri(params, value)).toContain(`pairingId=${secondID}`);
+  });
+
+  it("引擎必填且只接受固定引擎，旧二维码明确拒绝", () => {
+    expect(() => parsePairingCode(value.replace("&engine=codex", ""))).toThrow();
+    expect(() => parsePairingCode(value.replace("engine=codex", "engine=other"))).toThrow();
+    expect(() => parsePairingCode(value.replace("v=4", "v=3"))).toThrow();
+  });
+
+  it("同 Worker 返回两个入口时按引擎匹配，错误引擎不能借用相同指纹", async () => {
+    const code = parsePairingCode(value.replace("engine=codex", "engine=claude-code"));
+    const machine = { workerId: code.workerId, name: "Worker", status: "running",
+      sshHostKeyFingerprint: code.sshHostKeyFingerprint };
+    const respond = (items: object[]) => new Response(JSON.stringify({ items }), { status: 200 });
+    const fetchMock = vi.fn().mockResolvedValueOnce(respond([
+      { ...machine, engine: "codex" }, { ...machine, engine: "claude-code" },
+    ])).mockResolvedValueOnce(respond([{ ...machine, engine: "codex" }]));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await fetchPairedMachine(code, "token")).engine).toBe("claude-code");
+    await expect(fetchPairedMachine(code, "token")).rejects.toThrow("机器身份与二维码不一致");
   });
 
   it("把设备凭证和临时 claim token 写入 SecureStore", async () => {
@@ -68,7 +87,7 @@ describe("定时任务扫码协议", () => {
 
   it("拒绝 Control 返回的不同机器指纹", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{
-      workerId: "44444444-4444-4444-8444-444444444444", name: "Worker",
+      workerId: "44444444-4444-4444-8444-444444444444", name: "Worker", engine: "codex",
       sshHostKeyFingerprint: "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
       status: "online",
     }] }), { status: 200, headers: { "Content-Type": "application/json" } })));

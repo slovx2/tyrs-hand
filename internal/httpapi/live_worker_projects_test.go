@@ -20,7 +20,7 @@ func TestListClientLiveWorkerProjectsReturnsPathIdentity(t *testing.T) {
 	workerID := uuid.New()
 	deviceID := uuid.New()
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT EXISTS(
-		SELECT 1 FROM client_device_workers WHERE device_id=$1 AND worker_id=$2)`)).
+		SELECT 1 FROM client_device_workers WHERE device_id=$1 AND worker_id=$2 AND engine='codex')`)).
 		WithArgs(deviceID, workerID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT project.id, project.name,

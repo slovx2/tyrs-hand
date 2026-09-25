@@ -110,7 +110,15 @@ Claude SDK 调用平台工具创建 heartbeat，Worker 重启后调度器恢复�
 Codex 未收到 Claude 任务。脚本固定镜像 digest，保存本轮 JUnit、wire、模型请求及
 数据库断言证据，并清理本轮临时容器。该用例也纳入完整协议矩阵与 Ubuntu CI。
 
+迁移 033 将手机已有授权一次性回填为 Codex，新授权必需明确引擎。控制台为每个
+Worker 选择运行时生成 v4 二维码，手机核对 Worker、引擎及该入口的 Host Key 后保存
+`(serverId,workerId,engine)` 关联。二维码确认期间 Host Key 改变会拒绝确认。
+定时任务 API 使用 `/client/machines/{workerId}/runtimes/{engine}/scheduled-tasks`，
+列表、详情、运行记录、游标及授权撤销都限定运行时；旧路径没有隐式 Codex 回退。
+仅配对 Claude 不授予 Codex Live 权限。Control 必需测试包含双入口授权、跨引擎
+拒绝、原授权迁移与撤销隔离；这些测试不代表手机 GUI 已验收。
+
 当前发布状态：`releaseReady=false`。Control 数据层已覆盖领取、事件幂等与终态隔离；
-在线 Control→真实双运行时的正向链路及重启后调度已验证，仍需补齐全部故障路径、手机运行时关联、Discord 引擎
+在线 Control→真实双运行时的正向链路及重启后调度已验证，仍需补齐全部故障路径、手机端到端验收、Discord 引擎
 选择和完整协议矩阵。未启用的 runtime 重启会明确报错。
 这部分验收通过不代表完整双引擎协议矩阵或移动/桌面 GUI 发布验收通过。

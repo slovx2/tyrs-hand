@@ -64,9 +64,9 @@ export class AdminClient {
       body: { name, roles: ['discord'], maxConcurrentJobs: 2 } })
   }
 
-  createPairing(workerId) {
+  createPairing(workerId, engine = 'codex') {
     return this.request('/client-device-pairings', { method: 'POST', csrf: true,
-      body: { workerId } })
+      body: { workerId, engine } })
   }
 
   async waitForWorkerFingerprint(workerId, fingerprint, timeoutMs = 30_000) {

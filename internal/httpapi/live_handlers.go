@@ -874,7 +874,7 @@ func (s *Server) requireClientWorker(c *gin.Context, workerID uuid.UUID) bool {
 	}
 	var allowed bool
 	if err := s.db.QueryRowContext(c.Request.Context(), `SELECT EXISTS(
-		SELECT 1 FROM client_device_workers WHERE device_id=$1 AND worker_id=$2)`,
+		SELECT 1 FROM client_device_workers WHERE device_id=$1 AND worker_id=$2 AND engine='codex')`,
 		deviceID, workerID).Scan(&allowed); err != nil {
 		problem(c, http.StatusInternalServerError, "检查设备 Worker 失败", err)
 		return false

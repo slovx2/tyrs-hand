@@ -12,16 +12,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 type clientMachine struct {
-	WorkerID              uuid.UUID  `json:"workerId"`
-	Name                  string     `json:"name"`
-	SSHHostKeyFingerprint string     `json:"sshHostKeyFingerprint"`
-	Status                string     `json:"status"`
-	HeartbeatAt           *time.Time `json:"heartbeatAt,omitempty"`
-	WorkspaceID           *uuid.UUID `json:"workspaceId,omitempty"`
-	ApprovedAt            time.Time  `json:"approvedAt"`
+	Engine                runtimeidentity.Engine `json:"engine"`
+	WorkerID              uuid.UUID              `json:"workerId"`
+	Name                  string                 `json:"name"`
+	SSHHostKeyFingerprint string                 `json:"sshHostKeyFingerprint"`
+	Status                string                 `json:"status"`
+	HeartbeatAt           *time.Time             `json:"heartbeatAt,omitempty"`
+	WorkspaceID           *uuid.UUID             `json:"workspaceId,omitempty"`
+	ApprovedAt            time.Time              `json:"approvedAt"`
 }
 
 type clientScheduledTaskProject struct {
@@ -46,6 +48,7 @@ type clientScheduledTaskSettings struct {
 }
 
 type clientScheduledTask struct {
+	Engine             runtimeidentity.Engine       `json:"engine"`
 	ID                 uuid.UUID                    `json:"id"`
 	WorkspaceID        uuid.UUID                    `json:"workspaceId"`
 	Kind               string                       `json:"kind"`
@@ -102,34 +105,40 @@ func clientNullableUUID(value uuid.NullUUID) *uuid.UUID {
 	return &result
 }
 
-func (s *Server) requireClientMachine(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
+func (s *Server) requireClientMachine(c *gin.Context) (uuid.UUID, uuid.UUID, runtimeidentity.Engine, bool) {
 	deviceID, ok := clientRequestDeviceID(c)
 	if !ok {
-		return uuid.Nil, uuid.Nil, false
+		return uuid.Nil, uuid.Nil, "", false
 	}
 	workerID, err := uuid.Parse(c.Param("workerId"))
 	if err != nil {
 		badRequest(c, err)
-		return uuid.Nil, uuid.Nil, false
+		return uuid.Nil, uuid.Nil, "", false
+	}
+	engine := runtimeidentity.Engine(c.Param("engine"))
+	if err := engine.Validate(); err != nil {
+		badRequest(c, err)
+		return uuid.Nil, uuid.Nil, "", false
 	}
 	var authorized bool
 	err = s.db.QueryRowContext(c.Request.Context(), `SELECT true
 		FROM client_device_workers binding JOIN workers worker ON worker.id=binding.worker_id
-		WHERE binding.device_id=$1 AND binding.worker_id=$2
-			AND binding.ssh_host_key_fingerprint=worker.ssh_host_key_fingerprint`,
-		deviceID, workerID).Scan(&authorized)
+		JOIN worker_runtimes runtime ON runtime.worker_id=binding.worker_id AND runtime.engine=binding.engine
+		WHERE binding.device_id=$1 AND binding.worker_id=$2 AND binding.engine=$3
+			AND binding.ssh_host_key_fingerprint=runtime.ssh_host_key_fingerprint`,
+		deviceID, workerID, engine).Scan(&authorized)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "机器不存在或未授权", err)
-		return uuid.Nil, uuid.Nil, false
+		return uuid.Nil, uuid.Nil, "", false
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "验证机器授权失败", err)
-		return uuid.Nil, uuid.Nil, false
+		return uuid.Nil, uuid.Nil, "", false
 	}
 	_, _ = s.db.ExecContext(c.Request.Context(), `UPDATE client_device_workers
-		SET last_seen_at=now(),updated_at=now() WHERE device_id=$1 AND worker_id=$2`,
-		deviceID, workerID)
-	return deviceID, workerID, true
+		SET last_seen_at=now(),updated_at=now() WHERE device_id=$1 AND worker_id=$2 AND engine=$3`,
+		deviceID, workerID, engine)
+	return deviceID, workerID, engine, true
 }
 
 func (s *Server) listClientMachines(c *gin.Context) {
@@ -137,14 +146,15 @@ func (s *Server) listClientMachines(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT worker.id,worker.name,
-		binding.ssh_host_key_fingerprint,worker.status,worker.heartbeat_at,workspace.id,
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT worker.id,binding.engine,worker.name,
+		binding.ssh_host_key_fingerprint,runtime.status,runtime.heartbeat_at,workspace.id,
 		binding.approved_at
 		FROM client_device_workers binding JOIN workers worker ON worker.id=binding.worker_id
+		JOIN worker_runtimes runtime ON runtime.worker_id=binding.worker_id AND runtime.engine=binding.engine
 		LEFT JOIN worker_workspaces workspace ON workspace.worker_id=worker.id
 		WHERE binding.device_id=$1
-			AND binding.ssh_host_key_fingerprint=worker.ssh_host_key_fingerprint
-		ORDER BY worker.name,worker.id`, deviceID)
+			AND binding.ssh_host_key_fingerprint=runtime.ssh_host_key_fingerprint
+		ORDER BY worker.name,worker.id,binding.engine`, deviceID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取机器列表失败", err)
 		return
@@ -155,7 +165,7 @@ func (s *Server) listClientMachines(c *gin.Context) {
 		var item clientMachine
 		var heartbeat sql.NullTime
 		var workspaceID uuid.NullUUID
-		if err := rows.Scan(&item.WorkerID, &item.Name, &item.SSHHostKeyFingerprint,
+		if err := rows.Scan(&item.WorkerID, &item.Engine, &item.Name, &item.SSHHostKeyFingerprint,
 			&item.Status, &heartbeat, &workspaceID, &item.ApprovedAt); err != nil {
 			problem(c, http.StatusInternalServerError, "读取机器列表失败", err)
 			return
@@ -172,12 +182,12 @@ func (s *Server) listClientMachines(c *gin.Context) {
 }
 
 func (s *Server) deleteClientMachine(c *gin.Context) {
-	deviceID, workerID, ok := s.requireClientMachine(c)
+	deviceID, workerID, engine, ok := s.requireClientMachine(c)
 	if !ok {
 		return
 	}
 	result, err := s.db.ExecContext(c.Request.Context(), `DELETE FROM client_device_workers
-		WHERE device_id=$1 AND worker_id=$2`, deviceID, workerID)
+		WHERE device_id=$1 AND worker_id=$2 AND engine=$3`, deviceID, workerID, engine)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "移除机器授权失败", err)
 		return
@@ -191,8 +201,11 @@ func (s *Server) deleteClientMachine(c *gin.Context) {
 }
 
 type clientPageCursor struct {
-	CreatedAt time.Time `json:"createdAt"`
-	ID        uuid.UUID `json:"id"`
+	WorkerID  uuid.UUID              `json:"workerId"`
+	Engine    runtimeidentity.Engine `json:"engine"`
+	TaskID    uuid.UUID              `json:"taskId"`
+	CreatedAt time.Time              `json:"createdAt"`
+	ID        uuid.UUID              `json:"id"`
 }
 
 func clientPageLimit(c *gin.Context) (int, bool) {
@@ -208,7 +221,7 @@ func clientPageLimit(c *gin.Context) (int, bool) {
 	return limit, true
 }
 
-func decodeClientPageCursor(value string) (*clientPageCursor, error) {
+func decodeClientPageCursor(value string, workerID uuid.UUID, engine runtimeidentity.Engine, taskID uuid.UUID) (*clientPageCursor, error) {
 	if value == "" {
 		return nil, nil
 	}
@@ -217,18 +230,18 @@ func decodeClientPageCursor(value string) (*clientPageCursor, error) {
 		return nil, errors.New("cursor 无效")
 	}
 	var cursor clientPageCursor
-	if err := json.Unmarshal(raw, &cursor); err != nil || cursor.ID == uuid.Nil || cursor.CreatedAt.IsZero() {
+	if err := json.Unmarshal(raw, &cursor); err != nil || cursor.ID == uuid.Nil || cursor.CreatedAt.IsZero() || cursor.WorkerID != workerID || cursor.Engine != engine || cursor.TaskID != taskID {
 		return nil, errors.New("cursor 无效")
 	}
 	return &cursor, nil
 }
 
-func encodeClientPageCursor(createdAt time.Time, id uuid.UUID) string {
-	raw, _ := json.Marshal(clientPageCursor{CreatedAt: createdAt, ID: id})
+func encodeClientPageCursor(createdAt time.Time, id, workerID uuid.UUID, engine runtimeidentity.Engine, taskID uuid.UUID) string {
+	raw, _ := json.Marshal(clientPageCursor{CreatedAt: createdAt, ID: id, WorkerID: workerID, Engine: engine, TaskID: taskID})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-const clientScheduledTaskSelect = `SELECT task.id,task.workspace_id,task.kind,task.name,
+const clientScheduledTaskSelect = `SELECT task.id,task.engine,task.workspace_id,task.kind,task.name,
 	task.prompt,task.status,task.schedule_text,task.timezone,task.schedule_kind,
 	task.interval_seconds,task.next_run_at,task.blocked_until,task.last_run_at,
 	task.schedule_revision,task.last_error_code,task.last_error_message,
@@ -253,7 +266,7 @@ func scanClientScheduledTask(row clientRowScanner) (clientScheduledTask, error) 
 	var errorCode, errorMessage sql.NullString
 	var profileID, targetID uuid.NullUUID
 	var model, effort, tier, targetTitle, externalThread sql.NullString
-	err := row.Scan(&result.ID, &result.WorkspaceID, &result.Kind, &result.Name,
+	err := row.Scan(&result.ID, &result.Engine, &result.WorkspaceID, &result.Kind, &result.Name,
 		&result.Prompt, &result.Status, &result.Schedule, &result.Timezone,
 		&result.ScheduleKind, &interval, &nextRun, &blockedUntil, &lastRun,
 		&result.ScheduleRevision, &errorCode, &errorMessage, &profileID, &model, &effort,
@@ -294,7 +307,7 @@ func validateClientTaskStatus(value string) error {
 }
 
 func (s *Server) listClientMachineScheduledTasks(c *gin.Context) {
-	_, workerID, ok := s.requireClientMachine(c)
+	_, workerID, engine, ok := s.requireClientMachine(c)
 	if !ok {
 		return
 	}
@@ -307,7 +320,7 @@ func (s *Server) listClientMachineScheduledTasks(c *gin.Context) {
 	if !ok {
 		return
 	}
-	cursor, err := decodeClientPageCursor(strings.TrimSpace(c.Query("cursor")))
+	cursor, err := decodeClientPageCursor(strings.TrimSpace(c.Query("cursor")), workerID, engine, uuid.Nil)
 	if err != nil {
 		badRequest(c, err)
 		return
@@ -318,13 +331,13 @@ func (s *Server) listClientMachineScheduledTasks(c *gin.Context) {
 		cursorTime, cursorID = cursor.CreatedAt, cursor.ID
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), clientScheduledTaskSelect+`
-		WHERE workspace.worker_id=$1
+		WHERE workspace.worker_id=$1 AND task.engine=$6
 			AND (($2='') OR task.status=$2)
 			AND (($2<>'') OR task.status<>'deleted')
 			AND ($3::timestamptz IS NULL OR
 				(task.created_at,task.id)<($3::timestamptz,$4::uuid))
 		ORDER BY task.created_at DESC,task.id DESC LIMIT $5`, workerID, status,
-		cursorTime, cursorID, limit)
+		cursorTime, cursorID, limit, engine)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取定时任务失败", err)
 		return
@@ -346,13 +359,13 @@ func (s *Server) listClientMachineScheduledTasks(c *gin.Context) {
 	response := gin.H{"items": items}
 	if len(items) == limit {
 		last := items[len(items)-1]
-		response["nextCursor"] = encodeClientPageCursor(last.CreatedAt, last.ID)
+		response["nextCursor"] = encodeClientPageCursor(last.CreatedAt, last.ID, workerID, engine, uuid.Nil)
 	}
 	c.JSON(http.StatusOK, response)
 }
 
 func (s *Server) getClientMachineScheduledTask(c *gin.Context) {
-	_, workerID, ok := s.requireClientMachine(c)
+	_, workerID, engine, ok := s.requireClientMachine(c)
 	if !ok {
 		return
 	}
@@ -362,8 +375,8 @@ func (s *Server) getClientMachineScheduledTask(c *gin.Context) {
 		return
 	}
 	result, err := scanClientScheduledTask(s.db.QueryRowContext(c.Request.Context(),
-		clientScheduledTaskSelect+` WHERE workspace.worker_id=$1 AND task.id=$2`,
-		workerID, taskID))
+		clientScheduledTaskSelect+` WHERE workspace.worker_id=$1 AND task.id=$2 AND task.engine=$3`,
+		workerID, taskID, engine))
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "定时任务不存在", err)
 		return
@@ -401,7 +414,7 @@ func scanClientScheduledTaskRun(row clientRowScanner) (clientScheduledTaskRun, e
 }
 
 func (s *Server) listClientMachineScheduledTaskRuns(c *gin.Context) {
-	_, workerID, ok := s.requireClientMachine(c)
+	_, workerID, engine, ok := s.requireClientMachine(c)
 	if !ok {
 		return
 	}
@@ -414,7 +427,7 @@ func (s *Server) listClientMachineScheduledTaskRuns(c *gin.Context) {
 	if !ok {
 		return
 	}
-	cursor, err := decodeClientPageCursor(strings.TrimSpace(c.Query("cursor")))
+	cursor, err := decodeClientPageCursor(strings.TrimSpace(c.Query("cursor")), workerID, engine, taskID)
 	if err != nil {
 		badRequest(c, err)
 		return
@@ -435,11 +448,11 @@ func (s *Server) listClientMachineScheduledTaskRuns(c *gin.Context) {
 		LEFT JOIN workspace_sessions session ON session.id=run.session_id
 		LEFT JOIN codex_turn_intents intent ON intent.id=run.intent_id
 		LEFT JOIN codex_thread_controls control ON control.id=intent.control_id
-		WHERE workspace.worker_id=$1 AND task.id=$2
+		WHERE workspace.worker_id=$1 AND task.id=$2 AND task.engine=$6
 			AND ($3::timestamptz IS NULL OR
 				(run.created_at,run.id)<($3::timestamptz,$4::uuid))
 		ORDER BY run.created_at DESC,run.id DESC LIMIT $5`, workerID, taskID,
-		cursorTime, cursorID, limit)
+		cursorTime, cursorID, limit, engine)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取定时任务运行记录失败", err)
 		return
@@ -463,7 +476,7 @@ func (s *Server) listClientMachineScheduledTaskRuns(c *gin.Context) {
 		err := s.db.QueryRowContext(c.Request.Context(), `SELECT true
 			FROM scheduled_tasks task JOIN worker_workspaces workspace
 				ON workspace.id=task.workspace_id
-			WHERE workspace.worker_id=$1 AND task.id=$2`, workerID, taskID).Scan(&exists)
+			WHERE workspace.worker_id=$1 AND task.id=$2 AND task.engine=$3`, workerID, taskID, engine).Scan(&exists)
 		if errors.Is(err, sql.ErrNoRows) {
 			problem(c, http.StatusNotFound, "定时任务不存在", err)
 			return
@@ -476,7 +489,7 @@ func (s *Server) listClientMachineScheduledTaskRuns(c *gin.Context) {
 	response := gin.H{"items": items}
 	if len(items) == limit {
 		last := items[len(items)-1]
-		response["nextCursor"] = encodeClientPageCursor(last.CreatedAt, last.ID)
+		response["nextCursor"] = encodeClientPageCursor(last.CreatedAt, last.ID, workerID, engine, taskID)
 	}
 	c.JSON(http.StatusOK, response)
 }

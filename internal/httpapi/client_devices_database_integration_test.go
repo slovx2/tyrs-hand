@@ -48,10 +48,11 @@ func TestClientDevicePairingApprovalAndRevocation(t *testing.T) {
 		_, err = db.ExecContext(ctx, `UPDATE workers SET ssh_host_key_fingerprint=$2
 			WHERE id=$1`, worker.ID, testWorkerFingerprint(worker.ID))
 		require.NoError(t, err)
+		seedClientRuntime(t, db, worker.ID, "codex", testWorkerFingerprint(worker.ID))
 	}
 
 	created := clientJSONRequest(t, http.MethodPost,
-		endpoint+"/api/v1/client-device-pairings", "", map[string]any{"workerId": workerA.ID})
+		endpoint+"/api/v1/client-device-pairings", "", map[string]any{"engine": "codex", "workerId": workerA.ID})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	var pairing struct {
 		ID         uuid.UUID `json:"id"`
@@ -66,7 +67,8 @@ func TestClientDevicePairingApprovalAndRevocation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "tyrshand", pairingURL.Scheme)
 	require.Equal(t, "device-pair", pairingURL.Host)
-	require.Equal(t, "3", pairingURL.Query().Get("v"))
+	require.Equal(t, "4", pairingURL.Query().Get("v"))
+	require.Equal(t, "codex", pairingURL.Query().Get("engine"))
 	_, err = uuid.Parse(pairingURL.Query().Get("serverId"))
 	require.NoError(t, err)
 	require.Equal(t, pairing.ID.String(), pairingURL.Query().Get("pairingId"))
@@ -149,7 +151,7 @@ func TestClientDevicePairingApprovalAndRevocation(t *testing.T) {
 	require.Contains(t, afterApproval.Body.String(), workerB.ID.String())
 
 	revokedMachine := clientJSONRequest(t, http.MethodDelete,
-		endpoint+"/api/v1/client/machines/"+workerA.ID.String(), deviceToken, nil)
+		endpoint+"/api/v1/client/machines/"+workerA.ID.String()+"/runtimes/codex", deviceToken, nil)
 	require.Equal(t, http.StatusNoContent, revokedMachine.Code, revokedMachine.Body.String())
 	afterApproval = clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/machines", deviceToken, nil)
@@ -184,6 +186,7 @@ func TestClientDevicePairingRejectsExpiredAndConcurrentApproval(t *testing.T) {
 	_, err = db.ExecContext(ctx, `UPDATE workers SET ssh_host_key_fingerprint=$2 WHERE id=$1`,
 		worker.ID, testWorkerFingerprint(worker.ID))
 	require.NoError(t, err)
+	seedClientRuntime(t, db, worker.ID, "codex", testWorkerFingerprint(worker.ID))
 
 	rejectedID, rejectedClaim := createAndClaimClientPairingWithToken(t, endpoint, worker.ID,
 		uuid.New(), "tdv1."+uuid.NewString()+".rejected-device-secret")
@@ -265,8 +268,15 @@ func createAndClaimClientPairingWithToken(t *testing.T, endpoint string,
 	workerID, deviceID uuid.UUID, deviceToken string,
 ) (string, string) {
 	t.Helper()
+	return createAndClaimRuntimePairing(t, endpoint, workerID, deviceID, deviceToken, "codex")
+}
+
+func createAndClaimRuntimePairing(t *testing.T, endpoint string, workerID, deviceID uuid.UUID,
+	deviceToken, engine string,
+) (string, string) {
+	t.Helper()
 	created := clientJSONRequest(t, http.MethodPost,
-		endpoint+"/api/v1/client-device-pairings", "", map[string]any{"workerId": workerID})
+		endpoint+"/api/v1/client-device-pairings", "", map[string]any{"engine": engine, "workerId": workerID})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	var pairing struct {
 		ID         uuid.UUID `json:"id"`
@@ -313,6 +323,7 @@ func TestClientScheduledTasksAreMachineScopedAndPaginated(t *testing.T) {
 		_, err = db.ExecContext(ctx, `UPDATE workers SET ssh_host_key_fingerprint=$2
 			WHERE id=$1`, worker.ID, testWorkerFingerprint(worker.ID))
 		require.NoError(t, err)
+		seedClientRuntime(t, db, worker.ID, "codex", testWorkerFingerprint(worker.ID))
 	}
 
 	deviceID := uuid.New()
@@ -374,7 +385,7 @@ func TestClientScheduledTasksAreMachineScopedAndPaginated(t *testing.T) {
 	}
 
 	list := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerA.ID.String()+"/scheduled-tasks?limit=1", deviceToken, nil)
+		workerA.ID.String()+"/runtimes/codex/scheduled-tasks?limit=1", deviceToken, nil)
 	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
 	var firstPage struct {
 		Items      []clientScheduledTask `json:"items"`
@@ -385,36 +396,36 @@ func TestClientScheduledTasksAreMachineScopedAndPaginated(t *testing.T) {
 	require.NotEmpty(t, firstPage.NextCursor)
 	require.NotEqual(t, "deleted", firstPage.Items[0].Status)
 	secondPage := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerA.ID.String()+"/scheduled-tasks?limit=1&cursor="+
+		workerA.ID.String()+"/runtimes/codex/scheduled-tasks?limit=1&cursor="+
 		url.QueryEscape(firstPage.NextCursor), deviceToken, nil)
 	require.Equal(t, http.StatusOK, secondPage.Code, secondPage.Body.String())
 	require.NotContains(t, secondPage.Body.String(), deletedTask.String())
 
 	deleted := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerA.ID.String()+"/scheduled-tasks?status=deleted", deviceToken, nil)
+		workerA.ID.String()+"/runtimes/codex/scheduled-tasks?status=deleted", deviceToken, nil)
 	require.Equal(t, http.StatusOK, deleted.Code, deleted.Body.String())
 	require.Contains(t, deleted.Body.String(), deletedTask.String())
 	detail := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerA.ID.String()+"/scheduled-tasks/"+taskA.String(), deviceToken, nil)
+		workerA.ID.String()+"/runtimes/codex/scheduled-tasks/"+taskA.String(), deviceToken, nil)
 	require.Equal(t, http.StatusOK, detail.Code, detail.Body.String())
 	require.Contains(t, detail.Body.String(), "每天检查")
 	runs := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerA.ID.String()+"/scheduled-tasks/"+taskA.String()+"/runs?limit=1", deviceToken, nil)
+		workerA.ID.String()+"/runtimes/codex/scheduled-tasks/"+taskA.String()+"/runs?limit=1", deviceToken, nil)
 	require.Equal(t, http.StatusOK, runs.Code, runs.Body.String())
 	require.Contains(t, runs.Body.String(), "codex-thread-scheduled")
 	require.Contains(t, runs.Body.String(), "nextCursor")
 
 	unauthorized := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerC.ID.String()+"/scheduled-tasks", deviceToken, nil)
+		workerC.ID.String()+"/runtimes/codex/scheduled-tasks", deviceToken, nil)
 	require.Equal(t, http.StatusNotFound, unauthorized.Code, unauthorized.Body.String())
 	_, err = db.ExecContext(ctx, `UPDATE worker_workspaces SET worker_id=$2 WHERE id=$1`,
 		fixture.workspace, workerB.ID)
 	require.NoError(t, err)
 	oldMachine := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerA.ID.String()+"/scheduled-tasks", deviceToken, nil)
+		workerA.ID.String()+"/runtimes/codex/scheduled-tasks", deviceToken, nil)
 	require.NotContains(t, oldMachine.Body.String(), taskA.String())
 	newMachine := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/machines/"+
-		workerB.ID.String()+"/scheduled-tasks", deviceToken, nil)
+		workerB.ID.String()+"/runtimes/codex/scheduled-tasks", deviceToken, nil)
 	require.Contains(t, newMachine.Body.String(), taskA.String())
 }
 
@@ -444,10 +455,11 @@ func clientDeviceIntegrationServer(t *testing.T, db *sql.DB, authService *auth.S
 	client := router.Group("/api/v1/client")
 	client.Use(server.requireClientBearer())
 	client.GET("/machines", server.listClientMachines)
-	client.DELETE("/machines/:workerId", server.deleteClientMachine)
-	client.GET("/machines/:workerId/scheduled-tasks", server.listClientMachineScheduledTasks)
-	client.GET("/machines/:workerId/scheduled-tasks/:taskId", server.getClientMachineScheduledTask)
-	client.GET("/machines/:workerId/scheduled-tasks/:taskId/runs",
+	client.GET("/live-workers/:workerId/projects", server.listClientLiveWorkerProjects)
+	client.DELETE("/machines/:workerId/runtimes/:engine", server.deleteClientMachine)
+	client.GET("/machines/:workerId/runtimes/:engine/scheduled-tasks", server.listClientMachineScheduledTasks)
+	client.GET("/machines/:workerId/runtimes/:engine/scheduled-tasks/:taskId", server.getClientMachineScheduledTask)
+	client.GET("/machines/:workerId/runtimes/:engine/scheduled-tasks/:taskId/runs",
 		server.listClientMachineScheduledTaskRuns)
 	httpServer := httptest.NewServer(router)
 	t.Cleanup(httpServer.Close)

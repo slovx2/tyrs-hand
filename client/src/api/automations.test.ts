@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listScheduledTaskRuns, listScheduledTasks } from "./automations";
+import { getScheduledTask, listScheduledTaskRuns, listScheduledTasks, revokeScheduledTaskMachine } from "./automations";
 
 const getControlDeviceToken = vi.hoisted(() => vi.fn());
 vi.mock("@/db/connections", () => ({ getControlDeviceToken }));
@@ -35,11 +35,26 @@ describe("定时任务只读 API", () => {
     await listScheduledTasks(link, "active");
     await listScheduledTaskRuns(link, "task-1", "next cursor");
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "https://control.test/api/v1/client/machines/worker-1/scheduled-tasks?limit=100&status=active");
+      "https://control.test/api/v1/client/machines/worker-1/runtimes/codex/scheduled-tasks?limit=100&status=active");
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      "https://control.test/api/v1/client/machines/worker-1/scheduled-tasks/task-1/runs?limit=30&cursor=next%20cursor");
+      "https://control.test/api/v1/client/machines/worker-1/runtimes/codex/scheduled-tasks/task-1/runs?limit=30&cursor=next%20cursor");
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toMatchObject({
       Authorization: "Bearer device-token",
     });
+  });
+
+  it("Claude 授权只访问 Claude 路径，并拒绝另一个引擎的任务", async () => {
+    const claude = { ...link, engine: "claude-code" as const };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ engine: "codex" }] })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ engine: "codex" })))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(listScheduledTasks(claude)).rejects.toThrow("任务引擎与连接不一致");
+    await expect(getScheduledTask(claude, "task")).rejects.toThrow("任务引擎与连接不一致");
+    await revokeScheduledTaskMachine(claude);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      "https://control.test/api/v1/client/machines/worker-1/runtimes/claude-code");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: "DELETE" });
   });
 });

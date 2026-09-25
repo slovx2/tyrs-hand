@@ -897,19 +897,20 @@ paths:
       responses:
         "200": { description: 当前设备获准查看的机器, content: { application/json: { schema: { $ref: "#/components/schemas/ClientMachineList" } } } }
         default: { $ref: "#/components/responses/Problem" }
-  /client/machines/{workerId}:
+  /client/machines/{workerId}/runtimes/{engine}:
     delete:
       operationId: deleteClientMachine
       tags: [Client Protocol]
       security: [{ clientBearer: [] }]
-      parameters: [{ name: workerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      parameters: [{ name: workerId, in: path, required: true, schema: { type: string, format: uuid } }, { $ref: "#/components/parameters/RuntimeEngine" }]
       responses: { "204": { description: 单台机器授权已撤销 }, default: { $ref: "#/components/responses/Problem" } }
-  /client/machines/{workerId}/scheduled-tasks:
+  /client/machines/{workerId}/runtimes/{engine}/scheduled-tasks:
     get:
       operationId: listClientMachineScheduledTasks
       tags: [Client Protocol]
       security: [{ clientBearer: [] }]
       parameters:
+        - { $ref: "#/components/parameters/RuntimeEngine" }
         - { name: workerId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: status, in: query, required: false, schema: { type: string, enum: [active, paused, completed, deleted] } }
         - { $ref: "#/components/parameters/Cursor" }
@@ -917,23 +918,25 @@ paths:
       responses:
         "200": { description: 当前 Worker Workspace 的定时任务, content: { application/json: { schema: { $ref: "#/components/schemas/ClientScheduledTaskList" } } } }
         default: { $ref: "#/components/responses/Problem" }
-  /client/machines/{workerId}/scheduled-tasks/{taskId}:
+  /client/machines/{workerId}/runtimes/{engine}/scheduled-tasks/{taskId}:
     get:
       operationId: getClientMachineScheduledTask
       tags: [Client Protocol]
       security: [{ clientBearer: [] }]
       parameters:
+        - { $ref: "#/components/parameters/RuntimeEngine" }
         - { name: workerId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 定时任务完整详情, content: { application/json: { schema: { $ref: "#/components/schemas/ClientScheduledTask" } } } }
         default: { $ref: "#/components/responses/Problem" }
-  /client/machines/{workerId}/scheduled-tasks/{taskId}/runs:
+  /client/machines/{workerId}/runtimes/{engine}/scheduled-tasks/{taskId}/runs:
     get:
       operationId: listClientMachineScheduledTaskRuns
       tags: [Client Protocol]
       security: [{ clientBearer: [] }]
       parameters:
+        - { $ref: "#/components/parameters/RuntimeEngine" }
         - { name: workerId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/Cursor" }
@@ -1793,8 +1796,9 @@ components:
         discordWorkerId: { type: string, format: uuid, nullable: true }
     ClientMachine:
       type: object
-      required: [workerId, name, sshHostKeyFingerprint, status, approvedAt]
+      required: [engine, workerId, name, sshHostKeyFingerprint, status, approvedAt]
       properties:
+        engine: { type: string, enum: [codex, claude-code] }
         workerId: { type: string, format: uuid }
         name: { type: string }
         sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
@@ -1823,8 +1827,8 @@ components:
       properties: { items: { type: array, items: { $ref: "#/components/schemas/ClientDevice" } } }
     ClientPairingCreateInput:
       type: object
-      required: [workerId]
-      properties: { workerId: { type: string, format: uuid } }
+      required: [workerId, engine]
+      properties: { workerId: { type: string, format: uuid }, engine: { type: string, enum: [codex, claude-code] } }
     ClientPairingClaimInput:
       type: object
       required: [pairingSecret, deviceId, name, platform, credentialHash]
@@ -1836,8 +1840,9 @@ components:
         credentialHash: { type: string, minLength: 64, maxLength: 64 }
     ClientPairing:
       type: object
-      required: [id, status, workerId, workerName, sshHostKeyFingerprint, expiresAt, createdAt]
+      required: [engine, id, status, workerId, workerName, sshHostKeyFingerprint, expiresAt, createdAt]
       properties:
+        engine: { type: string, enum: [codex, claude-code] }
         id: { type: string, format: uuid }
         status: { type: string, enum: [waiting_scan, waiting_confirmation, approved, rejected, expired] }
         deviceId: { type: string, format: uuid }
@@ -1859,9 +1864,10 @@ components:
         externalThreadId: { type: string }
     ClientScheduledTask:
       type: object
-      required: [id, workspaceId, kind, name, prompt, status, schedule, timezone,
+      required: [engine, id, workspaceId, kind, name, prompt, status, schedule, timezone,
         scheduleKind, scheduleRevision, project, createdAt, updatedAt]
       properties:
+        engine: { type: string, enum: [codex, claude-code] }
         id: { type: string, format: uuid }
         workspaceId: { type: string, format: uuid }
         kind: { type: string, enum: [standalone, heartbeat] }

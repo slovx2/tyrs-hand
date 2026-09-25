@@ -23,86 +23,112 @@ function renderPage() {
 }
 
 describe('DevicesPage', () => {
-  it('选择 Worker 生成只读二维码并由管理员确认', async () => {
-    const create = vi.fn()
-    const approve = vi.fn()
-    server.use(
-      http.get('/api/v1/workers', () =>
-        HttpResponse.json({
-          items: [
-            {
-              id: '11111111-1111-1111-1111-111111111111',
-              name: 'worker-primary',
-              roles: ['discord'],
+  it.each(['codex', 'claude-code'])(
+    '选择 Worker 的 %s 入口生成二维码并确认',
+    async (engine) => {
+      const create = vi.fn()
+      const approve = vi.fn()
+      server.use(
+        http.get('/api/v1/workers', () =>
+          HttpResponse.json({
+            items: [
+              {
+                id: '11111111-1111-1111-1111-111111111111',
+                name: 'worker-primary',
+                roles: ['discord'],
+                enabled: true,
+                maxConcurrentJobs: 4,
+                protocolVersion: 28,
+                status: 'online',
+                sshHostKeyFingerprint:
+                  'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+              },
+            ],
+          }),
+        ),
+        http.get('/api/v1/workers/:id/runtimes', () =>
+          HttpResponse.json(
+            ['codex', 'claude-code'].map((engine) => ({
+              engine,
               enabled: true,
-              maxConcurrentJobs: 4,
-              protocolVersion: 28,
-              status: 'online',
+              status: 'running',
               sshHostKeyFingerprint:
                 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            })),
+          ),
+        ),
+        http.get('/api/v1/client-devices', () =>
+          HttpResponse.json({ items: [] }),
+        ),
+        http.post('/api/v1/client-device-pairings', async ({ request }) => {
+          create(await request.json())
+          return HttpResponse.json(
+            {
+              id: '22222222-2222-2222-2222-222222222222',
+              status: 'waiting_scan',
+              workerId: '11111111-1111-1111-1111-111111111111',
+              workerName: 'worker-primary',
+              engine,
+              sshHostKeyFingerprint:
+                'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+              expiresAt: '2026-08-15T02:00:00Z',
+              qrDataUrl: 'data:image/png;base64,dGVzdA==',
             },
-          ],
+            { status: 201 },
+          )
         }),
-      ),
-      http.get('/api/v1/client-devices', () =>
-        HttpResponse.json({ items: [] }),
-      ),
-      http.post('/api/v1/client-device-pairings', async ({ request }) => {
-        create(await request.json())
-        return HttpResponse.json(
-          {
+        http.get('/api/v1/client-device-pairings/:id', () =>
+          HttpResponse.json({
             id: '22222222-2222-2222-2222-222222222222',
-            status: 'waiting_scan',
+            status: 'waiting_confirmation',
+            deviceName: 'Pixel E2E',
+            platform: 'android',
             workerId: '11111111-1111-1111-1111-111111111111',
             workerName: 'worker-primary',
+            engine,
             sshHostKeyFingerprint:
               'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
             expiresAt: '2026-08-15T02:00:00Z',
-            qrDataUrl: 'data:image/png;base64,dGVzdA==',
+          }),
+        ),
+        http.post(
+          '/api/v1/client-device-pairings/:id/approve',
+          ({ params }) => {
+            approve(params.id)
+            return HttpResponse.json({
+              id: '33333333-3333-3333-3333-333333333333',
+              name: 'Pixel E2E',
+              platform: 'android',
+              machines: [],
+            })
           },
-          { status: 201 },
-        )
-      }),
-      http.get('/api/v1/client-device-pairings/:id', () =>
-        HttpResponse.json({
-          id: '22222222-2222-2222-2222-222222222222',
-          status: 'waiting_confirmation',
-          deviceName: 'Pixel E2E',
-          platform: 'android',
-          workerId: '11111111-1111-1111-1111-111111111111',
-          workerName: 'worker-primary',
-          sshHostKeyFingerprint:
-            'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-          expiresAt: '2026-08-15T02:00:00Z',
-        }),
-      ),
-      http.post('/api/v1/client-device-pairings/:id/approve', ({ params }) => {
-        approve(params.id)
-        return HttpResponse.json({
-          id: '33333333-3333-3333-3333-333333333333',
-          name: 'Pixel E2E',
-          platform: 'android',
-          machines: [],
-        })
-      }),
-    )
+        ),
+      )
 
-    renderPage()
-    expect(
-      await screen.findByText(/扫码只允许移动端查看所选 Worker 的定时任务/),
-    ).toBeInTheDocument()
-    const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: '生成二维码' }))
-    expect(create).toHaveBeenCalledWith({
-      workerId: '11111111-1111-1111-1111-111111111111',
-    })
-    expect(await screen.findByText('Pixel E2E')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '确认授权' }))
-    expect(approve).toHaveBeenCalledWith('22222222-2222-2222-2222-222222222222')
-    expect(
-      await screen.findByText('设备已获得这台 Worker 的定时任务只读权限'),
-    ).toBeInTheDocument()
-  })
+      renderPage()
+      expect(
+        await screen.findByText(
+          /扫码只允许移动端查看所选 Worker 下所选引擎的定时任务/,
+        ),
+      ).toBeInTheDocument()
+      const user = userEvent.setup()
+      await screen.findByRole('option', { name: 'Claude · running' })
+      await user.selectOptions(screen.getByLabelText('引擎'), engine)
+      await user.click(screen.getByRole('button', { name: '生成二维码' }))
+      expect(create).toHaveBeenCalledWith({
+        engine,
+        workerId: '11111111-1111-1111-1111-111111111111',
+      })
+      expect(await screen.findByText('Pixel E2E')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '确认授权' }))
+      expect(approve).toHaveBeenCalledWith(
+        '22222222-2222-2222-2222-222222222222',
+      )
+      expect(
+        await screen.findByText('设备已获得这个运行时的定时任务只读权限'),
+      ).toBeInTheDocument()
+    },
+  )
 
   it('展示每台设备获准查看的机器', async () => {
     server.use(
@@ -119,6 +145,7 @@ describe('DevicesPage', () => {
                 {
                   workerId: '11111111-1111-1111-1111-111111111111',
                   name: 'worker-primary',
+                  engine: 'claude-code',
                   sshHostKeyFingerprint:
                     'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
                   status: 'online',
@@ -134,7 +161,7 @@ describe('DevicesPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'iPhone' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('worker-primary')).toBeInTheDocument()
-    expect(screen.getByText('ios · 1 台机器')).toBeInTheDocument()
+    expect(screen.getByText('worker-primary · Claude')).toBeInTheDocument()
+    expect(screen.getByText('ios · 1 个入口')).toBeInTheDocument()
   })
 })

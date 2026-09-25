@@ -98,6 +98,23 @@
         "codex",
         "claude-code"
       ]
+    },
+    {
+      "id": "CONTROL-PAIRING-001",
+      "package": "./internal/httpapi",
+      "test": "TestClientRuntimePairingAndTaskIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-MIGRATION-002",
+      "package": "./internal/database",
+      "test": "TestClientRuntimeMigrationPreservesCodexAuthorization",
+      "engines": [
+        "codex"
+      ]
     }
   ]
 }

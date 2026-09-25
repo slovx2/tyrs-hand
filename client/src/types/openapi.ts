@@ -1051,7 +1051,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/machines/{workerId}": {
+    "/client/machines/{workerId}/runtimes/{engine}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1067,7 +1067,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/machines/{workerId}/scheduled-tasks": {
+    "/client/machines/{workerId}/runtimes/{engine}/scheduled-tasks": {
         parameters: {
             query?: never;
             header?: never;
@@ -1083,7 +1083,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/machines/{workerId}/scheduled-tasks/{taskId}": {
+    "/client/machines/{workerId}/runtimes/{engine}/scheduled-tasks/{taskId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1099,7 +1099,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/machines/{workerId}/scheduled-tasks/{taskId}/runs": {
+    "/client/machines/{workerId}/runtimes/{engine}/scheduled-tasks/{taskId}/runs": {
         parameters: {
             query?: never;
             header?: never;
@@ -2122,6 +2122,8 @@ export interface components {
             discordWorkerId?: string | null;
         };
         ClientMachine: {
+            /** @enum {string} */
+            engine: "codex" | "claude-code";
             /** Format: uuid */
             workerId: string;
             name: string;
@@ -2156,6 +2158,8 @@ export interface components {
         ClientPairingCreateInput: {
             /** Format: uuid */
             workerId: string;
+            /** @enum {string} */
+            engine: "codex" | "claude-code";
         };
         ClientPairingClaimInput: {
             pairingSecret: string;
@@ -2166,6 +2170,8 @@ export interface components {
             credentialHash: string;
         };
         ClientPairing: {
+            /** @enum {string} */
+            engine: "codex" | "claude-code";
             /** Format: uuid */
             id: string;
             /** @enum {string} */
@@ -2192,6 +2198,8 @@ export interface components {
             externalThreadId?: string;
         };
         ClientScheduledTask: {
+            /** @enum {string} */
+            engine: "codex" | "claude-code";
             /** Format: uuid */
             id: string;
             /** Format: uuid */
@@ -4915,6 +4923,7 @@ export interface operations {
             header?: never;
             path: {
                 workerId: string;
+                engine: components["parameters"]["RuntimeEngine"];
             };
             cookie?: never;
         };
@@ -4939,6 +4948,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                engine: components["parameters"]["RuntimeEngine"];
                 workerId: string;
             };
             cookie?: never;
@@ -4962,6 +4972,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                engine: components["parameters"]["RuntimeEngine"];
                 workerId: string;
                 taskId: string;
             };
@@ -4989,6 +5000,7 @@ export interface operations {
             };
             header?: never;
             path: {
+                engine: components["parameters"]["RuntimeEngine"];
                 workerId: string;
                 taskId: string;
             };

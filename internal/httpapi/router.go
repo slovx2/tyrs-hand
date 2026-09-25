@@ -187,10 +187,10 @@ func (s *Server) adminRouter() http.Handler {
 	client := api.Group("/client")
 	client.Use(s.requireClientBearer())
 	client.GET("/machines", s.listClientMachines)
-	client.DELETE("/machines/:workerId", s.deleteClientMachine)
-	client.GET("/machines/:workerId/scheduled-tasks", s.listClientMachineScheduledTasks)
-	client.GET("/machines/:workerId/scheduled-tasks/:taskId", s.getClientMachineScheduledTask)
-	client.GET("/machines/:workerId/scheduled-tasks/:taskId/runs",
+	client.DELETE("/machines/:workerId/runtimes/:engine", s.deleteClientMachine)
+	client.GET("/machines/:workerId/runtimes/:engine/scheduled-tasks", s.listClientMachineScheduledTasks)
+	client.GET("/machines/:workerId/runtimes/:engine/scheduled-tasks/:taskId", s.getClientMachineScheduledTask)
+	client.GET("/machines/:workerId/runtimes/:engine/scheduled-tasks/:taskId/runs",
 		s.listClientMachineScheduledTaskRuns)
 	client.POST("/live-conversations", s.createLiveConversation)
 	client.GET("/live-workers/:workerId/sessions", s.listClientLiveWorkerSessions)

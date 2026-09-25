@@ -4,12 +4,15 @@ import { z } from "zod";
 import { deletePairingClaimToken, getControlDeviceToken, getPairingClaimToken,
   saveControlDeviceToken, savePairingClaimToken } from "@/db/connections";
 
+import { engineSchema } from "@/types/runtime";
+
 const pairingSchema = z.object({
   server: z.string().url(),
   serverId: z.string().uuid(),
   pairingId: z.string().uuid(),
   secret: z.string().min(16),
   workerId: z.string().uuid(),
+  engine: engineSchema,
   workerName: z.string().min(1),
   sshHostKeyFingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]{43}$/),
   expiresAt: z.string().datetime(),
@@ -32,7 +35,7 @@ export function resolvePairingUri(params: Record<string, string | string[]>,
 export function parsePairingCode(value: string): PairingCode {
   const url = new URL(value);
   if (url.protocol !== "tyrshand:" || url.hostname !== "device-pair" ||
-    url.searchParams.get("v") !== "3") {
+    url.searchParams.get("v") !== "4") {
     throw new Error("无法识别这个定时任务授权二维码");
   }
   return pairingSchema.parse(Object.fromEntries(url.searchParams.entries()));
@@ -105,10 +108,11 @@ export async function fetchPairedMachine(code: PairingCode, credential: string) 
     { headers: { Authorization: `Bearer ${credential}`, Accept: "application/json" } });
   if (!response.ok) throw new Error("授权已确认，但读取机器身份失败");
   const result = z.object({ items: z.array(z.object({
-    workerId: z.string().uuid(), name: z.string(),
+    workerId: z.string().uuid(),
+  engine: engineSchema, name: z.string(),
     sshHostKeyFingerprint: z.string(), status: z.string(),
   })) }).parse(await response.json());
-  const machine = result.items.find((item) => item.workerId === code.workerId);
+  const machine = result.items.find((item) => item.workerId === code.workerId && item.engine === code.engine);
   if (!machine || machine.sshHostKeyFingerprint !== code.sshHostKeyFingerprint) {
     throw new Error("Control 返回的机器身份与二维码不一致");
   }

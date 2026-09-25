@@ -8,11 +8,16 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api/client'
+import type { components } from '../api/schema'
+type Engine = 'codex' | 'claude-code'
+const engineLabel = (engine: Engine) =>
+  engine === 'codex' ? 'Codex' : 'Claude'
 import { useUI } from '../state'
 import type { Worker } from './WorkersPage'
 
 interface Machine {
   workerId: string
+  engine: Engine
   name: string
   sshHostKeyFingerprint: string
   status: string
@@ -39,6 +44,7 @@ interface Pairing {
   deviceName?: string
   platform?: string
   workerId: string
+  engine: Engine
   workerName: string
   sshHostKeyFingerprint: string
   expiresAt: string
@@ -50,6 +56,7 @@ export function DevicesPage() {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
   const [workerId, setWorkerId] = useState('')
+  const [engine, setEngine] = useState<Engine>('codex')
   const [pairing, setPairing] = useState<Pairing>()
   const devices = useQuery({
     queryKey: ['client-devices'],
@@ -60,9 +67,25 @@ export function DevicesPage() {
     queryFn: () => api<{ items: Worker[] }>('/workers'),
   })
   const eligibleWorkers = (workers.data?.items ?? []).filter(
-    (worker) => worker.enabled && Boolean(worker.sshHostKeyFingerprint),
+    (worker) => worker.enabled,
   )
   const selectedWorkerId = workerId || eligibleWorkers[0]?.id || ''
+  const runtimes = useQuery({
+    queryKey: ['worker-runtimes', selectedWorkerId],
+    queryFn: () =>
+      api<components['schemas']['WorkerRuntime'][]>(
+        `/workers/${selectedWorkerId}/runtimes`,
+      ),
+    enabled: Boolean(selectedWorkerId),
+  })
+  const eligibleRuntimes = (runtimes.data ?? []).filter(
+    (runtime) => runtime.enabled && runtime.sshHostKeyFingerprint,
+  )
+  const selectedEngine = eligibleRuntimes.some(
+    (runtime) => runtime.engine === engine,
+  )
+    ? engine
+    : eligibleRuntimes[0]?.engine
   const pairingStatus = useQuery({
     queryKey: ['client-device-pairing', pairing?.id],
     queryFn: () => api<Pairing>(`/client-device-pairings/${pairing?.id}`),
@@ -80,7 +103,10 @@ export function DevicesPage() {
     mutationFn: () =>
       api<Pairing>('/client-device-pairings', {
         method: 'POST',
-        body: JSON.stringify({ workerId: selectedWorkerId }),
+        body: JSON.stringify({
+          workerId: selectedWorkerId,
+          engine: selectedEngine,
+        }),
       }),
     onSuccess: setPairing,
     onError: (error: Error) => showToast('error', error.message),
@@ -91,7 +117,7 @@ export function DevicesPage() {
         method: 'POST',
       }),
     onSuccess: async () => {
-      showToast('success', '设备已获得这台 Worker 的定时任务只读权限')
+      showToast('success', '设备已获得这个运行时的定时任务只读权限')
       setPairing(undefined)
       await queryClient.invalidateQueries({ queryKey: ['client-devices'] })
     },
@@ -121,7 +147,7 @@ export function DevicesPage() {
           <h1>移动端定时任务授权</h1>
           <p className="devices-page-subtitle">
             扫码只允许移动端查看所选 Worker
-            的定时任务和运行记录；项目、会话和聊天仍只通过 SSH。
+            下所选引擎的定时任务和运行记录；项目、会话和聊天仍只通过 SSH。
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -142,9 +168,26 @@ export function DevicesPage() {
               ))}
             </select>
           </label>
+          <label>
+            <span className="label">引擎</span>
+            <select
+              className="field mt-1"
+              value={selectedEngine ?? ''}
+              onChange={(event) => setEngine(event.target.value as Engine)}
+            >
+              {!selectedEngine && <option value="">没有可配对的运行时</option>}
+              {eligibleRuntimes.map((runtime) => (
+                <option key={runtime.engine} value={runtime.engine}>
+                  {engineLabel(runtime.engine)} · {runtime.status}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             className="button device-add-button"
-            disabled={!selectedWorkerId || createPairing.isPending}
+            disabled={
+              !selectedWorkerId || !selectedEngine || createPairing.isPending
+            }
             onClick={() => createPairing.mutate()}
           >
             {createPairing.isPending ? (
@@ -160,7 +203,10 @@ export function DevicesPage() {
       {currentPairing && (
         <section className="device-panel device-pairing-panel">
           <div className="device-panel-header">
-            <h2>授权 {currentPairing.workerName}</h2>
+            <h2>
+              授权 {currentPairing.workerName} ·{' '}
+              {engineLabel(currentPairing.engine)}
+            </h2>
             <span className="device-panel-count">仅定时任务只读</span>
           </div>
           {currentPairing.status === 'waiting_scan' && (
@@ -202,8 +248,8 @@ export function DevicesPage() {
                 <div className="device-pairing-eyebrow">等待管理员确认</div>
                 <h3>{currentPairing.deviceName}</h3>
                 <p>
-                  {currentPairing.platform} · {currentPairing.workerName} ·
-                  仅查看定时任务
+                  {currentPairing.platform} · {currentPairing.workerName} ·{' '}
+                  {engineLabel(currentPairing.engine)} · 仅查看定时任务
                 </p>
               </div>
               <div className="device-confirmation-actions">
@@ -259,13 +305,15 @@ export function DevicesPage() {
               <div>
                 <h3>{device.name}</h3>
                 <p>
-                  {device.platform} · {device.machines.length} 台机器
+                  {device.platform} · {device.machines.length} 个入口
                 </p>
               </div>
             </div>
             <div className="device-metadata">
               <strong>
-                {device.machines.map((item) => item.name).join('、')}
+                {device.machines
+                  .map((item) => `${item.name} · ${engineLabel(item.engine)}`)
+                  .join('、')}
               </strong>
               <span>定时任务授权</span>
             </div>
