@@ -711,7 +711,7 @@ func (c *desktopController) localDesktopTask(params json.RawMessage) (
 	}, Snapshot: workerprotocol.TaskSnapshot{
 		Session: &workerprotocol.SessionSnapshot{MessageID: intentID.String(),
 			Body: instruction, InputSurface: "desktop", Project: project},
-		Runtime: workerprotocol.RuntimeSnapshot{Model: input.Model,
+		Runtime: workerprotocol.RuntimeSnapshot{Engine: c.workspace.hostRuntime.Info().Identity.Engine, Model: input.Model,
 			ReasoningEffort: input.ReasoningEffort, ServiceTier: input.ServiceTier,
 			CollaborationMode: mode},
 	}}

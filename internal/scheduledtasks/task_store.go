@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 type Service struct {
@@ -26,6 +27,7 @@ func NewService(db *sql.DB, leaseDuration time.Duration, maxSteers, maxAttempts 
 }
 
 type sessionContext struct {
+	Engine          runtimeidentity.Engine
 	WorkspaceID     uuid.UUID
 	ProjectID       uuid.UUID
 	AdministratorID *uuid.UUID
@@ -41,11 +43,11 @@ func (s *Service) loadSessionContext(ctx context.Context, tool ToolContext) (ses
 	var administrator, model, effort sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT session.workspace_id,session.workspace_project_id,
 		session.created_by_administrator_id::text,session.agent_profile_id,session.model,
-		session.reasoning_effort,session.service_tier,session.lifecycle_state
+		session.reasoning_effort,session.service_tier,session.lifecycle_state,session.engine
 		FROM workspace_sessions session
 		WHERE session.id=$1 AND session.workspace_project_id=$2`, tool.SessionID,
 		tool.ProjectID).Scan(&result.WorkspaceID, &result.ProjectID, &administrator,
-		&result.AgentProfileID, &model, &effort, &result.ServiceTier, &result.LifecycleState)
+		&result.AgentProfileID, &model, &effort, &result.ServiceTier, &result.LifecycleState, &result.Engine)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sessionContext{}, errors.New("当前工具调用不属于有效 Workspace Session")
 	}
@@ -129,7 +131,7 @@ func (s *Service) Create(ctx context.Context, tool ToolContext, args ToolArgumen
 		status = StatusCompleted
 	}
 
-	task := Task{WorkspaceID: current.WorkspaceID, WorkspaceProjectID: current.ProjectID,
+	task := Task{Engine: current.Engine, WorkspaceID: current.WorkspaceID, WorkspaceProjectID: current.ProjectID,
 		CreatedByAdministratorID: current.AdministratorID, Kind: args.Kind,
 		Name: strings.TrimSpace(*args.Name), Prompt: strings.TrimSpace(*args.Prompt),
 		Status: status, ScheduleText: schedule.Text, Timezone: schedule.Timezone,
@@ -202,13 +204,13 @@ func (s *Service) insertTask(ctx context.Context, task Task) (Task, error) {
 	row := s.db.QueryRowContext(ctx, `INSERT INTO scheduled_tasks(
 		workspace_id,workspace_project_id,target_session_id,created_by_administrator_id,
 		kind,name,prompt,status,schedule_text,timezone,schedule_kind,interval_seconds,
-		next_run_at,agent_profile_id,model,reasoning_effort,service_tier)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		next_run_at,agent_profile_id,model,reasoning_effort,service_tier,engine)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		RETURNING `+taskColumns, task.WorkspaceID, task.WorkspaceProjectID,
 		nullableUUIDValue(task.TargetSessionID), nullableUUIDValue(task.CreatedByAdministratorID),
 		task.Kind, task.Name, task.Prompt, task.Status, task.ScheduleText, task.Timezone,
 		task.ScheduleKind, interval, task.NextRunAt, nullableUUIDValue(task.AgentProfileID),
-		nullableText(task.Model), nullableText(task.ReasoningEffort), nullableText(task.ServiceTier))
+		nullableText(task.Model), nullableText(task.ReasoningEffort), nullableText(task.ServiceTier), task.Engine)
 	created, err := scanTask(row)
 	if err != nil {
 		return Task{}, fmt.Errorf("创建定时任务: %w", err)

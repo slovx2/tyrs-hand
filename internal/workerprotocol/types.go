@@ -7,11 +7,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 const Version = 33
 
 const VersionHeader = "X-Tyrs-Worker-Protocol"
+const EngineHeader = "X-Tyrs-Runtime-Engine"
 
 // 控制通道报文类型。空类型保持旧行为，即 Control 发起的 RPC 请求。
 const (
@@ -166,14 +168,15 @@ type ClaimResponse struct {
 }
 
 type SessionTitleTask struct {
-	ID             uuid.UUID `json:"id"`
-	SessionID      uuid.UUID `json:"sessionId"`
-	WorkspaceID    uuid.UUID `json:"workspaceId"`
-	FirstMessage   string    `json:"firstMessage"`
-	TitleRevision  int64     `json:"titleRevision"`
-	Attempt        int       `json:"attempt"`
-	LeaseToken     string    `json:"leaseToken"`
-	LeaseExpiresAt time.Time `json:"leaseExpiresAt"`
+	Engine         runtimeidentity.Engine `json:"engine"`
+	ID             uuid.UUID              `json:"id"`
+	SessionID      uuid.UUID              `json:"sessionId"`
+	WorkspaceID    uuid.UUID              `json:"workspaceId"`
+	FirstMessage   string                 `json:"firstMessage"`
+	TitleRevision  int64                  `json:"titleRevision"`
+	Attempt        int                    `json:"attempt"`
+	LeaseToken     string                 `json:"leaseToken"`
+	LeaseExpiresAt time.Time              `json:"leaseExpiresAt"`
 }
 
 type SessionTitleClaimResponse struct {
@@ -457,15 +460,16 @@ type TaskSnapshot struct {
 }
 
 type RuntimeSnapshot struct {
-	ProfileName       string `json:"profileName"`
-	Model             string `json:"model,omitempty"`
-	ReasoningEffort   string `json:"reasoningEffort,omitempty"`
-	ServiceTier       string `json:"serviceTier,omitempty"`
-	Sandbox           string `json:"sandbox"`
-	ApprovalPolicy    string `json:"approvalPolicy"`
-	NetworkEnabled    bool   `json:"networkEnabled"`
-	CollaborationMode string `json:"collaborationMode,omitempty"`
-	SettingsRevision  int64  `json:"settingsRevision"`
+	Engine            runtimeidentity.Engine `json:"engine"`
+	ProfileName       string                 `json:"profileName"`
+	Model             string                 `json:"model,omitempty"`
+	ReasoningEffort   string                 `json:"reasoningEffort,omitempty"`
+	ServiceTier       string                 `json:"serviceTier,omitempty"`
+	Sandbox           string                 `json:"sandbox"`
+	ApprovalPolicy    string                 `json:"approvalPolicy"`
+	NetworkEnabled    bool                   `json:"networkEnabled"`
+	CollaborationMode string                 `json:"collaborationMode,omitempty"`
+	SettingsRevision  int64                  `json:"settingsRevision"`
 }
 
 type GitHubAgentSnapshot struct {

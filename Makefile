@@ -3,7 +3,10 @@ LOCAL_IMAGE ?= tyrs-hand:local
 CODEX ?= codex
 .DEFAULT_GOAL := dependencies
 
-.PHONY: test-protocol-matrix test-runtime-e2e
+.PHONY: test-protocol-matrix test-runtime-e2e test-control-runtime
+test-control-runtime:
+	node tools/control-runtime-tests.mjs
+
 test-protocol-matrix:
 	node tools/protocol-matrix.mjs
 

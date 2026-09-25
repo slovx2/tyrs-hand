@@ -446,7 +446,7 @@ func TestScheduledTasksDatabaseIntegration(t *testing.T) {
 		_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed'
 			WHERE id=$1`, heartbeatIntent)
 		require.NoError(t, err)
-		tx, err = db.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(ctx, nil)
 		require.NoError(t, err)
 		userIntent, inserted, err := codexcontrol.NewRepository(db, time.Minute).Enqueue(ctx, tx,
 			codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceWorkspace,

@@ -1,0 +1,67 @@
+{
+  "scope": "control-database",
+  "cases": [
+    {
+      "id": "CONTROL-ISOLATION-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerSessionRuntimeCreationAndForkIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-EVENTS-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerSessionRuntimeMetadataAndLifecycleIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-CAPABILITY-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerRuntimeScopeRejectsMissingUnknownAndUnsupported",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-AUTOMATION-001",
+      "package": "./internal/scheduledtasks",
+      "test": "TestScheduledTaskRuntimeInheritanceAndIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-MIGRATION-001",
+      "package": "./internal/database",
+      "test": "TestRuntimeScopeBackfillsExistingSessionsAndSchedules",
+      "engines": [
+        "codex"
+      ]
+    },
+    {
+      "id": "CONTROL-TITLE-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerSessionTitleRuntimeIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-ISOLATION-002",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerRuntimeRejectsForeignRunAndAttachments",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    }
+  ]
+}

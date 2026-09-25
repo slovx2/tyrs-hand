@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +31,7 @@ func (c *titleCaller) Call(_ context.Context, method string, params, result any)
 
 func TestSessionTitleThreadIsEphemeralAndRestricted(t *testing.T) {
 	caller := &titleCaller{}
-	threadID, err := startSessionTitleThread(context.Background(), caller, t.TempDir())
+	threadID, err := startSessionTitleThread(context.Background(), caller, t.TempDir(), runtimeidentity.Codex)
 	require.NoError(t, err)
 	require.Equal(t, "title-thread", threadID)
 	require.Equal(t, "thread/start", caller.method)
@@ -42,9 +43,27 @@ func TestSessionTitleThreadIsEphemeralAndRestricted(t *testing.T) {
 	require.Equal(t, false, caller.params["config"].(map[string]any)["default_tools_enabled"])
 }
 
+func TestClaudeSessionTitleUsesNativeModelConfiguration(t *testing.T) {
+	caller := &titleCaller{}
+	_, err := startSessionTitleThread(t.Context(), caller, t.TempDir(), runtimeidentity.Claude)
+	require.NoError(t, err)
+	require.Equal(t, "claude-default", caller.params["model"])
+	require.Equal(t, "read-only", caller.params["sandbox"])
+	require.NotContains(t, caller.params, "serviceTier")
+	require.Equal(t, map[string]any{"default_tools_enabled": false}, caller.params["config"])
+	_, err = startSessionTitleTurn(t.Context(), caller, "title-thread", "标题输入", runtimeidentity.Claude)
+	require.NoError(t, err)
+	require.Equal(t, "claude-default", caller.params["model"])
+	require.NotContains(t, caller.params, "effort")
+	require.NotContains(t, caller.params, "serviceTier")
+	require.Contains(t, caller.params, "outputSchema")
+	_, err = startSessionTitleThread(t.Context(), caller, t.TempDir(), "")
+	require.Error(t, err, "缺失引擎不能默认使用 GPT")
+}
+
 func TestSessionTitleTurnUsesStructuredOutput(t *testing.T) {
 	caller := &titleCaller{}
-	turnID, err := startSessionTitleTurn(context.Background(), caller, "title-thread", "测试任务")
+	turnID, err := startSessionTitleTurn(context.Background(), caller, "title-thread", "测试任务", runtimeidentity.Codex)
 	require.NoError(t, err)
 	require.Equal(t, "title-turn", turnID)
 	require.Equal(t, "turn/start", caller.method)

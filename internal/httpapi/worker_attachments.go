@@ -22,7 +22,7 @@ func (s *Server) workerDownloadAttachment(c *gin.Context) {
 		return
 	}
 	worker := currentWorker(c)
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验附件下载权限失败", err)
 		return

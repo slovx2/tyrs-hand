@@ -80,6 +80,10 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		return nil, nil, err
 	}
 	client := workerprotocol.NewClient(cfg.WorkerControlURL, "", cfg.ControlTimeout)
+	if err := worker.MigrateCodexJournalRuntime(cfg.WorkerDataRoot); err != nil {
+		cleanupFailure(nil)
+		return nil, nil, fmt.Errorf("迁移 Codex Journal 引擎: %w", err)
+	}
 	processor := worker.NewProcessor(ctx, cfg, client, provideWorkspace(cfg), catalog, logger)
 	runner, err := worker.NewRunner(cfg, client, processor, logger)
 	if err != nil {

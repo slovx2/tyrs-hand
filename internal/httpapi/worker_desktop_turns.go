@@ -40,7 +40,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	projectionKey := desktopInputProjectionKey(request.Params, request.RequestKey)
 	worker := currentWorker(c)
 	if existing, existingErr := s.claimedRemoteRun(c.Request.Context(), worker.ID,
-		request.RunID); existingErr == nil {
+		request.RunID, currentWorkerEngine(c)); existingErr == nil {
 		snapshot, snapshotErr := s.loadWorkerSnapshot(c.Request.Context(), existing)
 		if snapshotErr != nil {
 			problem(c, http.StatusInternalServerError, "读取 Desktop Turn 快照失败", snapshotErr)
@@ -82,10 +82,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.owner_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
-		AND ct.worker_id = $3
+		AND ct.worker_id = $3 AND ct.engine = $4
 		AND (ct.discord_conversation_id IS NULL OR forum.binding_status='active')
 		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
-		worker.ID).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
+		worker.ID, currentWorkerEngine(c)).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
 		&projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence, &claimed.CollaborationMode,
 		&claimed.ExternalThreadID, &desktopRequestID,
@@ -193,7 +193,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	}
 	claimed.Attempt, claimed.MaxAttempts = 1, max(1, s.cfg.CodexReconcileMaxAttempts)
 	claimed.MaxSteers = max(1, s.cfg.CodexMaxSteersPerTurn)
-	idempotencyKey := "desktop-turn:" + request.WorkspaceID.String() + ":" + request.RequestKey
+	idempotencyKey := "desktop-turn:" + request.WorkspaceID.String() + ":" + string(currentWorkerEngine(c)) + ":" + request.RequestKey
 	if isReplacement {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
 			instruction=$2,prepared_input=$3,status='dispatching',attempt_count=1,max_attempts=$4,

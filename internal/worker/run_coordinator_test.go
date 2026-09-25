@@ -75,6 +75,19 @@ func TestRunCoordinatorRoutesAndPersistsInputsExactlyOnce(t *testing.T) {
 		Action: "steer", TurnID: "turn-1"}}, loaded[0].AppliedInputs)
 }
 
+func TestRunCoordinatorRejectsCrossEngineEvenWhenIDsCollide(t *testing.T) {
+	coordinator := newRunCoordinator(nil)
+	active := coordinatorTask(uuid.New(), uuid.New(), uuid.New(), "same-thread", 3)
+	commands := make(chan workerprotocol.RunCommand, 1)
+	coordinator.register(&runJournal{Task: active}, commands)
+	input := active
+	input.Snapshot.Runtime.Engine = "claude-code"
+	_, routed, applied := coordinator.route(&input)
+	require.False(t, routed)
+	require.False(t, applied)
+	require.Empty(t, commands)
+}
+
 func TestRunCoordinatorRejectLeavesInputForNextAttempt(t *testing.T) {
 	coordinator := newRunCoordinator(nil)
 	active := coordinatorTask(uuid.New(), uuid.New(), uuid.New(), "thread-1", 2)
@@ -168,7 +181,7 @@ func coordinatorTask(intentID, controlID, workspaceID uuid.UUID, threadID string
 			Operation: "turn_input"},
 		RunID: uuid.New(), ExternalThreadID: threadID,
 		MaxSteers: maxSteers,
-	}, Snapshot: workerprotocol.TaskSnapshot{Session: &workerprotocol.SessionSnapshot{
+	}, Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: "codex"}, Session: &workerprotocol.SessionSnapshot{
 		Project: &workerprotocol.WorkspaceProjectContext{WorkspaceID: workspaceID},
 	}}}
 }

@@ -18,9 +18,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 type Client struct {
+	engine     runtimeidentity.Engine
 	baseURL    string
 	credential string
 	http       *http.Client
@@ -47,8 +49,18 @@ func NewClient(baseURL, credential string, timeout time.Duration) *Client {
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), credential: credential,
+	return &Client{engine: runtimeidentity.Codex, baseURL: strings.TrimRight(baseURL, "/"), credential: credential,
 		http: &http.Client{Timeout: timeout}}
+}
+
+// ForEngine 在认证完成后创建独立作用域客户端，不能由模型或 thread ID 改变路由。
+func (c *Client) ForEngine(engine runtimeidentity.Engine) (*Client, error) {
+	if err := engine.Validate(); err != nil {
+		return nil, err
+	}
+	client := *c
+	client.engine = engine
+	return &client, nil
 }
 
 func (c *Client) SetCredential(value string) { c.credential = value }
@@ -499,6 +511,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 	}
 	request.Header.Set("Authorization", "Bearer "+c.credential)
 	request.Header.Set(VersionHeader, strconv.Itoa(Version))
+	request.Header.Set(EngineHeader, string(c.engine))
 	response, err := c.http.Do(request)
 	if err != nil {
 		return "", 0, err
@@ -615,6 +628,7 @@ func (c *Client) execute(request *http.Request, output any, authenticated bool) 
 		}
 		request.Header.Set("Authorization", "Bearer "+c.credential)
 		request.Header.Set(VersionHeader, strconv.Itoa(Version))
+		request.Header.Set(EngineHeader, string(c.engine))
 	}
 	response, err := c.http.Do(request)
 	if err != nil {

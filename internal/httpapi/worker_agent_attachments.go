@@ -29,7 +29,7 @@ func (s *Server) workerUploadAgentAttachment(c *gin.Context) {
 		return
 	}
 	worker := currentWorker(c)
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验 agent 附件 Run 失败", err)
 		return

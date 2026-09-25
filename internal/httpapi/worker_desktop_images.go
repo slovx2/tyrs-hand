@@ -171,7 +171,7 @@ func desktopImageTypeMatches(filename, mediaType string) bool {
 }
 
 func (s *Server) workerDesktopImageTarget(c *gin.Context) {
-	intentID, ok := desktopImageIntentID(c)
+	intentID, ok := s.desktopImageIntentID(c)
 	if !ok {
 		return
 	}
@@ -220,13 +220,13 @@ func (s *Server) desktopImageTargetStatus(ctx context.Context, worker workerregi
 	return "ready", nil
 }
 
-func desktopImageIntentID(c *gin.Context) (uuid.UUID, bool) {
+func (s *Server) desktopImageIntentID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, errors.New("desktop intent ID 无效"))
 		return uuid.Nil, false
 	}
-	return id, true
+	return id, s.requireRuntimeIntent(c, id)
 }
 
 func desktopImageOrdinal(c *gin.Context) (int, bool) {
@@ -293,7 +293,7 @@ func (r *validatedDesktopImageReader) Read(buffer []byte) (int, error) {
 }
 
 func (s *Server) workerUploadDesktopImage(c *gin.Context) {
-	intentID, ok := desktopImageIntentID(c)
+	intentID, ok := s.desktopImageIntentID(c)
 	if !ok {
 		return
 	}
@@ -394,7 +394,7 @@ func (s *Server) workerUploadDesktopImage(c *gin.Context) {
 }
 
 func (s *Server) workerFailDesktopImage(c *gin.Context) {
-	intentID, ok := desktopImageIntentID(c)
+	intentID, ok := s.desktopImageIntentID(c)
 	if !ok {
 		return
 	}

@@ -133,6 +133,9 @@ func (s *journalStore) save(journal *runJournal) error {
 	if journal == nil || journal.Task.Claimed.RunID == uuid.Nil {
 		return errors.New("run Journal 缺少任务或 Run ID")
 	}
+	if err := journal.Task.Snapshot.Runtime.Engine.Validate(); err != nil {
+		return fmt.Errorf("保存 Run Journal: %w", err)
+	}
 	if journal.ControlAbandoned {
 		return nil
 	}
@@ -193,6 +196,9 @@ func (s *journalStore) loadAll() ([]*runJournal, error) {
 		var journal runJournal
 		if err := json.Unmarshal(data, &journal); err != nil {
 			return nil, fmt.Errorf("读取 Run Journal %s: %w", entry.Name(), err)
+		}
+		if err := journal.Task.Snapshot.Runtime.Engine.Validate(); err != nil {
+			return nil, fmt.Errorf("Run Journal %s 缺少有效引擎: %w", entry.Name(), err)
 		}
 		if journal.NextSequence <= 0 {
 			journal.NextSequence = 1

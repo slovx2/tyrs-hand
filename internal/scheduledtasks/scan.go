@@ -14,7 +14,7 @@ const taskColumns = `id,workspace_id,workspace_project_id,target_session_id::tex
 	created_by_administrator_id::text,kind,name,prompt,status,schedule_text,timezone,
 	schedule_kind,interval_seconds,next_run_at,blocked_until,last_run_at,
 	agent_profile_id::text,model,reasoning_effort,service_tier,schedule_revision,
-	last_error_code,last_error_message,created_at,updated_at`
+	last_error_code,last_error_message,created_at,updated_at,engine`
 
 func scanTask(row rowScanner) (Task, error) {
 	var result Task
@@ -27,7 +27,7 @@ func scanTask(row rowScanner) (Task, error) {
 		&result.Status, &result.ScheduleText, &result.Timezone, &result.ScheduleKind,
 		&interval, &nextRun, &blockedUntil, &lastRun, &agentProfile, &model, &effort,
 		&tier, &result.ScheduleRevision, &errorCode, &errorMessage, &result.CreatedAt,
-		&result.UpdatedAt)
+		&result.UpdatedAt, &result.Engine)
 	if err != nil {
 		return Task{}, err
 	}

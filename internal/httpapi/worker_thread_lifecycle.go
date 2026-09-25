@@ -44,9 +44,9 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 			AND request.source = 'desktop'
 			AND request.desired_state = $3
 			AND request.status IN ('waiting_for_turn','applying')
-			AND workspace.worker_id = $4
+			AND workspace.worker_id = $4 AND control.engine = $5
 		ORDER BY request.created_at DESC LIMIT 1 FOR UPDATE OF request, control`,
-		request.WorkspaceID, request.ThreadID, request.DesiredState, currentWorker(c).ID).
+		request.WorkspaceID, request.ThreadID, request.DesiredState, currentWorker(c).ID, currentWorkerEngine(c)).
 		Scan(&result.ID, &result.ControlID, &result.WorkspaceID, &result.ThreadID,
 			&result.DesiredState, &result.Status, &result.Revision, &result.Response,
 			&result.Error)
@@ -73,8 +73,8 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 			ON workspace.id = control.workspace_id
 		WHERE control.workspace_id = $1
 			AND control.external_thread_id = $2
-			AND workspace.worker_id = $3
-		FOR UPDATE OF control`, request.WorkspaceID, request.ThreadID, currentWorker(c).ID).
+			AND workspace.worker_id = $3 AND control.engine = $4
+		FOR UPDATE OF control`, request.WorkspaceID, request.ThreadID, currentWorker(c).ID, currentWorkerEngine(c)).
 		Scan(&result.ControlID, &sessionID, &conversationID, &currentState, &result.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "当前环境没有绑定这个 Codex Thread", err)
@@ -193,11 +193,11 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 			AND workspace.id = request.workspace_id
 			AND request.source IN ('discord','client') AND request.status = 'waiting_for_turn'
 			AND request.revision = control.lifecycle_revision
-			AND workspace.worker_id = $1
+			AND workspace.worker_id = $1 AND control.engine = $2
 			AND NOT EXISTS (SELECT 1 FROM codex_turn_runs run
 				WHERE run.control_id = request.control_id
 					AND run.status IN ('starting','running','waiting_for_user','reconciling'))`,
-		currentWorker(c).ID)
+		currentWorker(c).ID, currentWorkerEngine(c))
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "推进待执行 Thread lifecycle 失败", err)
 		return
@@ -212,8 +212,8 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 			ON workspace.id = request.workspace_id
 		WHERE request.source IN ('discord','client') AND request.status = 'applying'
 			AND request.response IS NULL
-			AND workspace.worker_id = $1
-		ORDER BY request.created_at, request.id`, currentWorker(c).ID)
+			AND workspace.worker_id = $1 AND control.engine = $2
+		ORDER BY request.created_at, request.id`, currentWorker(c).ID, currentWorkerEngine(c))
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
 		return
@@ -266,8 +266,8 @@ func (s *Server) workerThreadLifecycleState(c *gin.Context) {
 		JOIN codex_thread_controls control ON control.id = request.control_id
 		JOIN worker_workspaces workspace
 			ON workspace.id = request.workspace_id
-		WHERE request.id = $1 AND workspace.worker_id = $2
-		FOR UPDATE OF request`, requestID, currentWorker(c).ID).
+		WHERE request.id = $1 AND workspace.worker_id = $2 AND control.engine = $3
+		FOR UPDATE OF request`, requestID, currentWorker(c).ID, currentWorkerEngine(c)).
 		Scan(&result.ID, &result.ControlID, &result.WorkspaceID, &result.ThreadID,
 			&result.DesiredState, &result.Status, &result.Revision, &result.Response,
 			&result.Error)
@@ -318,6 +318,20 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 		badRequest(c, errors.New("thread lifecycle complete 缺少环境"))
 		return
 	}
+	var controlIDForScope uuid.UUID
+	err = s.db.QueryRowContext(c.Request.Context(), `SELECT control_id
+		FROM codex_thread_lifecycle_requests WHERE id=$1`, requestID).Scan(&controlIDForScope)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusNotFound, "Thread lifecycle 请求不存在", err)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Thread lifecycle 失败", err)
+		return
+	}
+	if !s.requireRuntimeControl(c, controlIDForScope) {
+		return
+	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "完成 Thread lifecycle 失败", err)
@@ -336,9 +350,9 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 		JOIN worker_workspaces workspace
 			ON workspace.id = request.workspace_id
 		WHERE request.id = $1 AND request.workspace_id = $2
-			AND workspace.worker_id = $3
+			AND workspace.worker_id = $3 AND control.engine = $4
 			AND request.status IN ('waiting_for_turn','applying')
-		FOR UPDATE OF request, control`, requestID, request.WorkspaceID, currentWorker(c).ID).
+		FOR UPDATE OF request, control`, requestID, request.WorkspaceID, currentWorker(c).ID, currentWorkerEngine(c)).
 		Scan(&controlID, &sessionID, &conversationID, &desiredState, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.Status(http.StatusNoContent)

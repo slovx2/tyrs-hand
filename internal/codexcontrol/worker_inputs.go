@@ -8,11 +8,15 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 // PendingWorkerInput 返回指定 Worker 最早的一条待决议输入，不创建 Run，
 // 也不改变 Control 的执行状态。start/steer 由 Worker 根据本地状态决定。
-func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID) (*ClaimedControl, error) {
+func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID, engine runtimeidentity.Engine) (*ClaimedControl, error) {
+	if err := engine.Validate(); err != nil {
+		return nil, err
+	}
 	var claimed ClaimedControl
 	var workItemID, conversationID, sessionID, repositoryID, projectID sql.NullString
 	var actorParticipantID, targetIntentID, externalThreadID sql.NullString
@@ -31,12 +35,12 @@ func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID)
 	FROM codex_turn_intents i
 	JOIN codex_thread_controls c ON c.id=i.control_id
 	LEFT JOIN workspace_sessions session ON session.id=c.session_id
-	WHERE c.worker_id=$1 AND i.source_type='workspace_session'
+	WHERE c.worker_id=$1 AND c.engine=$2 AND i.source_type='workspace_session'
 	  AND i.status IN ('queued','retry_wait','reconciling')
 	  AND i.available_at<=now() AND i.resolved_action IS NULL
 	  AND c.lifecycle_state='active'
 	  AND COALESCE(session.lifecycle_state,'active')='active'
-	ORDER BY i.created_at,i.sequence_no LIMIT 1`, workerID).Scan(
+	ORDER BY i.created_at,i.sequence_no LIMIT 1`, workerID, engine).Scan(
 		&claimed.ID, &claimed.ControlID, &claimed.Sequence, &claimed.Operation,
 		&claimed.Behavior, &claimed.SourceType, &claimed.InputSurface,
 		&workItemID, &conversationID, &sessionID, &repositoryID, &projectID,
@@ -80,7 +84,10 @@ func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID)
 
 // StartWorkerInput 将 Worker 已经在本地接受的输入登记为活动 Run。
 // 同一 input/run 可安全重放；Control 侧旧镜像不能阻止 Worker 的真实状态。
-func (r *Repository) StartWorkerInput(ctx context.Context, workerID, inputID, runID uuid.UUID) error {
+func (r *Repository) StartWorkerInput(ctx context.Context, workerID, inputID, runID uuid.UUID, engine runtimeidentity.Engine) error {
+	if err := engine.Validate(); err != nil {
+		return err
+	}
 	if workerID == uuid.Nil || inputID == uuid.Nil || runID == uuid.Nil {
 		return errors.New("Worker 输入决议缺少 ID")
 	}
@@ -95,8 +102,8 @@ func (r *Repository) StartWorkerInput(ctx context.Context, workerID, inputID, ru
 	err = tx.QueryRowContext(ctx, `SELECT i.control_id,i.session_id,i.status,
 		i.attempt_count+1,$3 FROM codex_turn_intents i
 		JOIN codex_thread_controls c ON c.id=i.control_id
-		WHERE i.id=$1 AND c.worker_id=$2 AND i.source_type='workspace_session'
-		FOR UPDATE OF i,c`, inputID, workerID, r.maxSteers).Scan(
+		WHERE i.id=$1 AND c.worker_id=$2 AND c.engine=$4 AND i.source_type='workspace_session'
+		FOR UPDATE OF i,c`, inputID, workerID, r.maxSteers, engine).Scan(
 		&controlID, &sessionID, &status, &attempt, &maxAppend)
 	if err != nil {
 		return err

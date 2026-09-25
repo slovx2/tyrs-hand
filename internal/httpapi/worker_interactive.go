@@ -43,7 +43,7 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验交互请求所属 Run 失败", err)
 		return
@@ -148,6 +148,15 @@ func (s *Server) workerInteractiveState(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
+	var controlID uuid.UUID
+	err = s.db.QueryRowContext(c.Request.Context(), `SELECT control_id FROM codex_interactive_requests WHERE id=$1`, id).Scan(&controlID)
+	if err != nil {
+		remoteRunError(c, "交互请求不存在", err)
+		return
+	}
+	if !s.requireRuntimeControl(c, controlID) {
+		return
+	}
 	if err := s.expireInteractive(c.Request.Context(), id, currentWorker(c).ID); err != nil {
 		problem(c, http.StatusInternalServerError, "更新交互请求超时状态失败", err)
 		return
@@ -200,9 +209,9 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 		JOIN codex_thread_controls ct ON ct.id=q.control_id
 		JOIN codex_turn_runs r ON r.id=q.run_id
 		WHERE q.thread_id=$1 AND q.turn_id=$2 AND q.item_id=$3
-		AND ct.workspace_id=$4 AND ct.worker_id=$5
+		AND ct.workspace_id=$4 AND ct.worker_id=$5 AND ct.engine=$6
 		FOR UPDATE OF q,r`, request.ThreadID, request.TurnID, request.ItemID,
-		request.WorkspaceID, worker.ID).Scan(&id, &status, &questions, &runStatus, &runFinishedAt)
+		request.WorkspaceID, worker.ID, currentWorkerEngine(c)).Scan(&id, &status, &questions, &runStatus, &runFinishedAt)
 	if err != nil {
 		remoteRunError(c, "交互请求不存在", err)
 		return

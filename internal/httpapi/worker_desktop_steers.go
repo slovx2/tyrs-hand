@@ -34,7 +34,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	idempotencyKey := "desktop-steer:" + request.WorkspaceID.String() + ":" + request.RequestKey
+	idempotencyKey := "desktop-steer:" + request.WorkspaceID.String() + ":" + string(currentWorkerEngine(c)) + ":" + request.RequestKey
 	var exists bool
 	if err := tx.QueryRowContext(c.Request.Context(), `SELECT EXISTS(
 		SELECT 1 FROM codex_turn_intents WHERE idempotency_key = $1)`, idempotencyKey).
@@ -71,10 +71,10 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.owner_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
-		AND ct.worker_id = $3
+		AND ct.worker_id = $3 AND ct.engine = $4
 		AND (ct.discord_conversation_id IS NULL OR forum.binding_status='active')
 		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
-		worker.ID).Scan(&controlID, &sessionID, &nullableConversation, &projectID, &profileID, &nextSequence,
+		worker.ID, currentWorkerEngine(c)).Scan(&controlID, &sessionID, &nullableConversation, &projectID, &profileID, &nextSequence,
 		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
 		&conversationThreadID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {

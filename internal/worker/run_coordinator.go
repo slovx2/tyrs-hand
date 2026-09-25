@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -17,6 +18,7 @@ type runCoordinator struct {
 }
 
 type localRun struct {
+	engine    runtimeidentity.Engine
 	journal   *runJournal
 	commands  chan<- workerprotocol.RunCommand
 	reserved  map[uuid.UUID]bool
@@ -52,7 +54,7 @@ func (c *runCoordinator) register(journal *runJournal,
 		maxAppend = 5
 	}
 	workspaceID, threadID := localTaskScope(&journal.Task)
-	c.active[journal.Task.Claimed.RunID] = &localRun{journal: journal,
+	c.active[journal.Task.Claimed.RunID] = &localRun{engine: journal.Task.Snapshot.Runtime.Engine, journal: journal,
 		commands: commands, reserved: make(map[uuid.UUID]bool), applied: applied,
 		runID: journal.Task.Claimed.RunID, inputID: journal.Task.Claimed.ID,
 		control: journal.Task.Claimed.ControlID, workspace: workspaceID,
@@ -164,7 +166,7 @@ func (c *runCoordinator) reject(runID, inputID uuid.UUID) {
 }
 
 func sameLocalRun(left *localRun, right *workerprotocol.Task) bool {
-	if left == nil || right == nil {
+	if left == nil || right == nil || left.engine != right.Snapshot.Runtime.Engine {
 		return false
 	}
 	if left.control != uuid.Nil && left.control == right.Claimed.ControlID {
@@ -180,7 +182,7 @@ func localRunTask(run *localRun) *workerprotocol.Task {
 		Intent: codexcontrol.Intent{ID: run.inputID, ControlID: run.control,
 			ConfirmedTurnID: run.turnID},
 		RunID: run.runID, ExternalThreadID: run.thread,
-	}}
+	}, Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: run.engine}}}
 }
 
 func localTaskScope(task *workerprotocol.Task) (uuid.UUID, string) {

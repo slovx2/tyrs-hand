@@ -31,7 +31,7 @@ func TestDesktopEventReporterBatchesEvents(t *testing.T) {
 	t.Cleanup(cancel)
 	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second}, logger: zap.NewNop(),
 		client: workerprotocol.NewClient(server.URL, "credential", time.Second)}
-	task := &workerprotocol.Task{Claimed: codexcontrol.ClaimedControl{
+	task := &workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: "codex"}}, Claimed: codexcontrol.ClaimedControl{
 		RunID: uuid.New(), Intent: codexcontrol.Intent{ID: uuid.New()}}}
 	reporter, err := newDesktopEventReporter(ctx, processor, task)
 	require.NoError(t, err)

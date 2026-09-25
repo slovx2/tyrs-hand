@@ -70,6 +70,23 @@ wire trace、模型请求和 Git 副作用证据。
 每轮证据保存在 `.artifacts/protocol/runs/<runId>/`，`latest.json` 指向最近一轮及
 其验收范围。只运行入口验收不会沿用上一轮完整矩阵的覆盖报告。
 
+Control 会话、桌面创建请求和定时任务现已保存不可变的 `engine`；迁移 030/031
+将旧记录归入 Codex，并迁移桌面提交去重键，保留原 Intent 与消息的关联。
+Thread 索引使用 `(worker_id, engine, external_thread_id)`，相同项目与相同 thread ID
+可分别属于两引擎。创建、fork、元数据、命名、归档及标题任务均使用运行时作用域。
+Worker 会话操作请求必须携带 `X-Tyrs-Runtime-Engine`；缺失或未知值返回 400。
+尚未完成 Claude 接线的 Control 接口返回 501，不将请求送入 Codex。
+定时任务从来源 Session 继承引擎；列表、更新、删除和立即运行使用相同作用域。
+调度器重建后仍从任务记录创建同引擎 Session 与 Control。Claude 标题请求使用
+`claude-default` 遵循原生模型配置，不再指定 GPT、Codex fast tier 或其 effort。
+
+Worker 升级在持有数据锁时一次性迁移旧 Codex Journal，保存原文件备份并保留未确认事件。
+迁移完成后正常恢复严格要求引擎；不再为缺失字段的 Journal 推断默认值。
+`make test-control-runtime` 验证真实 HTTP/数据库的 ID 冲突、跨引擎操作拒绝、
+元数据、生命周期、标题任务、调度继承和升级；必需用例缺失或 skip 会失败。
+报告、JUnit 与测试日志在 `.artifacts/control-runtime/<runId>/`，CI 独立保存证据。
+这些是 Control 数据层验收，不计入 SSH→SDK→Mock LLM 的协议覆盖率。
+
 当前发布状态：`releaseReady=false`。控制台可预配置 Claude；正式 Worker 的 Claude
 Controller 已接入本地 SSH；Claude 的 Control 会话同步仍关闭，任务、Discord 和
 定时任务的引擎隔离尚未全部接线。未启用的 runtime 重启会明确报错。

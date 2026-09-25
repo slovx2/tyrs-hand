@@ -53,8 +53,8 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 					candidate.codex_submission_id,'') <> ''
 			ORDER BY candidate.sequence_no DESC LIMIT 1) intent ON true
 		WHERE control.external_thread_id=$1 AND control.workspace_id=$2
-			AND control.worker_id=$3 FOR UPDATE OF control, intent`,
-		params.ThreadID, request.WorkspaceID, worker.ID).Scan(&controlID, &conversationID,
+			AND control.worker_id=$3 AND control.engine=$4 FOR UPDATE OF control, intent`,
+		params.ThreadID, request.WorkspaceID, worker.ID, currentWorkerEngine(c)).Scan(&controlID, &conversationID,
 		&sequence, &controlStatus, &targetID, &targetSequence, &targetTurnID, &profileID,
 		&projectionAnchor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -148,6 +148,9 @@ func (s *Server) workerCompleteDesktopRollback(c *gin.Context) {
 		badRequest(c, errors.New("desktop rollback complete 参数无效"))
 		return
 	}
+	if !s.requireRuntimeIntent(c, requestID) {
+		return
+	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "完成 Desktop rollback 失败", err)
@@ -204,11 +207,12 @@ func (s *Server) workerPreflightDesktopTurn(c *gin.Context) {
 				AND latest.operation IN ('turn_input','replace_last_turn'))
 		FROM codex_thread_controls control JOIN codex_turn_intents intent ON intent.control_id=control.id
 		WHERE control.external_thread_id=$1 AND control.workspace_id=$2
+			AND control.worker_id=$3 AND control.engine=$4
 			AND intent.operation='replace_last_turn' AND intent.input_surface='desktop'
 			AND intent.status='awaiting_confirmation'
 			AND intent.replacement_phase IN ('rollback_applied','start_pending')
 		ORDER BY intent.sequence_no DESC LIMIT 1 FOR UPDATE OF intent`, threadID,
-		request.WorkspaceID).Scan(&reservationID, &stillLatest)
+		request.WorkspaceID, currentWorker(c).ID, currentWorkerEngine(c)).Scan(&reservationID, &stillLatest)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusOK, workerprotocol.DesktopTurnPreflightResponse{Params: request.Params})
 		return

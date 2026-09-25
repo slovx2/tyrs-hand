@@ -529,7 +529,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	var desktopSteerSurface, desktopSteerStatus, desktopSteerAction, desktopSteerText string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT input_surface, status,
 		resolved_action, instruction FROM codex_turn_intents
-		WHERE idempotency_key=$1`, "desktop-steer:"+workspaceID.String()+":"+
+		WHERE idempotency_key=$1`, "desktop-steer:"+workspaceID.String()+":codex:"+
 		strings.Repeat("a", 64)).Scan(&desktopSteerSurface, &desktopSteerStatus,
 		&desktopSteerAction, &desktopSteerText))
 	require.Equal(t, "desktop", desktopSteerSurface)
@@ -1263,7 +1263,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
 		actor_display_name, desktop_input_projection_status
 		FROM codex_turn_intents WHERE idempotency_key=$1`,
-		"desktop-steer:"+workspaceID.String()+":"+strings.Repeat("f", 64)).
+		"desktop-steer:"+workspaceID.String()+":codex:"+strings.Repeat("f", 64)).
 		Scan(&steerIntentID, &steerStatus, &steerParticipantID, &steerDisplayName,
 			&steerProjectionStatus))
 	require.Equal(t, "running", steerStatus)

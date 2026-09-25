@@ -23,7 +23,8 @@ func (s *Server) loadDesktopThreadState(c *gin.Context,
 		r.operation, r.status, r.forum_id::text, r.conversation_id::text, r.control_id::text,
 		COALESCE(r.external_thread_id,''), r.response, COALESCE(r.error,'')
 		FROM desktop_thread_requests r JOIN worker_workspaces e ON e.id = r.workspace_id
-		WHERE r.id = $1 AND e.worker_id = $2`, requestID, currentWorker(c).ID).
+		WHERE r.id = $1 AND e.worker_id = $2 AND r.engine = $3`,
+		requestID, currentWorker(c).ID, currentWorkerEngine(c)).
 		Scan(&state.ID, &state.WorkspaceID, &state.Operation, &state.Status, &forumID,
 			&conversationID, &controlID, &state.ExternalThreadID, &response, &state.Error)
 	if err != nil {

@@ -43,8 +43,9 @@ func (s *Server) workerClaimSessionTitle(c *gin.Context) {
 		UPDATE workspace_session_title_tasks task SET status='failed',lease_owner=NULL,
 			lease_token_hash=NULL,lease_expires_at=NULL,last_error_code='lease_expired',
 			updated_at=now(),completed_at=now()
-		FROM worker_workspaces workspace
+		FROM worker_workspaces workspace, workspace_sessions source_session
 		WHERE task.workspace_id=workspace.id AND workspace.worker_id=$1
+		  AND source_session.id=task.session_id AND source_session.engine=$2
 		  AND task.status='claimed' AND task.attempt_count>=3
 		  AND task.lease_expires_at<now()
 		RETURNING task.session_id,task.title_revision
@@ -52,23 +53,24 @@ func (s *Server) workerClaimSessionTitle(c *gin.Context) {
 	UPDATE workspace_sessions session SET title_source='fallback',updated_at=now()
 	FROM exhausted WHERE session.id=exhausted.session_id
 	  AND session.title_revision=exhausted.title_revision
-	  AND session.title_source='generating'`, worker.ID)
+	  AND session.title_source='generating'`, worker.ID, currentWorkerEngine(c))
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "恢复标题任务 Lease 失败", err)
 		return
 	}
 	var task workerprotocol.SessionTitleTask
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT task.id,task.session_id,
-		task.workspace_id,task.first_message_text,task.title_revision,task.attempt_count+1
+		task.workspace_id,task.first_message_text,task.title_revision,task.attempt_count+1,session.engine
 		FROM workspace_session_title_tasks task
 		JOIN worker_workspaces workspace ON workspace.id=task.workspace_id
-		WHERE workspace.worker_id=$1 AND task.attempt_count<3
+		JOIN workspace_sessions session ON session.id=task.session_id
+		WHERE workspace.worker_id=$1 AND session.engine=$2 AND task.attempt_count<3
 		  AND task.next_attempt_at<=now()
 		  AND (task.status='pending' OR
 			(task.status='claimed' AND task.lease_expires_at<now()))
 		ORDER BY task.created_at,task.id
-		FOR UPDATE OF task SKIP LOCKED LIMIT 1`, worker.ID).Scan(&task.ID, &task.SessionID,
-		&task.WorkspaceID, &task.FirstMessage, &task.TitleRevision, &task.Attempt)
+		FOR UPDATE OF task SKIP LOCKED LIMIT 1`, worker.ID, currentWorkerEngine(c)).Scan(&task.ID, &task.SessionID,
+		&task.WorkspaceID, &task.FirstMessage, &task.TitleRevision, &task.Attempt, &task.Engine)
 	if errors.Is(err, sql.ErrNoRows) {
 		if err = tx.Commit(); err != nil {
 			problem(c, http.StatusInternalServerError, "提交标题任务恢复失败", err)
@@ -135,10 +137,10 @@ func (s *Server) workerCompleteSessionTitle(c *gin.Context) {
 		FROM workspace_session_title_tasks task
 		JOIN workspace_sessions session ON session.id=task.session_id
 		JOIN worker_workspaces workspace ON workspace.id=task.workspace_id
-		WHERE task.id=$1 AND workspace.worker_id=$2 AND task.status='claimed'
+		WHERE task.id=$1 AND workspace.worker_id=$2 AND session.engine=$4 AND task.status='claimed'
 		  AND task.lease_owner=$2 AND task.lease_token_hash=$3
 		  AND task.lease_expires_at>=now() FOR UPDATE OF task,session`, taskID,
-		currentWorker(c).ID, security.Digest(request.LeaseToken)).
+		currentWorker(c).ID, security.Digest(request.LeaseToken), currentWorkerEngine(c)).
 		Scan(&sessionID, &taskRevision, &currentRevision, &titleSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusConflict, "标题任务 Lease 已失效", err)
@@ -251,12 +253,12 @@ func (s *Server) workerFailSessionTitle(c *gin.Context) {
 			ELSE interval '30 seconds' END,
 		lease_owner=NULL,lease_token_hash=NULL,lease_expires_at=NULL,last_error_code=$4,
 		completed_at=CASE WHEN task.attempt_count>=3 THEN now() ELSE NULL END,updated_at=now()
-		FROM worker_workspaces workspace
-		WHERE task.id=$1 AND task.workspace_id=workspace.id AND workspace.worker_id=$2
+		FROM worker_workspaces workspace, workspace_sessions session
+		WHERE session.id=task.session_id AND session.engine=$5 AND task.id=$1 AND task.workspace_id=workspace.id AND workspace.worker_id=$2
 		  AND task.status='claimed' AND task.lease_owner=$2 AND task.lease_token_hash=$3
 		  AND task.lease_expires_at>=now()
 		RETURNING task.session_id,task.title_revision,task.attempt_count>=3`, taskID,
-		currentWorker(c).ID, security.Digest(request.LeaseToken), request.ErrorCode).
+		currentWorker(c).ID, security.Digest(request.LeaseToken), request.ErrorCode, currentWorkerEngine(c)).
 		Scan(&sessionID, &revision, &terminal)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusConflict, "标题任务 Lease 已失效", err)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 func (s *Service) RunNow(ctx context.Context, tool ToolContext, taskID uuid.UUID) (Run, bool, error) {
@@ -19,8 +20,8 @@ func (s *Service) RunNow(ctx context.Context, tool ToolContext, taskID uuid.UUID
 	}
 	defer func() { _ = tx.Rollback() }()
 	task, err := scanTask(tx.QueryRowContext(ctx, `SELECT `+taskColumns+`
-		FROM scheduled_tasks task WHERE task.id=$1 AND task.workspace_id=(
-			SELECT workspace_id FROM workspace_sessions WHERE id=$2) FOR UPDATE`,
+		FROM scheduled_tasks task WHERE task.id=$1 AND (task.workspace_id,task.engine)=(
+			SELECT workspace_id,engine FROM workspace_sessions WHERE id=$2) FOR UPDATE`,
 		taskID, tool.SessionID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, false, errors.New("定时任务不存在或不属于当前 Workspace")
@@ -114,11 +115,12 @@ func projectStandaloneSessionTitleTx(ctx context.Context, tx *sql.Tx, sessionID 
 }
 
 type runtimeSettingsSnapshot struct {
-	AgentProfileID    uuid.UUID `json:"agentProfileId"`
-	Model             *string   `json:"model,omitempty"`
-	ReasoningEffort   *string   `json:"reasoningEffort,omitempty"`
-	ServiceTier       string    `json:"serviceTier"`
-	CollaborationMode string    `json:"collaborationMode"`
+	Engine            runtimeidentity.Engine `json:"engine"`
+	AgentProfileID    uuid.UUID              `json:"agentProfileId"`
+	Model             *string                `json:"model,omitempty"`
+	ReasoningEffort   *string                `json:"reasoningEffort,omitempty"`
+	ServiceTier       string                 `json:"serviceTier"`
+	CollaborationMode string                 `json:"collaborationMode"`
 }
 
 func (s *Service) runSessionTx(ctx context.Context, tx *sql.Tx, task Task,
@@ -130,7 +132,7 @@ func (s *Service) runSessionTx(ctx context.Context, tx *sql.Tx, task Task,
 		}
 		settings, lifecycle, err := scanRuntimeSettings(tx.QueryRowContext(ctx,
 			`SELECT agent_profile_id,model,reasoning_effort,service_tier,collaboration_mode,
-			 lifecycle_state FROM workspace_sessions WHERE id=$1 FOR UPDATE`, *task.TargetSessionID))
+			 lifecycle_state,engine FROM workspace_sessions WHERE id=$1 AND engine=$2 FOR UPDATE`, *task.TargetSessionID, task.Engine))
 		if err != nil {
 			return uuid.Nil, runtimeSettingsSnapshot{}, err
 		}
@@ -156,15 +158,15 @@ func (s *Service) runSessionTx(ctx context.Context, tx *sql.Tx, task Task,
 	err = tx.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
 		workspace_id,workspace_project_id,agent_profile_id,created_by_administrator_id,
 		title,lifecycle_state,model,reasoning_effort,service_tier,collaboration_mode,
-		settings_version,title_revision,title_source)
-		VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$8,'default',1,0,'manual') RETURNING id`,
+		settings_version,title_revision,title_source,engine)
+		VALUES ($1,$2,$3,$4,$5,'active',$6,$7,$8,'default',1,0,'manual',$9) RETURNING id`,
 		task.WorkspaceID, task.WorkspaceProjectID, *task.AgentProfileID,
 		nullableUUIDValue(task.CreatedByAdministratorID), title, nullableText(task.Model),
-		nullableText(task.ReasoningEffort), tier).Scan(&sessionID)
+		nullableText(task.ReasoningEffort), tier, task.Engine).Scan(&sessionID)
 	if err != nil {
 		return uuid.Nil, runtimeSettingsSnapshot{}, err
 	}
-	return sessionID, runtimeSettingsSnapshot{AgentProfileID: *task.AgentProfileID,
+	return sessionID, runtimeSettingsSnapshot{Engine: task.Engine, AgentProfileID: *task.AgentProfileID,
 		Model: task.Model, ReasoningEffort: task.ReasoningEffort, ServiceTier: tier,
 		CollaborationMode: "default"}, nil
 }
@@ -174,7 +176,7 @@ func scanRuntimeSettings(row rowScanner) (runtimeSettingsSnapshot, string, error
 	var model, effort sql.NullString
 	var lifecycle string
 	err := row.Scan(&result.AgentProfileID, &model, &effort, &result.ServiceTier,
-		&result.CollaborationMode, &lifecycle)
+		&result.CollaborationMode, &lifecycle, &result.Engine)
 	result.Model, result.ReasoningEffort = nullableString(model), nullableString(effort)
 	return result, lifecycle, err
 }

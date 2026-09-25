@@ -370,10 +370,14 @@ func readCredential(path string) (string, error) {
 }
 
 func writeCredential(path, credential string) error {
+	return writePrivateStateFile(path, []byte(credential))
+}
+
+func writePrivateStateFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".credential-*")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".state-*")
 	if err != nil {
 		return err
 	}
@@ -383,7 +387,7 @@ func writeCredential(path, credential string) error {
 		_ = temporary.Close()
 		return err
 	}
-	if _, err := temporary.WriteString(credential); err != nil {
+	if _, err := temporary.Write(data); err != nil {
 		_ = temporary.Close()
 		return err
 	}

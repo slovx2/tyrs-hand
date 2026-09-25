@@ -16,7 +16,7 @@ func (s *Server) workerToolCall(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验 Dynamic Tool Run 失败", err)
 		return
@@ -63,7 +63,7 @@ func (s *Server) workerGitCredential(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID); err != nil {
+	if _, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c)); err != nil {
 		remoteRunError(c, "校验 Git 凭据 Run 失败", err)
 		return
 	}

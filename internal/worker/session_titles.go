@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -78,6 +79,12 @@ func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 	task workerprotocol.SessionTitleTask,
 ) (string, error) {
+	if err := task.Engine.Validate(); err != nil {
+		return "", err
+	}
+	if task.Engine != c.processor.runtimeIdentity.Engine {
+		return "", errors.New("标题任务引擎与当前运行时不一致")
+	}
 	_, runtime := c.snapshot()
 	if runtime == nil {
 		return "", errors.New("宿主 App Server 尚未连接")
@@ -96,13 +103,13 @@ func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 		return "", err
 	}
 	defer func() { _ = os.RemoveAll(cwd) }()
-	threadID, err := startSessionTitleThread(ctx, client, cwd)
+	threadID, err := startSessionTitleThread(ctx, client, cwd, task.Engine)
 	if err != nil {
 		return "", err
 	}
 	subscription := client.Subscribe(codex.ThreadFilter{ThreadID: threadID})
 	defer subscription.Close()
-	turnID, err := startSessionTitleTurn(ctx, client, threadID, task.FirstMessage)
+	turnID, err := startSessionTitleTurn(ctx, client, threadID, task.FirstMessage, task.Engine)
 	if err != nil {
 		return "", err
 	}
@@ -114,11 +121,11 @@ func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 		Title string `json:"title"`
 	}
 	if json.Unmarshal([]byte(raw), &output) != nil {
-		return "", errors.New("luna 标题不符合结构化输出")
+		return "", errors.New("会话标题 标题不符合结构化输出")
 	}
 	title := normalizeGeneratedSessionTitle(output.Title)
 	if title == "" {
-		return "", errors.New("luna 标题为空")
+		return "", errors.New("会话标题 标题为空")
 	}
 	return title, nil
 }
@@ -127,7 +134,10 @@ type sessionTitleCaller interface {
 	Call(context.Context, string, any, any) error
 }
 
-func startSessionTitleThread(ctx context.Context, client sessionTitleCaller, cwd string) (string, error) {
+func startSessionTitleThread(ctx context.Context, client sessionTitleCaller, cwd string, engine runtimeidentity.Engine) (string, error) {
+	if err := engine.Validate(); err != nil {
+		return "", err
+	}
 	var response struct {
 		Thread struct {
 			ID string `json:"id"`
@@ -142,18 +152,26 @@ func startSessionTitleThread(ctx context.Context, client sessionTitleCaller, cwd
 		"config": map[string]any{"model_reasoning_effort": "low", "service_tier": "fast",
 			"default_tools_enabled": false, "features": map[string]any{"memories": false}},
 	}
+	if engine == runtimeidentity.Claude {
+		params["model"] = "claude-default"
+		delete(params, "serviceTier")
+		params["config"] = map[string]any{"default_tools_enabled": false}
+	}
 	if err := client.Call(ctx, "thread/start", params, &response); err != nil {
 		return "", err
 	}
 	if response.Thread.ID == "" {
-		return "", errors.New("luna thread/start 未返回 Thread ID")
+		return "", errors.New("会话标题 thread/start 未返回 Thread ID")
 	}
 	return response.Thread.ID, nil
 }
 
 func startSessionTitleTurn(ctx context.Context, client sessionTitleCaller, threadID,
-	message string,
+	message string, engine runtimeidentity.Engine,
 ) (string, error) {
+	if err := engine.Validate(); err != nil {
+		return "", err
+	}
 	var response struct {
 		Turn struct {
 			ID string `json:"id"`
@@ -169,11 +187,16 @@ func startSessionTitleTurn(ctx context.Context, client sessionTitleCaller, threa
 		"serviceTier": "fast", "outputSchema": outputSchema,
 		"input": []map[string]any{{"type": "text", "text": message, "textElements": []any{}}},
 	}
+	if engine == runtimeidentity.Claude {
+		params["model"] = "claude-default"
+		delete(params, "effort")
+		delete(params, "serviceTier")
+	}
 	if err := client.Call(ctx, "turn/start", params, &response); err != nil {
 		return "", err
 	}
 	if response.Turn.ID == "" {
-		return "", errors.New("luna turn/start 未返回 Turn ID")
+		return "", errors.New("会话标题 turn/start 未返回 Turn ID")
 	}
 	return response.Turn.ID, nil
 }
@@ -187,7 +210,7 @@ func waitSessionTitleTurn(ctx context.Context, events <-chan codex.Event, thread
 			return "", ctx.Err()
 		case event, ok := <-events:
 			if !ok {
-				return "", errors.New("luna 标题事件流已关闭")
+				return "", errors.New("会话标题 标题事件流已关闭")
 			}
 			if output, _ := finalOutputFromEvent(event); output != "" {
 				finalOutput = output
@@ -200,10 +223,10 @@ func waitSessionTitleTurn(ctx context.Context, events <-chan codex.Event, thread
 				continue
 			}
 			if status != "completed" {
-				return "", fmt.Errorf("luna 标题 Turn 终态为 %s", status)
+				return "", fmt.Errorf("会话标题 标题 Turn 终态为 %s", status)
 			}
 			if finalOutput == "" {
-				return "", errors.New("luna 标题 Turn 没有最终输出")
+				return "", errors.New("会话标题 标题 Turn 没有最终输出")
 			}
 			return finalOutput, nil
 		}

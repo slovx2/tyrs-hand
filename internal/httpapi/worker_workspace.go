@@ -15,7 +15,7 @@ func (s *Server) workerWorkspaceState(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验 Worktree 状态请求失败", err)
 		return

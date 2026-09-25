@@ -23,7 +23,7 @@ func (s *Server) workerRunHeartbeat(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).Heartbeat(
 			c.Request.Context(), claimed)
@@ -88,7 +88,7 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验远程 Run 指令确认失败", err)
 		return
@@ -200,7 +200,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err != nil {
 		remoteRunError(c, "校验远程任务失败", err)
 		return
@@ -485,7 +485,7 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration)
 	if err == nil {
 		var satisfied bool
@@ -637,7 +637,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err == nil {
 		if request.Code == "codex_non_retryable_error" && request.CodexError == nil {
 			badRequest(c, errors.New("不可重试 Codex 错误缺少结构化详情"))
@@ -747,7 +747,7 @@ func (s *Server) workerSetThread(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).SetThread(c.Request.Context(),
 			claimed, request.ThreadID)
@@ -765,7 +765,7 @@ func (s *Server) workerRecordSubmission(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RecordSubmission(
 			c.Request.Context(), claimed, request.SubmissionID)
@@ -804,7 +804,7 @@ func (s *Server) workerConfirmTurn(c *gin.Context) {
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c))
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).ConfirmTurn(
 			c.Request.Context(), claimed, request.TurnID)

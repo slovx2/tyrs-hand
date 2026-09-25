@@ -15,8 +15,8 @@ func (s *Service) taskForSession(ctx context.Context, taskID, sessionID uuid.UUI
 	lock bool,
 ) (Task, error) {
 	query := `SELECT ` + taskColumns + ` FROM scheduled_tasks task
-		WHERE task.id=$1 AND task.workspace_id=(
-			SELECT workspace_id FROM workspace_sessions WHERE id=$2)`
+		WHERE task.id=$1 AND (task.workspace_id,task.engine)=(
+			SELECT workspace_id,engine FROM workspace_sessions WHERE id=$2)`
 	if lock {
 		query += ` FOR UPDATE`
 	}
@@ -132,7 +132,7 @@ func (s *Service) Update(ctx context.Context, tool ToolContext, args ToolArgumen
 		model=$12,reasoning_effort=$13,service_tier=$14,
 		schedule_revision=schedule_revision+1,last_error_code=NULL,last_error_message=NULL,
 		updated_at=now()
-		WHERE id=$1 AND workspace_id=(SELECT workspace_id FROM workspace_sessions WHERE id=$2)
+		WHERE id=$1 AND (workspace_id,engine)=(SELECT workspace_id,engine FROM workspace_sessions WHERE id=$2)
 		  AND status<>'deleted'
 		RETURNING `+taskColumns, task.ID, tool.SessionID, task.Name, task.Prompt, task.Status,
 		task.ScheduleText, task.Timezone, task.ScheduleKind, interval, task.NextRunAt,
@@ -149,7 +149,7 @@ func (s *Service) Delete(ctx context.Context, tool ToolContext, taskID uuid.UUID
 	row := s.db.QueryRowContext(ctx, `UPDATE scheduled_tasks SET status='deleted',
 		next_run_at=NULL,blocked_until=NULL,deleted_at=now(),schedule_revision=schedule_revision+1,
 		updated_at=now()
-		WHERE id=$1 AND workspace_id=(SELECT workspace_id FROM workspace_sessions WHERE id=$2)
+		WHERE id=$1 AND (workspace_id,engine)=(SELECT workspace_id,engine FROM workspace_sessions WHERE id=$2)
 		  AND status<>'deleted' RETURNING `+taskColumns, taskID, tool.SessionID)
 	deleted, err := scanTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -160,7 +160,7 @@ func (s *Service) Delete(ctx context.Context, tool ToolContext, taskID uuid.UUID
 
 func (s *Service) List(ctx context.Context, tool ToolContext, includeDeleted bool) ([]Task, error) {
 	query := `SELECT ` + taskColumns + ` FROM scheduled_tasks task
-		WHERE task.workspace_id=(SELECT workspace_id FROM workspace_sessions WHERE id=$1)`
+		WHERE (task.workspace_id,task.engine)=(SELECT workspace_id,engine FROM workspace_sessions WHERE id=$1)`
 	if !includeDeleted {
 		query += ` AND task.status<>'deleted'`
 	}

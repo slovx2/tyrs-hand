@@ -1092,7 +1092,7 @@ paths:
       tags: [Worker Protocol]
       servers: [{ url: / }]
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimRequest" } } } }
       responses:
         "200": { description: 可选待同步输入, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimResponse" } } } }
@@ -1103,7 +1103,7 @@ paths:
       operationId: workerDecideInput
       tags: [Worker Protocol]
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerInputDecision" } } } }
       responses:
         "204": { description: Worker 本地输入决议已确认 }
@@ -1115,7 +1115,7 @@ paths:
       tags: [Worker Protocol]
       servers: [{ url: / }]
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       responses:
         "200": { description: 可选 Session 标题任务租约, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSessionTitleClaimResponse" } } } }
         default: { $ref: "#/components/responses/Problem" }
@@ -1126,7 +1126,7 @@ paths:
       tags: [Worker Protocol]
       servers: [{ url: / }]
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSessionTitleCompleteRequest" } } } }
       responses:
         "204": { description: 标题任务已完成或结果已因 revision 变化丢弃 }
@@ -1138,7 +1138,7 @@ paths:
       tags: [Worker Protocol]
       servers: [{ url: / }]
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSessionTitleFailRequest" } } } }
       responses:
         "204": { description: 标题任务失败状态已记录 }
@@ -1174,6 +1174,7 @@ paths:
       servers: [{ url: / }]
       security: [{ workerBearer: [] }]
       parameters:
+        - { $ref: "#/components/parameters/WorkerRuntimeEngine" }
         - { $ref: "#/components/parameters/WorkerProtocolVersion" }
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: runId, in: query, required: true, schema: { type: string, format: uuid } }
@@ -1184,6 +1185,7 @@ paths:
       servers: [{ url: / }]
       security: [{ workerBearer: [] }]
       parameters:
+        - { $ref: "#/components/parameters/WorkerRuntimeEngine" }
         - { $ref: "#/components/parameters/WorkerProtocolVersion" }
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: ordinal, in: query, required: true, schema: { type: integer, minimum: 0 } }
@@ -1204,7 +1206,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPrepareDesktopThread
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-thread-requests/{id}:
@@ -1213,7 +1215,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerDesktopThreadState
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-thread-requests/{id}/complete:
     servers: [{ url: / }]
@@ -1221,7 +1223,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerCompleteDesktopThread
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-thread-requests/{id}/fail:
@@ -1230,7 +1232,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerFailDesktopThread
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: 失败状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-metadata-events:
@@ -1239,7 +1241,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRecordThreadMetadata
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: 元数据事件已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-name-updates:
@@ -1248,7 +1250,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPendingThreadNames
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-name-updates/{id}/ack:
     servers: [{ url: / }]
@@ -1256,7 +1258,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerAckThreadName
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: 标题更新已确认 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-lifecycle-requests/desktop:
@@ -1265,7 +1267,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPrepareDesktopThreadLifecycle
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-lifecycle-requests:
@@ -1274,7 +1276,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPendingThreadLifecycles
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-lifecycle-requests/{id}:
     servers: [{ url: / }]
@@ -1282,7 +1284,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerThreadLifecycleState
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/thread-lifecycle-requests/{id}/complete:
     servers: [{ url: / }]
@@ -1290,7 +1292,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerCompleteThreadLifecycle
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: 生命周期操作已完成 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-turns:
@@ -1299,7 +1301,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPrepareDesktopTurn
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-turns/preflight:
@@ -1308,7 +1310,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPreflightDesktopTurn
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-turns/{id}/images/target:
@@ -1317,7 +1319,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerDesktopImageTarget
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-turns/{id}/images/{ordinal}/fail:
     servers: [{ url: / }]
@@ -1326,6 +1328,7 @@ paths:
       operationId: workerFailDesktopImage
       security: [{ workerBearer: [] }]
       parameters:
+        - { $ref: "#/components/parameters/WorkerRuntimeEngine" }
         - { $ref: "#/components/parameters/WorkerProtocolVersion" }
         - { $ref: "#/components/parameters/WorkerResourceID" }
         - { name: ordinal, in: path, required: true, schema: { type: integer, minimum: 0 } }
@@ -1337,7 +1340,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerPrepareDesktopRollback
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-rollbacks/{id}/complete:
@@ -1346,7 +1349,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerCompleteDesktopRollback
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: 回滚已完成 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/desktop-steers:
@@ -1355,7 +1358,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRecordDesktopSteer
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: Steer 已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/interactive:
@@ -1364,7 +1367,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRegisterInteractive
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/interactive/{id}:
@@ -1373,7 +1376,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerInteractiveState
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/interactive/answer:
     servers: [{ url: / }]
@@ -1381,7 +1384,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerAnswerInteractive
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/heartbeat:
@@ -1390,7 +1393,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRunHeartbeat
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/commands/ack:
@@ -1399,7 +1402,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerCommandAck
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCommandAck" } } } }
       responses: { "204": { description: 命令已确认 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/events:
@@ -1408,7 +1411,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRunEvents
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEventsRequest" } } } }
       responses: { "204": { description: 事件已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/attachments:
@@ -1417,7 +1420,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerUploadAgentAttachment
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody:
         required: true
         content:
@@ -1439,7 +1442,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRunComplete
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCompleteRequest" } } } }
       responses: { "204": { description: Run 已完成 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/fail:
@@ -1448,7 +1451,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRunFail
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerFailRequest" } } } }
       responses: { "204": { description: Run 失败状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/thread:
@@ -1457,7 +1460,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerSetThread
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: Thread 已绑定 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/submission:
@@ -1466,7 +1469,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerRecordSubmission
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: Submission 已记录 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/confirm:
@@ -1475,7 +1478,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerConfirmTurn
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: Turn 已确认 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/workspace-project-state:
@@ -1484,7 +1487,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerWorkspaceProjectState
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: 项目状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/workspace-state:
@@ -1493,7 +1496,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerWorkspaceState
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "204": { description: Workspace 状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/tools/call:
@@ -1502,7 +1505,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerToolCall
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/runs/{id}/git-credential:
@@ -1511,7 +1514,7 @@ paths:
       tags: [Worker Protocol]
       operationId: workerGitCredential
       security: [{ workerBearer: [] }]
-      parameters: [{ $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
+      parameters: [{ $ref: "#/components/parameters/WorkerRuntimeEngine" }, { $ref: "#/components/parameters/WorkerProtocolVersion" }, { $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
       responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worktrees:
@@ -1548,6 +1551,11 @@ components:
       scheme: bearer
       bearerFormat: tdv1-device-credential
   parameters:
+    WorkerRuntimeEngine:
+      name: X-Tyrs-Runtime-Engine
+      in: header
+      required: true
+      schema: { type: string, enum: [codex, claude-code] }
     WorkerProtocolVersion:
       name: X-Tyrs-Worker-Protocol
       in: header

@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/scheduledtasks"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
@@ -170,6 +171,9 @@ func (s *Server) requireWorker() gin.HandlerFunc {
 			return
 		}
 		c.Set(workerContextKey, worker)
+		if !validateWorkerRuntimeScope(c) {
+			return
+		}
 		c.Next()
 	}
 }
@@ -245,7 +249,7 @@ func (s *Server) workerClaim(c *gin.Context) {
 				return
 			}
 		}
-		claimed, err := repository.PendingWorkerInput(c.Request.Context(), worker.ID)
+		claimed, err := repository.PendingWorkerInput(c.Request.Context(), worker.ID, currentWorkerEngine(c))
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "领取远程任务失败", err)
 			return
@@ -284,11 +288,11 @@ func (s *Server) workerDecideInput(c *gin.Context) {
 		repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 			s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 		err = repository.StartWorkerInput(c.Request.Context(), currentWorker(c).ID,
-			request.InputID, request.RunID)
+			request.InputID, request.RunID, currentWorkerEngine(c))
 	} else if request.Action == "steer" || request.Action == "interrupt" {
 		var claimed *codexcontrol.ClaimedControl
 		claimed, err = s.claimedRemoteRun(c.Request.Context(), currentWorker(c).ID,
-			request.RunID)
+			request.RunID, currentWorkerEngine(c))
 		if err == nil {
 			err = s.ackWorkerInput(c.Request.Context(), claimed, request.InputID,
 				request.Action, request.TurnID)
@@ -309,7 +313,7 @@ func (s *Server) workerDecideInput(c *gin.Context) {
 }
 
 func (s *Server) claimedRemoteRun(ctx context.Context, workerID,
-	runID uuid.UUID,
+	runID uuid.UUID, engine runtimeidentity.Engine,
 ) (*codexcontrol.ClaimedControl, error) {
 	var claimed codexcontrol.ClaimedControl
 	var source string
@@ -329,7 +333,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, workerID,
 		COALESCE(c.external_thread_id,'')
 		FROM codex_turn_runs r JOIN codex_turn_intents i ON i.id = r.primary_intent_id
 		JOIN codex_thread_controls c ON c.id = r.control_id
-		WHERE r.id = $1 AND r.worker_id = $2`, runID, workerID).Scan(
+		WHERE r.id = $1 AND r.worker_id = $2 AND c.engine = $3`, runID, workerID, engine).Scan(
 		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch,
 		&claimed.MaxSteers, &source,
 		&claimed.InputSurface, &claimed.Operation, &claimed.Attempt, &claimed.MaxAttempts,

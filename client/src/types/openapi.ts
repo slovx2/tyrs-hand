@@ -2913,6 +2913,7 @@ export interface components {
         };
     };
     parameters: {
+        WorkerRuntimeEngine: "codex" | "claude-code";
         WorkerProtocolVersion: "33";
         RuntimeEngine: "codex" | "claude-code";
         CSRFToken: string;
@@ -5332,6 +5333,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5359,6 +5361,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5384,6 +5387,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5407,6 +5411,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5434,6 +5439,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5518,6 +5524,7 @@ export interface operations {
                 runId: string;
             };
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5545,6 +5552,7 @@ export interface operations {
                 ordinal: number;
             };
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5580,6 +5588,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5595,6 +5604,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5612,6 +5622,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5629,6 +5640,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5652,6 +5664,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5673,6 +5686,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5688,6 +5702,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5711,6 +5726,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5726,6 +5742,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5741,6 +5758,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5758,6 +5776,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5781,6 +5800,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5796,6 +5816,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5811,6 +5832,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5828,6 +5850,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5852,6 +5875,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5867,6 +5891,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5890,6 +5915,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5911,6 +5937,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5928,6 +5955,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5945,6 +5973,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path?: never;
@@ -5960,6 +5989,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -5977,6 +6007,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6004,6 +6035,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6031,6 +6063,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6078,6 +6111,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6105,6 +6139,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6132,6 +6167,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6155,6 +6191,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6178,6 +6215,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6201,6 +6239,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6224,6 +6263,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6247,6 +6287,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {
@@ -6264,6 +6305,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
+                "X-Tyrs-Runtime-Engine": components["parameters"]["WorkerRuntimeEngine"];
                 "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
             };
             path: {

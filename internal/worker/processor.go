@@ -114,6 +114,18 @@ func (p *Processor) Process(ctx context.Context, task *workerprotocol.Task,
 	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (workerprotocol.CompleteRequest, error) {
+	if task == nil {
+		return workerprotocol.CompleteRequest{}, errors.New("任务不能为空")
+	}
+	if err := task.Snapshot.Runtime.Engine.Validate(); err != nil {
+		return workerprotocol.CompleteRequest{}, err
+	}
+	if task.Snapshot.Runtime.Engine != p.runtimeIdentity.Engine {
+		return workerprotocol.CompleteRequest{}, errors.New("任务引擎与执行运行时不一致")
+	}
+	if task.Claimed.SourceType == codexcontrol.SourceGitHub && task.Snapshot.Runtime.Engine != runtimeidentity.Codex {
+		return workerprotocol.CompleteRequest{}, errors.New("GitHub 任务仅支持 Codex 运行时")
+	}
 	if task.Claimed.SourceType == codexcontrol.SourceWorkspace {
 		return p.processRemoteDiscord(ctx, task, commands, report)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
 
@@ -81,6 +82,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			return uuid.Nil, false, err
 		}
 	case SourceWorkspace:
+		var engine runtimeidentity.Engine
 		sessionID, err := r.lockWorkspaceSession(ctx, tx, request.SessionID,
 			request.DiscordConversationID)
 		if err != nil {
@@ -93,25 +95,25 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		}
 		if err := tx.QueryRowContext(ctx, `SELECT environment.worker_id::text,
 			session.workspace_id::text, session.workspace_project_id,
-			session.agent_profile_id FROM workspace_sessions session
+			session.agent_profile_id, session.engine FROM workspace_sessions session
 			JOIN worker_workspaces environment
 				ON environment.id=session.workspace_id
 			WHERE session.id=$1`, sessionID).Scan(&workerID, &workspaceID,
-			&request.ProjectID, &request.AgentProfileID); err != nil {
+			&request.ProjectID, &request.AgentProfileID, &engine); err != nil {
 			return uuid.Nil, false, err
 		}
 		err = tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
 			(source_type, session_id, discord_conversation_id, workspace_project_id,
-			 agent_profile_id, worker_id, workspace_id)
+			 agent_profile_id, worker_id, workspace_id, engine)
 			VALUES ('workspace_session',$1,NULLIF($2::text,'')::uuid,$3,$4,
-			 NULLIF($5,'')::uuid,$6)
+			 NULLIF($5,'')::uuid,$6,$7)
 			ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
 				discord_conversation_id=COALESCE(codex_thread_controls.discord_conversation_id,
 					EXCLUDED.discord_conversation_id),
 				worker_id=EXCLUDED.worker_id,workspace_id=EXCLUDED.workspace_id,
 				updated_at=now()
 			RETURNING id`, sessionID, nilUUID(request.DiscordConversationID), request.ProjectID,
-			request.AgentProfileID, workerID.String, workspaceID.String).
+			request.AgentProfileID, workerID.String, workspaceID.String, engine).
 			Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err

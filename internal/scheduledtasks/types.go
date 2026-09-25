@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 const (
@@ -18,31 +19,32 @@ const (
 )
 
 type Task struct {
-	ID                       uuid.UUID  `json:"id"`
-	WorkspaceID              uuid.UUID  `json:"workspaceId"`
-	WorkspaceProjectID       uuid.UUID  `json:"workspaceProjectId"`
-	TargetSessionID          *uuid.UUID `json:"targetSessionId,omitempty"`
-	CreatedByAdministratorID *uuid.UUID `json:"createdByAdministratorId,omitempty"`
-	Kind                     string     `json:"kind"`
-	Name                     string     `json:"name"`
-	Prompt                   string     `json:"prompt"`
-	Status                   string     `json:"status"`
-	ScheduleText             string     `json:"schedule"`
-	Timezone                 string     `json:"timezone"`
-	ScheduleKind             string     `json:"scheduleKind"`
-	IntervalSeconds          *int64     `json:"intervalSeconds,omitempty"`
-	NextRunAt                *time.Time `json:"nextRunAt,omitempty"`
-	BlockedUntil             *time.Time `json:"blockedUntil,omitempty"`
-	LastRunAt                *time.Time `json:"lastRunAt,omitempty"`
-	AgentProfileID           *uuid.UUID `json:"agentProfileId,omitempty"`
-	Model                    *string    `json:"model,omitempty"`
-	ReasoningEffort          *string    `json:"reasoningEffort,omitempty"`
-	ServiceTier              *string    `json:"serviceTier,omitempty"`
-	ScheduleRevision         int64      `json:"scheduleRevision"`
-	LastErrorCode            *string    `json:"lastErrorCode,omitempty"`
-	LastErrorMessage         *string    `json:"lastErrorMessage,omitempty"`
-	CreatedAt                time.Time  `json:"createdAt"`
-	UpdatedAt                time.Time  `json:"updatedAt"`
+	Engine                   runtimeidentity.Engine `json:"engine"`
+	ID                       uuid.UUID              `json:"id"`
+	WorkspaceID              uuid.UUID              `json:"workspaceId"`
+	WorkspaceProjectID       uuid.UUID              `json:"workspaceProjectId"`
+	TargetSessionID          *uuid.UUID             `json:"targetSessionId,omitempty"`
+	CreatedByAdministratorID *uuid.UUID             `json:"createdByAdministratorId,omitempty"`
+	Kind                     string                 `json:"kind"`
+	Name                     string                 `json:"name"`
+	Prompt                   string                 `json:"prompt"`
+	Status                   string                 `json:"status"`
+	ScheduleText             string                 `json:"schedule"`
+	Timezone                 string                 `json:"timezone"`
+	ScheduleKind             string                 `json:"scheduleKind"`
+	IntervalSeconds          *int64                 `json:"intervalSeconds,omitempty"`
+	NextRunAt                *time.Time             `json:"nextRunAt,omitempty"`
+	BlockedUntil             *time.Time             `json:"blockedUntil,omitempty"`
+	LastRunAt                *time.Time             `json:"lastRunAt,omitempty"`
+	AgentProfileID           *uuid.UUID             `json:"agentProfileId,omitempty"`
+	Model                    *string                `json:"model,omitempty"`
+	ReasoningEffort          *string                `json:"reasoningEffort,omitempty"`
+	ServiceTier              *string                `json:"serviceTier,omitempty"`
+	ScheduleRevision         int64                  `json:"scheduleRevision"`
+	LastErrorCode            *string                `json:"lastErrorCode,omitempty"`
+	LastErrorMessage         *string                `json:"lastErrorMessage,omitempty"`
+	CreatedAt                time.Time              `json:"createdAt"`
+	UpdatedAt                time.Time              `json:"updatedAt"`
 }
 
 type Run struct {

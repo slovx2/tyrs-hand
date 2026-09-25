@@ -28,6 +28,7 @@ func TestJournalPersistsAndLocksWorkerData(t *testing.T) {
 	runID := uuid.New()
 	journal := &runJournal{Task: workerprotocol.Task{}, NextSequence: 2,
 		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn/started"}}}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = runID
 	require.NoError(t, store.save(journal))
 
@@ -87,6 +88,7 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{NextSequence: 2,
 		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn.started"}}}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = uuid.New()
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1
@@ -141,6 +143,7 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	journal := &runJournal{NextSequence: 2,
 		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn.started"}},
 		Result:        &codexcontrol.TurnResult{FinalAnswer: "done"}}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = uuid.New()
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1
@@ -191,7 +194,7 @@ func TestRegisterDesktopTurnDropsJournalOnNotFound(t *testing.T) {
 		logger: zap.NewNop(), journals: store}
 	controller := &desktopController{processor: processor,
 		workspace: &workspaceCodex{runtime: workspaceRuntime{WorkspaceID: uuid.New()}}}
-	task := workerprotocol.Task{}
+	task := workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: "codex"}}}
 	task.Claimed.RunID = uuid.New()
 	task.Claimed.ID = uuid.New()
 	reporter, err := newDesktopEventReporter(context.Background(), processor, &task)
@@ -219,7 +222,7 @@ func TestRegisterDesktopTurnRetriesBadGateway(t *testing.T) {
 		logger: zap.NewNop(), journals: store}
 	controller := &desktopController{processor: processor,
 		workspace: &workspaceCodex{runtime: workspaceRuntime{WorkspaceID: uuid.New()}}}
-	task := workerprotocol.Task{}
+	task := workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: "codex"}}}
 	task.Claimed.RunID = uuid.New()
 	task.Claimed.ID = uuid.New()
 	reporter, err := newDesktopEventReporter(context.Background(), processor, &task)
@@ -259,6 +262,7 @@ func TestDeliverTerminalDropsUnboundDesktopJournal(t *testing.T) {
 		DesktopRequest: &workerprotocol.DesktopTurnPrepareRequest{WorkspaceID: workspaceID,
 			RunID: runID, IntentID: uuid.New(), RequestKey: strings.Repeat("b", 64),
 			Params: json.RawMessage(`{"threadId":"local"}`)}}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = runID
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1
@@ -291,6 +295,7 @@ func TestDeliverTerminalRetriesBadGateway(t *testing.T) {
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"}}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = uuid.New()
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1
@@ -317,7 +322,7 @@ func TestFinishDesktopTurnDropsJournalOnForbidden(t *testing.T) {
 	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
-	task := workerprotocol.Task{}
+	task := workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: "codex"}}}
 	task.Claimed.RunID = uuid.New()
 	reporter, err := newDesktopEventReporter(context.Background(), processor, &task)
 	require.NoError(t, err)
@@ -337,6 +342,7 @@ func TestControlReportBackoffGrowsAndCaps(t *testing.T) {
 
 func TestScheduleControlRetryAbandonsAfterMaxAttempts(t *testing.T) {
 	journal := &runJournal{}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = uuid.New()
 	now := time.Now()
 	for i := 1; i < controlReportMaxAttempts; i++ {
@@ -375,6 +381,7 @@ func TestDeliverTerminalAbandonsAfterRetryBudget(t *testing.T) {
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"},
 		ControlRetryCount: controlReportMaxAttempts - 1, ControlRetryStart: time.Now()}
+	journal.Task.Snapshot.Runtime.Engine = "codex"
 	journal.Task.Claimed.RunID = uuid.New()
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1

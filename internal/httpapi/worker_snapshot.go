@@ -17,6 +17,10 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (workerprotocol.TaskSnapshot, error) {
 	var result workerprotocol.TaskSnapshot
+	if err := s.db.QueryRowContext(ctx, `SELECT engine FROM codex_thread_controls WHERE id=$1`,
+		claimed.ControlID).Scan(&result.Runtime.Engine); err != nil {
+		return result, err
+	}
 	if claimed.SourceType == codexcontrol.SourceWorkspace {
 		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard'),
