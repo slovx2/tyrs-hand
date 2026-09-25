@@ -1200,7 +1200,8 @@
         "codex": [],
         "claude-code": [
           "PLAN-003",
-          "PERMISSION-006"
+          "PERMISSION-006",
+          "APPROVAL-005"
         ]
       },
       "schema": {
@@ -1289,7 +1290,6 @@
           "APPROVAL-004",
           "PLAN-003",
           "PERMISSION-004",
-          "FAILURE-003",
           "PERMISSION-005"
         ]
       },
@@ -1453,8 +1453,7 @@
         "codex": [],
         "claude-code": [
           "TOOLS-001",
-          "HISTORY-002",
-          "EVENTS-004"
+          "HISTORY-002"
         ]
       },
       "callers": [
@@ -1480,7 +1479,8 @@
         "claude-code": [
           "APPROVAL-003",
           "PLAN-001",
-          "PLAN-003"
+          "PLAN-003",
+          "APPROVAL-005"
         ]
       },
       "callers": [
@@ -2242,7 +2242,8 @@
           "PLAN-003",
           "FAILURE-003",
           "PERMISSION-005",
-          "PERMISSION-006"
+          "PERMISSION-006",
+          "APPROVAL-005"
         ]
       },
       "callers": [

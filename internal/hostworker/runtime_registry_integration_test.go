@@ -57,6 +57,10 @@ func TestRuntimePlanApprovalRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "plan-approval")
 }
 
+func TestRuntimeApprovalLifecycleRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "approval-lifecycle")
+}
+
 func TestRuntimeThreadPermissionsRealSSHBothEngines(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "thread-permissions")
 }
@@ -72,6 +76,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	turnControlOnly := mode == "turn-control"
 	mcpOnly := mode == "mcp"
 	planOnly := mode == "plan-approval"
+	approvalOnly := mode == "approval-lifecycle"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -93,6 +98,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	turnControl := newRuntimeTurnControlFixture()
 	mcp := &runtimeMcpFixture{}
 	plan := &runtimePlanFixture{root: root}
+	approval := &runtimeApprovalFixture{root: root}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -119,6 +125,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if planOnly {
 				require.Equal(t, runtimeidentity.Claude, engine, "Claude 计划和审批不能请求 Codex")
 				plan.model(t, w, request, body)
+				return
+			}
+			if approvalOnly {
+				require.Equal(t, runtimeidentity.Claude, engine, "审批不能请求另一引擎")
+				approval.model(t, w, request, body)
 				return
 			}
 			if turnControlOnly {
@@ -266,7 +277,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || planOnly {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || planOnly || approvalOnly {
 			continue
 		}
 		if commandPermissions {
@@ -304,6 +315,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if planOnly {
 		verifyRuntimePlanApproval(t, ctx, clients[runtimeidentity.Claude], plan)
 		require.Equal(t, int64(8), modelCalls.Load(), "只能执行已脚本化的计划与审批模型请求")
+		return
+	}
+	if approvalOnly {
+		verifyRuntimeApprovalLifecycle(t, ctx, registry, clients[runtimeidentity.Claude], approval)
+		require.Equal(t, int64(7), modelCalls.Load())
 		return
 	}
 	if turnControlOnly {
@@ -469,6 +485,11 @@ func connectRuntimeSSH(t *testing.T, ctx context.Context, connection *ssh.Client
 }
 
 func connectRuntimeSSHWithOptions(t *testing.T, ctx context.Context, connection *ssh.Client, engine runtimeidentity.Engine, options codex.SocketClientOptions) *codex.SocketClient {
+	client, _ := connectRuntimeSSHWithTrace(t, ctx, connection, engine, options)
+	return client
+}
+
+func connectRuntimeSSHWithTrace(t *testing.T, ctx context.Context, connection *ssh.Client, engine runtimeidentity.Engine, options codex.SocketClientOptions) (*codex.SocketClient, *protocolTraceTransport) {
 	t.Helper()
 	channel, requests, err := connection.OpenChannel("session", nil)
 	require.NoError(t, err)
@@ -488,7 +509,7 @@ func connectRuntimeSSHWithOptions(t *testing.T, ctx context.Context, connection 
 	client, err := codex.ConnectTransport(ctx, trace, options)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
-	return client
+	return client, trace
 }
 
 func TestRuntimeEntryHelperProcess(t *testing.T) {

@@ -17,8 +17,15 @@ import (
 
 type protocolTraceTransport struct {
 	codex.MessageTransport
-	mu       sync.Mutex
-	messages []map[string]any
+	mu            sync.Mutex
+	messages      []map[string]any
+	expectedClose string
+}
+
+func (p *protocolTraceTransport) expectClose(reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.expectedClose = reason
 }
 
 func (p *protocolTraceTransport) record(direction string, payload []byte) {
@@ -36,6 +43,15 @@ func (p *protocolTraceTransport) ReadMessage() (int, []byte, error) {
 	kind, payload, err := p.MessageTransport.ReadMessage()
 	if err == nil {
 		p.record("server", payload)
+	} else {
+		p.mu.Lock()
+		if p.expectedClose != "" {
+			p.messages = append(p.messages, map[string]any{"transport": map[string]any{
+				"event": "closed", "source": "connection", "observed": "read-error",
+				"error": err.Error(), "expectedReason": p.expectedClose,
+			}})
+		}
+		p.mu.Unlock()
 	}
 	return kind, payload, err
 }

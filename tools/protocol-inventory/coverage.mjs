@@ -28,6 +28,8 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
       continue
     }
     const pending = new Map()
+    const interrupted = new Map()
+    const requestKey = (sender, id) => `${sender}:${JSON.stringify(id)}`
     let closed = false
     for (const message of artifact.payload.messages) {
       if (closed) {
@@ -36,10 +38,14 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
       }
       if (message.transport) {
         const end = message.transport
-        if (end.event !== 'closed' || end.source !== 'process' || message.method || message.id != null ||
-            !((Number.isInteger(end.exitCode) && end.signal === null) ||
-              (end.exitCode === null && typeof end.signal === 'string'))) {
-          missing.push({ reason: '无效的进程关闭证据', caseName: artifact.caseName })
+        const processClosed = end.source === 'process' &&
+          ((Number.isInteger(end.exitCode) && end.signal === null) ||
+            (end.exitCode === null && typeof end.signal === 'string'))
+        const connectionClosed = end.source === 'connection' && end.observed === 'read-error' &&
+          typeof end.error === 'string' && end.error.length > 0 &&
+          ['client-disconnect', 'runtime-restart'].includes(end.expectedReason)
+        if (end.event !== 'closed' || message.method || message.id != null || (!processClosed && !connectionClosed)) {
+          missing.push({ reason: '无效的传输关闭证据', caseName: artifact.caseName })
           continue
         }
         closed = true
@@ -49,6 +55,13 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
             method: request.method, cases: execution.caseIds, outcome: 'interrupted' })
           pending.clear()
         }
+        if (connectionClosed) {
+          // 客户端断线仅结束这条连接上的待答回调，不能掩盖普通 RPC 缺响应。
+          for (const [key, request] of pending) if (key.startsWith('server:')) {
+            evidence.push({ engine: artifact.engine, method: request.method, cases: execution.caseIds, outcome: 'interrupted' })
+            pending.delete(key)
+          }
+        }
         continue
       }
       const sender = message.direction === 'client' ? 'client' : 'server'
@@ -56,7 +69,7 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
         const contract = index.get(message.method)
         // 专用未知方法负例只允许得到标准 -32601，不算任何必需方法覆盖。
         if (!contract && message.method === 'unknown/protocol') {
-          pending.set(`${sender}:${message.id}`, message)
+          pending.set(requestKey(sender, message.id), message)
           continue
         }
         if (!known.has(message.method)) missing.push({ method: message.method, reason: 'wire 出现未登记方法' })
@@ -66,8 +79,9 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
           if (sender !== expected) throw new Error('报文方向错误')
           if (contract.kind.endsWith('Request')) {
             if (message.id == null) throw new Error('请求缺少 ID')
-            if (pending.has(`${sender}:${message.id}`)) throw new Error('重复的未完成请求 ID')
-            pending.set(`${sender}:${message.id}`, message)
+            const key = requestKey(sender, message.id)
+            if (pending.has(key) || interrupted.has(key)) throw new Error('重复的未完成或已取消请求 ID')
+            pending.set(key, message)
             try {
               validate(message.method, 'params', message.params)
             } catch (error) {
@@ -76,16 +90,27 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
             }
           } else {
             validate(message.method, 'params', message.params)
+            if (message.method === 'serverRequest/resolved') {
+              const key = requestKey('server', message.params.requestId)
+              const request = pending.get(key)
+              if (request && request.params.threadId === message.params.threadId) {
+                evidence.push({ engine: artifact.engine, method: request.method, cases: execution.caseIds, outcome: 'interrupted' })
+                pending.delete(key)
+                interrupted.set(key, request)
+              }
+            }
             evidence.push({ engine: artifact.engine, method: message.method, cases: execution.caseIds, outcome: 'success' })
           }
         } catch (error) {
           missing.push({ method: message.method, reason: String(error), caseName: artifact.caseName })
         }
       } else if (message.id != null) {
-        const key = `${sender === 'client' ? 'server' : 'client'}:${message.id}`
-        const request = pending.get(key)
+        const key = requestKey(sender === 'client' ? 'server' : 'client', message.id)
+        const late = interrupted.has(key)
+        const request = pending.get(key) ?? interrupted.get(key)
         if (!request) { missing.push({ reason: '响应没有匹配请求', caseName: artifact.caseName }); continue }
         pending.delete(key)
+        interrupted.delete(key)
         try {
           if (request.expectedErrorCode !== undefined) {
             if (!Number.isInteger(request.expectedErrorCode) || message.error?.code !== request.expectedErrorCode ||
@@ -97,11 +122,12 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
           if (message.error) {
             if (!Number.isInteger(message.error.code) || typeof message.error.message !== 'string') throw new Error('JSON-RPC 错误格式无效')
             if (request.method === 'unknown/protocol' && message.error.code !== -32601) throw new Error('未知方法错误码无效')
-            if (message.error.code === -32004)
+            if (!late && message.error.code === -32004)
               evidence.push({ engine: artifact.engine, method: request.method, cases: execution.caseIds, outcome: 'not-applicable' })
           } else {
             validate(request.method, 'response', message.result)
-            evidence.push({ engine: artifact.engine, method: request.method, cases: execution.caseIds, outcome: 'success' })
+            // 故障用例可故意回送迟到答案，但仍校验 schema，绝不计为成功。
+            evidence.push({ engine: artifact.engine, method: request.method, cases: execution.caseIds, outcome: late ? 'late' : 'success' })
           }
         } catch (error) {
           missing.push({ method: request.method, reason: String(error), caseName: artifact.caseName })

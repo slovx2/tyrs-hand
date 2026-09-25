@@ -155,6 +155,7 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			r.subscribeCreatedThread(source, threadID, ephemeral)
 		}
 		r.bindDesktopTools(source, threadID, result)
+		r.signalInteractionChange()
 	}
 	if controlled {
 		return r.completeControlled(ctx, call, plan, result, nil)
@@ -205,6 +206,7 @@ func (r *Hub) unsubscribe(ctx context.Context, source *session,
 	wasSubscribed := false
 	if source.role == RoleDesktop {
 		wasSubscribed = source.unsubscribe(threadID)
+		r.signalInteractionChange()
 		r.mu.Lock()
 		r.unbindDesktopTools(source, threadID)
 		r.mu.Unlock()
@@ -501,6 +503,10 @@ func (r *Hub) handleServerRequest(ctx context.Context,
 		return r.routeToolCall(ctx, request)
 	case "item/tool/requestUserInput":
 		return r.firstInteractiveAnswer(ctx, request, threadID)
+	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval",
+		"item/permissions/requestApproval", "mcpServer/elicitation/request",
+		"execCommandApproval", "applyPatchApproval":
+		return r.waitInteractiveAnswer(ctx, request, threadID, false)
 	default:
 		// 普通 Codex 能力（例如命令审批）优先保持 Desktop 原生行为；共享配置仍由客户端方法分类控制。
 		return r.firstDesktopAnswer(ctx, request, threadID)
@@ -563,55 +569,7 @@ func (r *Hub) workerForThread(threadID string) *session {
 func (r *Hub) firstInteractiveAnswer(ctx context.Context, request codex.ServerRequest,
 	threadID string,
 ) (any, error) {
-	targets := r.interactiveTargets(threadID)
-	if len(targets) == 0 {
-		return nil, errors.New("requestUserInput 没有可用的 Desktop 或 Worker 客户端")
-	}
-	answerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	outcomes := make(chan serverOutcome, len(targets))
-	for _, target := range targets {
-		target := target
-		copyRequest := request
-		if target.role == RoleDesktop {
-			copyRequest.Params = withoutAutoResolution(request.Params)
-		}
-		go func() {
-			result, err := target.invoke(answerCtx, copyRequest)
-			outcomes <- serverOutcome{result: result, err: err, role: target.role}
-		}()
-	}
-	var lastErr error
-	for range targets {
-		select {
-		case outcome := <-outcomes:
-			if outcome.err == nil {
-				if r.options.Controller == nil {
-					cancel()
-					return outcome.result, nil
-				}
-				won, resolved, err := r.options.Controller.ResolveInteractive(
-					ctx, request, outcome.result, outcome.role)
-				if err != nil {
-					lastErr = err
-					continue
-				}
-				if won {
-					cancel()
-					return resolved, nil
-				}
-			}
-			if outcome.err != nil {
-				lastErr = outcome.err
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	if lastErr == nil {
-		lastErr = errors.New("所有 requestUserInput 客户端均未返回答案")
-	}
-	return nil, lastErr
+	return r.waitInteractiveAnswer(ctx, request, threadID, true)
 }
 
 func (r *Hub) interactiveTargets(threadID string) []*session {

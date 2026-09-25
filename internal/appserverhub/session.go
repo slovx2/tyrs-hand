@@ -11,10 +11,11 @@ import (
 )
 
 type session struct {
-	id      int64
-	role    Role
-	send    func(rpcMessage) error
-	handler codex.ServerRequestHandler
+	id             int64
+	role           Role
+	send           func(rpcMessage) error
+	handler        codex.ServerRequestHandler
+	closeTransport func()
 
 	mu            sync.Mutex
 	subscriptions map[string]bool
@@ -159,7 +160,11 @@ func (s *session) close(cause error) {
 	pending := s.pending
 	s.pending = make(map[string]chan serverOutcome)
 	client := s.client
+	closeTransport := s.closeTransport
 	s.mu.Unlock()
+	if closeTransport != nil {
+		closeTransport()
+	}
 	for _, result := range pending {
 		close(result)
 	}

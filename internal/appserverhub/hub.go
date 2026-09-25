@@ -22,16 +22,17 @@ type Hub struct {
 	listener       net.Listener
 	httpServer     *http.Server
 
-	mu                sync.Mutex
-	sessions          map[int64]*session
-	toolThreads       map[string]*toolThreadState
-	ephemeralThreads  map[string]bool
-	archiveOperations map[string]*archiveOperation
-	resources         map[string]connectionResource
-	nextID            atomic.Int64
-	closed            bool
-	stats             Stats
-	done              chan struct{}
+	mu                 sync.Mutex
+	sessions           map[int64]*session
+	interactionChanged chan struct{}
+	toolThreads        map[string]*toolThreadState
+	ephemeralThreads   map[string]bool
+	archiveOperations  map[string]*archiveOperation
+	resources          map[string]connectionResource
+	nextID             atomic.Int64
+	closed             bool
+	stats              Stats
+	done               chan struct{}
 }
 
 func Start(ctx context.Context, options Options) (*Hub, error) {
@@ -51,9 +52,10 @@ func Start(ctx context.Context, options Options) (*Hub, error) {
 		options.EventBacklog = 4096
 	}
 	hub := &Hub{options: options, sessions: make(map[int64]*session),
-		toolThreads:       make(map[string]*toolThreadState),
-		ephemeralThreads:  make(map[string]bool),
-		archiveOperations: make(map[string]*archiveOperation), done: make(chan struct{})}
+		interactionChanged: make(chan struct{}),
+		toolThreads:        make(map[string]*toolThreadState),
+		ephemeralThreads:   make(map[string]bool),
+		archiveOperations:  make(map[string]*archiveOperation), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
 		SocketPath: options.UpstreamSocketPath, RequestTimeout: options.RequestTimeout,
 		ServerRequestTimeout: options.ServerRequestTimeout, EventBacklog: options.EventBacklog,
@@ -163,12 +165,13 @@ func (r *Hub) shutdown(_ error) {
 }
 
 func (r *Hub) addSession(role Role, send func(rpcMessage) error,
-	handler codex.ServerRequestHandler, client *Client,
+	handler codex.ServerRequestHandler, client *Client, closeTransport func(),
 ) (*session, error) {
 	if role != RoleDesktop && role != RoleWorker {
 		return nil, errors.New("hub 下游角色无效")
 	}
 	s := newSession(r.nextID.Add(1), role, send, handler)
+	s.closeTransport = closeTransport
 	// 发布 Session 前完成双向绑定，避免上游通知读到半初始化的 Client。
 	s.client = client
 	if client != nil {
@@ -189,6 +192,7 @@ func (r *Hub) addSession(role Role, send func(rpcMessage) error,
 		}
 	}
 	r.sessions[s.id] = s
+	r.signalInteractionChangeLocked()
 	r.mu.Unlock()
 	for _, current := range replaced {
 		current.close(errors.New("新的 Worker 已接管 Codex Hub"))
@@ -201,6 +205,7 @@ func (r *Hub) removeSession(s *session) {
 	r.mu.Lock()
 	if r.sessions[s.id] == s {
 		delete(r.sessions, s.id)
+		r.signalInteractionChangeLocked()
 	}
 	r.unbindDesktopTools(s, "")
 	r.mu.Unlock()

@@ -50,14 +50,20 @@ type SocketClient struct {
 	transport        MessageTransport
 	initializeResult json.RawMessage
 
-	writeMu sync.Mutex
-	mu      sync.Mutex
-	nextID  atomic.Int64
-	pending map[string]chan rpcMessage
-	subs    map[int64]*EventSubscription
-	nextSub int64
-	done    chan struct{}
-	err     error
+	writeMu        sync.Mutex
+	mu             sync.Mutex
+	nextID         atomic.Int64
+	pending        map[string]chan rpcMessage
+	serverRequests map[string]*pendingServerRequest
+	subs           map[int64]*EventSubscription
+	nextSub        int64
+	done           chan struct{}
+	err            error
+}
+
+type pendingServerRequest struct {
+	cancel   context.CancelFunc
+	threadID string
 }
 
 type EventSubscription struct {
@@ -104,8 +110,9 @@ func ConnectTransport(ctx context.Context, transport MessageTransport,
 		options.EventBacklog = 4096
 	}
 	client := &SocketClient{options: options, transport: transport,
-		pending: make(map[string]chan rpcMessage),
-		subs:    make(map[int64]*EventSubscription), done: make(chan struct{})}
+		pending:        make(map[string]chan rpcMessage),
+		serverRequests: make(map[string]*pendingServerRequest),
+		subs:           make(map[int64]*EventSubscription), done: make(chan struct{})}
 	go client.readLoop()
 	initCtx, cancel := context.WithTimeout(ctx, options.RequestTimeout)
 	defer cancel()
@@ -251,7 +258,7 @@ func (c *SocketClient) readLoop() {
 			return
 		}
 		if len(message.ID) > 0 && message.Method != "" {
-			go c.handleServerRequest(message)
+			c.startServerRequest(message)
 			continue
 		}
 		if len(message.ID) > 0 {
@@ -259,6 +266,9 @@ func (c *SocketClient) readLoop() {
 			continue
 		}
 		if message.Method != "" {
+			if message.Method == "serverRequest/resolved" {
+				c.resolveServerRequest(message.Params)
+			}
 			event := Event{Method: message.Method, Params: message.Params}
 			if c.options.NotificationHandler == nil || !c.options.NotificationHandler(event) {
 				c.publish(event)
@@ -267,18 +277,75 @@ func (c *SocketClient) readLoop() {
 	}
 }
 
-func (c *SocketClient) handleServerRequest(message rpcMessage) {
-	if c.options.ServerRequestHandler == nil {
-		_ = c.write(responseEnvelope{ID: message.ID,
-			Error: &rpcError{Code: -32601, Message: "unsupported server request"}})
+func (c *SocketClient) startServerRequest(message rpcMessage) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.options.ServerRequestTimeout)
+	threadID, _ := eventScope(message.Params)
+	state := &pendingServerRequest{cancel: cancel, threadID: threadID}
+	key := string(message.ID)
+	c.mu.Lock()
+	if c.err != nil {
+		c.mu.Unlock()
+		cancel()
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), c.options.ServerRequestTimeout)
-	defer cancel()
-	result, err := c.options.ServerRequestHandler(ctx,
-		ServerRequest{ID: message.ID, Method: message.Method, Params: message.Params})
+	if c.serverRequests[key] != nil {
+		c.mu.Unlock()
+		cancel()
+		c.fail(fmt.Errorf("重复的服务端请求 ID: %s", key))
+		return
+	}
+	// 读取循环中同步登记，避免紧随其后的 resolved 早于处理协程。
+	c.serverRequests[key] = state
+	c.mu.Unlock()
+	go c.handleServerRequest(ctx, message, state)
+}
+
+func (c *SocketClient) resolveServerRequest(params json.RawMessage) {
+	var value struct {
+		RequestID json.RawMessage `json:"requestId"`
+		ThreadID  string          `json:"threadId"`
+	}
+	if json.Unmarshal(params, &value) != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key := string(value.RequestID)
+	if state := c.serverRequests[key]; state != nil && state.threadID == value.ThreadID {
+		delete(c.serverRequests, key)
+		state.cancel()
+	}
+}
+
+func (c *SocketClient) handleServerRequest(ctx context.Context, message rpcMessage, state *pendingServerRequest) {
+	defer state.cancel()
+	var result any
+	var err error
+	if c.options.ServerRequestHandler == nil {
+		err = &RPCError{Code: -32601, Message: "unsupported server request"}
+	} else {
+		result, err = c.options.ServerRequestHandler(ctx,
+			ServerRequest{ID: message.ID, Method: message.Method, Params: message.Params})
+	}
+	c.mu.Lock()
+	active := c.serverRequests[string(message.ID)] == state
+	if active {
+		delete(c.serverRequests, string(message.ID))
+	}
+	c.mu.Unlock()
+	if !active {
+		return
+	}
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
 	if err != nil {
-		_ = c.write(responseEnvelope{ID: message.ID, Error: &rpcError{Code: -32000, Message: err.Error()}})
+		code := -32000
+		var rpcErr *RPCError
+		if errors.As(err, &rpcErr) {
+			code = rpcErr.Code
+		}
+		_ = c.write(responseEnvelope{ID: message.ID, Error: &rpcError{Code: code, Message: err.Error()}})
 		return
 	}
 	_ = c.write(responseEnvelope{ID: message.ID, Result: result})
@@ -366,6 +433,10 @@ func (c *SocketClient) fail(err error) {
 		for id, subscription := range c.subs {
 			delete(c.subs, id)
 			close(subscription.events)
+		}
+		for id, request := range c.serverRequests {
+			delete(c.serverRequests, id)
+			request.cancel()
 		}
 		close(c.done)
 	}

@@ -122,6 +122,22 @@ func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "host-shell", string(output))
 
+	// proxy 或普通进程退出时，不能等待仍然保持打开的客户端 stdin。
+	session, err = client.NewSession()
+	require.NoError(t, err)
+	openInput, err := session.StdinPipe()
+	require.NoError(t, err)
+	inputSession := session
+	t.Cleanup(func() { _ = openInput.Close(); _ = inputSession.Close() })
+	finished := make(chan error, 1)
+	go func() { finished <- inputSession.Run("exit 0") }()
+	select {
+	case err := <-finished:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("远程进程已经退出，SSH 却仍等待客户端输入 EOF")
+	}
+
 	session, err = client.NewSession()
 	require.NoError(t, err)
 	output, err = session.Output("codex app-server proxy")

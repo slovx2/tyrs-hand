@@ -43,7 +43,7 @@ func (r *Hub) OpenClient(options ClientOptions) (*Client, error) {
 	client := &Client{hub: r, backlog: options.EventBacklog,
 		events: make(chan codex.Event, options.EventBacklog), done: make(chan struct{}),
 		subs: make(map[int64]*Subscription)}
-	_, err := r.addSession(options.Role, nil, options.ServerRequestHandler, client)
+	_, err := r.addSession(options.Role, nil, options.ServerRequestHandler, client, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -63,6 +63,8 @@ const suites = controlOnly ? [
     cases: ['MCP-005'], engines: ['claude-code'] },
   { name: 'plan-approval', pkg: './internal/hostworker', test: 'TestRuntimePlanApprovalRealSSH',
     cases: ['PLAN-003'], engines: ['claude-code'] },
+  { name: 'approval-lifecycle', pkg: './internal/hostworker', test: 'TestRuntimeApprovalLifecycleRealSSH',
+    cases: ['APPROVAL-005'], engines: ['claude-code'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]

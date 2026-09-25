@@ -170,8 +170,22 @@ func (s *SSHServer) runProcess(channel ssh.Channel, state *sshSessionState, comm
 		s.runPTY(channel, state, process)
 		return
 	}
-	process.Stdin, process.Stdout, process.Stderr = input, channel, channel.Stderr()
-	err := process.Run()
+	process.Stdout, process.Stderr = channel, channel.Stderr()
+	stdin, err := process.StdinPipe()
+	if err != nil {
+		s.writeExit(channel, 1)
+		return
+	}
+	if err = process.Start(); err != nil {
+		_ = stdin.Close()
+		s.writeExit(channel, exitStatus(err))
+		return
+	}
+	// 不让 exec.Wait 等待客户端输入 EOF。proxy 已退出时必须立即结束 SSH
+	// 会话，随后 channel.Close 会释放仍在等待客户端输入的转发协程。
+	go func() { _, _ = io.Copy(stdin, input); _ = stdin.Close() }()
+	err = process.Wait()
+	_ = stdin.Close()
 	s.writeExit(channel, exitStatus(err))
 }
 

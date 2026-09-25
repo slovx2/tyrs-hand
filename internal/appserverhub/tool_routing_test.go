@@ -22,7 +22,7 @@ func toolTestSession(t *testing.T, hub *Hub, role Role, calls *atomic.Int32) *se
 	source, err := hub.addSession(role, nil, func(context.Context, codex.ServerRequest) (any, error) {
 		calls.Add(1)
 		return codex.TextToolResult(string(role), true), nil
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
 	source.desktopTools = role == RoleDesktop
 	return source
