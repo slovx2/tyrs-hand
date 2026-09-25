@@ -46,7 +46,7 @@ const suites = controlOnly ? [
     cases: ['CHANNELS-002', 'AUTOMATION-002'] },
 ] : [
   { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
-    cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'EVENTS-003'] },
+    cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'EVENTS-003'] },
   { name: 'command-permissions', pkg: './internal/hostworker', test: 'TestRuntimeCommandPermissionsRealSSHBothEngines',
     cases: ['PERMISSION-command'] },
   { name: 'thread-permissions', pkg: './internal/hostworker', test: 'TestRuntimeThreadPermissionsRealSSHBothEngines',
@@ -55,6 +55,8 @@ const suites = controlOnly ? [
     cases: ['HISTORY-002'], engines: ['claude-code'] },
   { name: 'session', pkg: './internal/hostworker', test: 'TestRuntimeSessionRealSSH',
     cases: ['SESSION-001', 'GOAL-003'], engines: ['claude-code'] },
+  { name: 'codex-session', pkg: './internal/hostworker', test: 'TestRuntimeCodexSessionRealSSH',
+    cases: ['SESSION-003'], engines: ['codex'] },
   { name: 'turn-control', pkg: './internal/hostworker', test: 'TestRuntimeTurnControlRealSSHBothEngines',
     cases: ['SUBMIT-004', 'EVENTS-005'] },
   { name: 'mcp', pkg: './internal/hostworker', test: 'TestRuntimeMcpRealSSH',

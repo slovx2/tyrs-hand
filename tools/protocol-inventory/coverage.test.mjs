@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { protocolCoverage } from './coverage.mjs'
+import { protocolCoverage, semanticCoverage } from './coverage.mjs'
 import { payloadValidator, schemaIndex } from './schema.mjs'
 import { resolve } from 'node:path'
 
@@ -10,6 +10,20 @@ const index = new Map([[method, { kind: 'ClientRequest',
   response: { type: 'object', required: ['status'], properties: { status: { const: 'ready' } } },
 }]])
 const validate = payloadValidator(index)
+
+test('语义专项按声明引擎验收，不能由另一引擎、旧报告或跳过用例冒充', () => {
+  const group = { id: 'SESSION', cases: ['SESSION-003'], caseEngines: { 'SESSION-003': ['codex'] } }
+  const execution = { runId: 'current', engine: 'codex', status: 'passed', caseIds: ['SESSION-003'] }
+  const missing = entry => semanticCoverage({ groups: [group] }, [entry], 'current')[0].missing
+  assert.deepEqual(missing(execution), [])
+  for (const change of [{ engine: 'claude-code' }, { runId: 'old' }, { status: 'skipped' }])
+    assert.deepEqual(missing({ ...execution, ...change }), ['SESSION-003'])
+  group.caseEngines['SESSION-003'] = ['codex', 'claude-code']
+  assert.deepEqual(missing(execution), ['SESSION-003'])
+  assert.deepEqual(semanticCoverage({ groups: [group] }, [execution, { ...execution, engine: 'claude-code' }], 'current')[0].missing, [])
+  group.caseEngines['SESSION-003'] = []
+  assert.throws(() => missing(execution), /引擎配置无效/)
+})
 
 test('MCP reload 的 null 参数与官方响应均进行真实 schema 校验', () => {
   const root = resolve(import.meta.dirname, '../..')

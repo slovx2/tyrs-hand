@@ -1,3 +1,15 @@
+// 专项可以固定引擎；指定双引擎时，两边都必须在本轮实际执行通过。
+export function semanticCoverage(acceptance, executions, runId) {
+  return acceptance.groups.map(group => ({ ...group, missing: group.cases.filter(id => {
+    const engines = group.caseEngines?.[id] ?? ['claude-code']
+    if (!Array.isArray(engines) || !engines.length ||
+        engines.some(engine => !['codex', 'claude-code'].includes(engine)))
+      throw new Error(`语义用例 ${id} 的引擎配置无效`)
+    return engines.some(engine => !executions.some(entry => entry.runId === runId &&
+      entry.engine === engine && entry.status === 'passed' && entry.caseIds.includes(id)))
+  }) }))
+}
+
 // 把真实 wire、schema 和本次通过的用例关联；不信任方法名计数或历史成功文件。
 export function protocolCoverage(manifest, usages, artifacts, executions, runId, index, validate) {
   const missing = []

@@ -571,6 +571,26 @@
       }
     },
     {
+      "method": "deprecationNotice",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "SESSION-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/DeprecationNoticeNotification",
+        "response": null
+      }
+    },
+    {
       "method": "error",
       "engines": {
         "codex": "required",
@@ -1020,8 +1040,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-006"
+        ],
+        "claude-code": [
+          "FILES-006"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -1057,7 +1081,8 @@
       },
       "cases": {
         "codex": [
-          "ENTRY-001"
+          "ENTRY-001",
+          "SESSION-003"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -2182,7 +2207,8 @@
       },
       "cases": {
         "codex": [
-          "ENTRY-001"
+          "ENTRY-001",
+          "SESSION-003"
         ],
         "claude-code": [
           "ENTRY-001"
@@ -2311,7 +2337,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002"
@@ -2336,7 +2364,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002"
@@ -2422,7 +2452,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "HISTORY-003",
           "SESSION-001",
@@ -2439,13 +2471,35 @@
       }
     },
     {
+      "method": "thread/deleted",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "SESSION-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadDeletedNotification",
+        "response": null
+      }
+    },
+    {
       "method": "thread/fork",
       "engines": {
         "codex": "required",
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "SESSION-001",
@@ -2620,7 +2674,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "HISTORY-003",
           "SESSION-001",
@@ -2645,7 +2701,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "HISTORY-003",
           "SESSION-001",
@@ -2668,7 +2726,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002",
@@ -2691,7 +2751,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "HISTORY-003",
           "SESSION-001",
@@ -2718,7 +2780,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "HISTORY-003",
           "SESSION-001",
@@ -2746,7 +2810,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "SESSION-003"
         ],
         "claude-code": [
           "HISTORY-002",
@@ -2784,7 +2849,8 @@
       "cases": {
         "codex": [
           "SUBMIT-004",
-          "PERMISSION-007"
+          "PERMISSION-007",
+          "SESSION-003"
         ],
         "claude-code": [
           "HISTORY-001",
@@ -2820,7 +2886,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "CONTEXT-003"
@@ -2938,7 +3006,8 @@
         "codex": [
           "EVENTS-003",
           "SUBMIT-004",
-          "PERMISSION-007"
+          "PERMISSION-007",
+          "SESSION-003"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -2982,7 +3051,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "SESSION-001",
@@ -3095,7 +3166,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002"
@@ -3119,7 +3192,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002"
@@ -3144,7 +3219,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002"
@@ -3321,7 +3398,8 @@
         "codex": [
           "EVENTS-003",
           "SUBMIT-004",
-          "PERMISSION-007"
+          "PERMISSION-007",
+          "SESSION-003"
         ],
         "claude-code": [
           "SUBMIT-001",

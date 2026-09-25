@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { schemaIndex, payloadValidator } from './schema.mjs'
-import { protocolCoverage } from './coverage.mjs'
+import { protocolCoverage, semanticCoverage } from './coverage.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const require = createRequire(import.meta.url)
@@ -72,9 +72,7 @@ const executionPath = join(artifacts, 'executions.jsonl')
 const executions = existsSync(executionPath) ? readFileSync(executionPath, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []
 const report = protocolCoverage(manifest, usages, wire, executions, runId, index, payloadValidator(index))
 const acceptance = JSON.parse(readFileSync(join(root, 'protocol/acceptance-cases.json'), 'utf8'))
-report.groups = acceptance.groups.map(group => ({ ...group, missing: group.cases.filter(id =>
-  !executions.some(entry => entry.runId === runId && entry.engine === 'claude-code' &&
-    entry.status === 'passed' && entry.caseIds.includes(id))) }))
+report.groups = semanticCoverage(acceptance, executions, runId)
 for (const group of report.groups) {
   for (const caseId of group.missing) report.missing.push({ group: group.id, caseId, reason: '必需语义用例未执行通过' })
 }

@@ -36,6 +36,24 @@ func verifyRuntimeFilesystem(t *testing.T, ctx context.Context, client *codex.So
 	require.Equal(t, content, actual)
 	call("fs/readFile", map[string]any{"path": path})
 	require.Equal(t, encoded, result["dataBase64"])
+	for _, query := range []string{"binary", "bnrd"} {
+		call("fuzzyFileSearch", map[string]any{"query": query, "roots": []string{dir}, "cancellationToken": nil})
+		files, ok := result["files"].([]any)
+		require.True(t, ok)
+		matched := false
+		for _, value := range files {
+			file := value.(map[string]any)
+			if file["path"] != "binary.dat" {
+				continue
+			}
+			matched = true
+			require.Equal(t, dir, file["root"])
+			require.Equal(t, "binary.dat", file["file_name"])
+			require.Equal(t, "file", file["match_type"])
+			require.Greater(t, file["score"].(float64), float64(0))
+		}
+		require.True(t, matched, "模糊文件搜索必须支持非连续字符: query=%s root=%s result=%v", query, dir, files)
+	}
 	call("fs/readDirectory", map[string]any{"path": dir})
 	require.Equal(t, []any{map[string]any{"fileName": "binary.dat", "isFile": true, "isDirectory": false}}, result["entries"])
 	call("fs/getMetadata", map[string]any{"path": path})

@@ -41,6 +41,10 @@ func TestRuntimeSessionRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "session")
 }
 
+func TestRuntimeCodexSessionRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "codex-session")
+}
+
 func TestRuntimeTurnControlRealSSHBothEngines(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "turn-control")
 }
@@ -69,6 +73,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	mcpOnly := mode == "mcp"
 	planOnly := mode == "plan-approval"
 	threadPermissions := mode == "thread-permissions"
+	codexSession := mode == "codex-session"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -124,6 +129,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 				history.model(w, body)
 				return
 			}
+			if codexSession && engine == runtimeidentity.Codex {
+				lifecycle.codexModel(t, request.Context(), body)
+			}
 			if sessionOnly && engine == runtimeidentity.Claude {
 				lifecycle.model(t, request.Context(), body)
 			}
@@ -142,7 +150,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 					"runId": os.Getenv("PROTOCOL_RUN_ID"), "engine": engine, "caseName": t.Name(),
 					"kind": "models", "payload": map[string]any{"requests": requests}}, "", "  ")
 				require.NoError(t, err)
-				require.NoError(t, os.WriteFile(filepath.Join(directory, "models-runtime-"+string(engine)+".json"), data, 0o600))
+				require.NoError(t, os.WriteFile(filepath.Join(directory, "models-"+mode+"-"+string(engine)+".json"), data, 0o600))
 			}
 		}
 	})
@@ -258,7 +266,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || turnControlOnly || mcpOnly || planOnly {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || planOnly {
 			continue
 		}
 		if commandPermissions {
@@ -308,6 +316,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if sessionOnly {
 		verifyClaudeSessionLifecycle(t, ctx, registry, clients[runtimeidentity.Claude], protocol[runtimeidentity.Claude], signer, lifecycle)
 		require.Equal(t, int64(2), modelCalls.Load(), "只有两个明确提交的 Turn 可以调用模型")
+		return
+	}
+	if codexSession {
+		verifyCodexSessionLifecycle(t, ctx, registry, clients[runtimeidentity.Codex], protocol[runtimeidentity.Codex], signer, lifecycle)
+		require.Equal(t, int64(3), modelCalls.Load(), "原生会话管理只允许三个显式 Turn 调用模型")
 		return
 	}
 	if historyOnly {
