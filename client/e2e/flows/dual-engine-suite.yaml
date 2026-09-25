@@ -1,0 +1,131 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible:
+      id: "tab:connections"
+    timeout: 30000
+- runFlow:
+    file: _shared/add-real-ssh.yaml
+    env:
+      SSH_NAME: "Mobile Codex"
+      SSH_PORT: ${TYRS_HAND_E2E_CODEX_PORT}
+      SSH_ENGINE: "codex"
+- runFlow:
+    file: _shared/runtime-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CODEX_CHAT"
+      PERMISSIONS: "danger-full-access"
+      MODE: "default"
+- extendedWaitUntil:
+    visible: "MOBILE_CODEX_CHAT_OK"
+    timeout: 120000
+- tapOn:
+    id: "session:back"
+- runFlow:
+    file: _shared/add-real-ssh.yaml
+    env:
+      SSH_NAME: "Mobile Claude"
+      SSH_PORT: ${TYRS_HAND_E2E_CLAUDE_PORT}
+      SSH_ENGINE: "claude-code"
+- runFlow: _shared/assert-runtime-entries.yaml
+- runFlow:
+    file: _shared/open-link.yaml
+    env:
+      PAIRING_URI: ${TYRS_HAND_E2E_PAIRING_URI}
+- runFlow:
+    file: _shared/open-link.yaml
+    env:
+      PAIRING_URI: ${TYRS_HAND_E2E_SECOND_PAIRING_URI}
+- tapOn:
+    id: "tab:connections"
+- runFlow: _shared/assert-runtime-entries.yaml
+- tapOn:
+    id: "connection:runtime:${TYRS_HAND_E2E_WORKER_ID}:claude-code"
+- runFlow:
+    file: _shared/runtime-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_CHAT"
+      PERMISSIONS: "danger-full-access"
+      MODE: "default"
+- extendedWaitUntil:
+    visible: "MOBILE_CLAUDE_CHAT_OK"
+    timeout: 120000
+- assertNotVisible: "MOBILE_CODEX_CHAT_OK"
+- runFlow:
+    file: _shared/runtime-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_FULL"
+      PERMISSIONS: "danger-full-access"
+      MODE: "default"
+- extendedWaitUntil:
+    visible: "MOBILE_CLAUDE_FULL_OK"
+    timeout: 120000
+- assertNotVisible:
+    id: "interactive:.*:accept"
+- runFlow:
+    file: _shared/runtime-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_APPROVAL"
+      PERMISSIONS: "workspace"
+      MODE: "default"
+- extendedWaitUntil:
+    visible:
+      id: "interactive:.*:accept"
+    timeout: 120000
+- tapOn:
+    id: "interactive:.*:accept"
+- extendedWaitUntil:
+    visible: "MOBILE_CLAUDE_APPROVAL_OK"
+    timeout: 120000
+- runFlow:
+    file: _shared/runtime-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_DENY"
+      PERMISSIONS: "workspace"
+      MODE: "default"
+- extendedWaitUntil:
+    visible:
+      id: "interactive:.*:decline"
+    timeout: 120000
+- tapOn:
+    id: "interactive:.*:decline"
+- extendedWaitUntil:
+    visible: "MOBILE_CLAUDE_DENY_OK"
+    timeout: 120000
+- runFlow:
+    file: _shared/runtime-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_PLAN"
+      PERMISSIONS: "danger-full-access"
+      MODE: "plan"
+- extendedWaitUntil:
+    visible: "Choose a color"
+    timeout: 120000
+- tapOn:
+    id: "interactive:option:0"
+- tapOn:
+    id: "interactive:.*:submit"
+- extendedWaitUntil:
+    visible: "计划已完成，是否退出计划模式并按当前权限执行？"
+    timeout: 120000
+- assertVisible: "MOBILE_PLAN_OUTPUT.*"
+- tapOn:
+    id: "interactive:option:0"
+- tapOn:
+    id: "interactive:.*:submit"
+- extendedWaitUntil:
+    visible: "MOBILE_CLAUDE_PLAN_OK"
+    timeout: 120000
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "tab:connections"
+    timeout: 30000
+- tapOn:
+    id: "tab:connections"
+- runFlow: _shared/assert-runtime-entries.yaml

@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 
 function decodeBase32(value) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -69,20 +70,22 @@ export class AdminClient {
       body: { workerId, engine } })
   }
 
-  async waitForWorkerFingerprint(workerId, fingerprint, timeoutMs = 30_000) {
+  async waitForRuntime(workerId, engine, timeoutMs = 60_000) {
     const deadline = Date.now() + timeoutMs
+    let last
     while (Date.now() < deadline) {
-      const workers = await this.request('/workers')
-      const worker = workers.items.find((item) => item.id === workerId)
-      if (worker?.sshHostKeyFingerprint === fingerprint) return worker
+      const result = await this.request(`/workers/${workerId}/runtimes`)
+      last = result.find((runtime) => runtime.engine === engine)
+      if (last?.enabled && last.status === 'running' && last.sshHostKeyFingerprint) return last
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    throw new Error(`等待 Worker ${workerId} 上报 SSH Host Key 超时`)
+    throw new Error(`等待 ${engine} 运行时就绪超时：${JSON.stringify(last ?? null)}`)
   }
 
-  async approveWhenClaimed(pairingId, timeoutMs = 90_000) {
+  async approveWhenClaimed(pairingId, timeoutMs = 90_000, signal) {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
+      signal?.throwIfAborted()
       const pairing = await this.request(`/client-device-pairings/${pairingId}`)
       if (pairing.status === 'waiting_confirmation') {
         await this.request(`/client-device-pairings/${pairingId}/approve`, {
@@ -93,7 +96,7 @@ export class AdminClient {
       if (pairing.status === 'rejected' || pairing.status === 'expired') {
         throw new Error(`设备绑定进入 ${pairing.status}`)
       }
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      await delay(500, undefined, { signal })
     }
     throw new Error('等待设备 claim 超时')
   }

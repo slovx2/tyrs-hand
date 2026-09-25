@@ -1,0 +1,4 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+# runner 会在证据目录生成真实项目的逐层 SFTP 导航，直接运行此模板必须失败。
+- assertTrue: ${false}

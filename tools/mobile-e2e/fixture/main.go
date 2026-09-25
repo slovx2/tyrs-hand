@@ -172,6 +172,7 @@ func seed(ctx context.Context, db *sql.DB, arguments []string) {
 	flags := flag.NewFlagSet("seed", flag.ExitOnError)
 	workerText := flags.String("worker-id", "", "Worker UUID")
 	projectName := flags.String("project-name", "e2e-project", "首个项目名称")
+	hostPath := flags.String("host-path", "", "真实 Worker 项目绝对路径")
 	_ = flags.Parse(arguments)
 	workerID, err := uuid.Parse(*workerText)
 	if err != nil {
@@ -198,8 +199,9 @@ func seed(ctx context.Context, db *sql.DB, arguments []string) {
 			VALUES ($1,'999000000000000001','999000000000000002',$2)`,
 			[]any{workspaceID, workerID}},
 		{`INSERT INTO workspace_projects(id,workspace_id,relative_path,name,project_kind,
-			availability_status,last_seen_at) VALUES ($1,$2,'workspaces/e2e-project',$3,
-			'directory','available',now())`, []any{projectID, workspaceID, *projectName}},
+			availability_status,last_seen_at,host_path,project_source) VALUES ($1,$2,'workspaces/e2e-project',$3,
+			'directory','available',now(),NULLIF($4,''),'workspace_root')`,
+			[]any{projectID, workspaceID, *projectName, *hostPath}},
 	}
 	for _, statement := range statements {
 		if _, err = tx.ExecContext(ctx, statement.query, statement.args...); err != nil {

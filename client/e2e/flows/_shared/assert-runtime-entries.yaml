@@ -1,0 +1,12 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- scrollUntilVisible:
+    element:
+      id: "connection:runtime:${TYRS_HAND_E2E_WORKER_ID}:codex"
+    direction: UP
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "connection:runtime:${TYRS_HAND_E2E_WORKER_ID}:claude-code"
+    direction: DOWN
+    timeout: 15000

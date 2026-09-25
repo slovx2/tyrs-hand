@@ -530,12 +530,16 @@ func stopAppServerGeneration(generation *appServerGeneration) {
 }
 
 func stopGeneration(generation *appServerGeneration) {
-	if generation.client != nil {
-		_ = generation.client.Close()
-	}
-	if generation.hub != nil {
-		_ = generation.hub.Close()
-	}
+	// 先确认原生进程退出，再取消 Hub 内的审批。先关闭 Hub 会把断连
+	// 转成拒绝结果送回仍在运行的 Claude，导致重启期间额外请求模型。
+	defer func() {
+		if generation.client != nil {
+			_ = generation.client.Close()
+		}
+		if generation.hub != nil {
+			_ = generation.hub.Close()
+		}
+	}()
 	if generation.command == nil || generation.command.Process == nil {
 		return
 	}

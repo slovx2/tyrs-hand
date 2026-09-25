@@ -270,7 +270,9 @@ export default function ConnectionsScreen() {
       ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码关联 Control Worker。" />
       : connections.map((connection) => <Pressable key={connection.profileId}
         testID={`connection:${encodeURIComponent(connection.profileId)}`}
-        onPress={() => void switchConnection(connection.profileId)}><Card style={styles.connection}>
+        onPress={() => void switchConnection(connection.profileId)}><Card
+        testID={`connection:runtime:${connection.workerId ?? connection.profileId}:${connection.engine}`}
+        style={styles.connection}>
         <View style={styles.row}><StatusDot status={active?.profileId === connection.profileId
           ? connectionError ? "danger" : "success" : "muted"} />
           <View testID={active?.profileId === connection.profileId ? "connection:active" : "connection:inactive"}
@@ -380,6 +382,7 @@ export default function ConnectionsScreen() {
               </Pressable> : null}
               {directoryBrowser.entries.filter((entry) => entry.directory).map((entry) =>
                 <Pressable disabled={browsingSSH} key={entry.path} style={styles.directoryRow}
+                testID={`connection:ssh:directory:${encodeURIComponent(entry.path)}`}
                 onPress={() => void loadSSHDirectory(directoryBrowser.connection, entry.path)}>
                   <Text numberOfLines={1} style={{ color: theme.colors.text }}>📁 {entry.name}</Text>
                 </Pressable>)}

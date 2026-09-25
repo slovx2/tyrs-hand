@@ -23,6 +23,7 @@ export class ControlHarness {
 
   async start() {
     await mkdir(`${this.runDir}/logs`, { recursive: true })
+    await mkdir(`${this.runDir}/home`, { recursive: true, mode: 0o700 })
     this.nativeServices = process.env.TYRS_HAND_E2E_NATIVE_SERVICES === '1'
     let postgresPort
     let redisPort
@@ -71,6 +72,8 @@ export class ControlHarness {
     this.port = await freePort()
     this.baseURL = `http://127.0.0.1:${this.port}`
     this.environment = {
+      HOME: `${this.runDir}/home`, PATH: process.env.PATH,
+      LANG: 'en_US.UTF-8',
       TYRS_HAND_DATABASE_URL: this.databaseURL,
       TYRS_HAND_REDIS_URL: this.redisURL,
       TYRS_HAND_HTTP_ADDR: `${this.listenHost}:${this.port}`,
@@ -85,7 +88,7 @@ export class ControlHarness {
     run('go', ['build', '-o', `${binDir}/admin`, './cmd/tyrs-hand-admin'], { cwd: this.repoRoot })
     run('go', ['build', '-o', `${binDir}/server`, './cmd/tyrs-hand-server'], { cwd: this.repoRoot })
     run(`${binDir}/admin`, ['migrate'], { cwd: this.repoRoot,
-      env: { ...process.env, ...this.environment } })
+      env: this.environment })
     this.serverBin = `${binDir}/server`
     this.serverGeneration = 0
     await this.startServer()
@@ -99,7 +102,7 @@ export class ControlHarness {
     this.serverGeneration += 1
     const suffix = this.serverGeneration === 1 ? '' : `-${this.serverGeneration}`
     const server = await startProcess(`${this.label}-server${suffix}`, this.serverBin, [], {
-      cwd: this.repoRoot, env: this.environment, logDir: `${this.runDir}/logs`,
+      cwd: this.repoRoot, env: this.environment, inheritEnv: false, logDir: `${this.runDir}/logs`,
     })
     this.processes.push(server)
     this.server = server

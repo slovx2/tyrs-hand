@@ -81,6 +81,16 @@ client-export-ios:
 
 client-e2e-contract:
 	$(PNPM) --dir client e2e:contract
+	node --test tools/mobile-e2e/lib/harness.test.mjs tools/mobile-e2e/verify-evidence.test.mjs
+
+.PHONY: test-mobile-runtime-e2e client-e2e-dual-engine
+test-mobile-runtime-e2e:
+	@node --test --test-reporter=junit tools/mobile-e2e/runtime.test.mjs
+
+# 完整 GUI 入口必须指定平台；失败或缺少平台证据不能视为完整验收。
+client-e2e-dual-engine:
+	test "$(PLATFORM)" = android -o "$(PLATFORM)" = ios
+	./tools/mobile-e2e/run.sh "$(PLATFORM)"
 
 client-e2e-android:
 	./tools/mobile-e2e/run.sh android

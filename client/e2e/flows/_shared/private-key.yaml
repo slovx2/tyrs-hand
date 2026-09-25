@@ -1,0 +1,4 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+# 运行器仅在临时证据目录生成虚拟密钥输入步骤，不能直接运行此模板。
+- assertTrue: ${false}

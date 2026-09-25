@@ -43,6 +43,8 @@ func (f *runtimeApprovalFixture) model(t *testing.T, w http.ResponseWriter, requ
 	case 5:
 		tool, input = "Write", map[string]any{"file_path": filepath.Join(f.root, "restarted.txt"), "content": "forbidden"}
 	case 6:
+		require.Contains(t, string(body), "APPROVAL_FULL_ACCESS",
+			"旧审批被重启取消时不能续写模型或消费新回合的脚本")
 		tool, input = "Write", map[string]any{"file_path": filepath.Join(f.root, "full-access.txt"), "content": "full"}
 	default:
 		t.Errorf("审批失效后发生未授权模型续写: %d", step)

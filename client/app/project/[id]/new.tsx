@@ -1,13 +1,16 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
+import { Pressable, Text } from "react-native";
 
 import { EmptyState, Screen } from "@/components/ui";
 import { ConversationPane } from "@/features/chat/ConversationPane";
 import { SessionActionsMenu } from "@/features/chat/SessionActionsMenu";
 import { NewTaskPane } from "@/features/projects/NewTaskPane";
 import { useAppStore } from "@/store/appStore";
+import { useTheme } from "@/theme/ThemeProvider";
 
 export default function NewProjectTaskScreen() {
+  const theme = useTheme();
   const { id, sessionId: initialSessionId } = useLocalSearchParams<{
     id: string;
     sessionId?: string;
@@ -26,6 +29,11 @@ export default function NewProjectTaskScreen() {
   }
 
   return <Screen><Stack.Screen options={{ title, headerBackTitle: "会话",
+    headerLeft: () => <Pressable testID="session:back" accessibilityRole="button"
+      accessibilityLabel="返回" hitSlop={8} onPress={() => router.back()}
+      style={{ minHeight: 44, paddingRight: 12, justifyContent: "center" }}>
+      <Text style={{ color: theme.colors.accent, fontFamily: "Inter_500Medium", fontSize: 16 }}>‹ 返回</Text>
+    </Pressable>,
     ...(sessionId ? { headerRight: () => <SessionActionsMenu sessionId={sessionId}
       onArchiveAccepted={() => router.back()} /> } : {}) }} />
     {sessionId ? <ConversationPane sessionId={sessionId} />

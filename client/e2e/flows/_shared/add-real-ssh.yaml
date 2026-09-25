@@ -1,0 +1,72 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- tapOn:
+    id: "tab:connections"
+- scrollUntilVisible:
+    element:
+      id: "connection:add-ssh"
+    direction: UP
+- tapOn:
+    id: "connection:add-ssh"
+- tapOn:
+    id: "connection:ssh:name"
+- eraseText: 100
+- inputText: ${SSH_NAME}
+- tapOn:
+    id: "connection:ssh:host"
+- eraseText: 100
+- inputText: "127.0.0.1"
+- tapOn:
+    id: "connection:ssh:port"
+- eraseText: 10
+- inputText: ${SSH_PORT}
+- tapOn:
+    id: "connection:ssh:user"
+- eraseText: 100
+- inputText: "developer"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "connection:ssh:private-key"
+    direction: DOWN
+- tapOn:
+    id: "connection:ssh:private-key"
+- runFlow:
+    when:
+      visible: "(?s).*BEGIN OPENSSH PRIVATE KEY.*"
+    commands:
+      - eraseText: 512
+- runFlow:
+    file: private-key.yaml
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "connection:ssh:save"
+    direction: DOWN
+- tapOn:
+    id: "connection:ssh:save"
+- extendedWaitUntil:
+    visible: "确认并保存"
+    timeout: 30000
+- tapOn: "确认并保存"
+- scrollUntilVisible:
+    element:
+      id: "connection:runtime:${TYRS_HAND_E2E_WORKER_ID}:${SSH_ENGINE}"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "connection:.*:add-project"
+    childOf:
+      id: "connection:runtime:${TYRS_HAND_E2E_WORKER_ID}:${SSH_ENGINE}"
+- extendedWaitUntil:
+    visible:
+      id: "connection:ssh:directory-list"
+    timeout: 30000
+- runFlow:
+    file: project-directory.yaml
+- tapOn:
+    id: "connection:ssh:add-current-directory"
+- extendedWaitUntil:
+    visible:
+      id: "tab:connections"
+    timeout: 30000

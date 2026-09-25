@@ -29,6 +29,11 @@ test('Maestro 与运行时依赖全部固定', async () => {
   const dependencies = JSON.parse(await readFile(
     resolve(root, 'deploy/worker/dependencies.json'), 'utf8'))
   assert.equal(dependencies.codexMinimumVersion, '0.147.0')
+  const native = await readFile(resolve(root, 'tools/mobile-e2e/install-native-services.sh'), 'utf8')
+  assert.match(native, /d95663fbbf3a80f81a9d98d895266bdcb74ba274bcc04ef6d76630a72dee016f/)
+  assert.match(native, /ca909aa15252f2ecb3a048cd086469827d636bf8334f50bb94d03fba4bfc56e8/)
+  assert.match(native, /967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99/)
+  assert.match(native, /contrib\/pgcrypto install/)
 })
 
 test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
@@ -59,34 +64,27 @@ test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
   assert.doesNotMatch(flows, /tapOn:\s*\n\s*text:/)
 })
 
-test('协议 Worker 交互场景显式使用 Plan 模式', async () => {
-  for (const flow of ['03-interactive.yaml', '09-secret-and-failure.yaml']) {
-    const content = await readFile(resolve(root, 'client/e2e/flows', flow), 'utf8')
-    const planIndex = content.indexOf('id: "parameters:mode:plan"')
-    const taskIndex = content.indexOf('file: _shared/create-task.yaml')
-    assert.ok(planIndex >= 0 && planIndex < taskIndex, `${flow} 必须在创建任务前选择 Plan 模式`)
-  }
-  const secretFlow = await readFile(resolve(root,
-    'client/e2e/flows/09-secret-and-failure.yaml'), 'utf8')
-  assert.equal([...secretFlow.matchAll(/id: "connection:inactive"/g)].length, 2,
-    'Secret 场景必须切到次 Control，并在失败态场景前切回主 Control')
-})
-
-test('默认移动端 E2E 只覆盖扫码后的定时任务只读协议', async () => {
+test('默认 suite 使用真实双引擎并验证计划、权限和审批', async () => {
   const runner = await readFile(resolve(root, 'tools/mobile-e2e/mobile-runner.mjs'), 'utf8')
-  const worker = await readFile(resolve(root, 'tools/mobile-e2e/protocol-worker.mjs'), 'utf8')
+  const worker = await readFile(resolve(root, 'tools/mobile-e2e/lib/worker.mjs'), 'utf8')
   const suite = await readFile(resolve(root, 'client/e2e/flows/suite.yaml'), 'utf8')
-  const flow = await readFile(resolve(root, 'client/e2e/flows/01-pair-controls.yaml'), 'utf8')
-
-  assert.match(worker, /protocolVersion:\s*28/)
-  assert.match(worker, /sshHostKeyFingerprint/)
-  assert.match(runner, /createPairing\(primaryWorker\.worker\.id\)/)
-  assert.match(runner, /seed-automations/)
-  assert.equal((suite.match(/runFlow:/g) ?? []).length, 1)
-  assert.match(suite, /01-pair-controls\.yaml/)
-  assert.doesNotMatch(suite, /02-parameters|attachments|interactive/)
-  assert.match(flow, /tab:automations/)
-  assert.match(flow, /automation:\$\{TYRS_HAND_E2E_PRIMARY_TASK_ID\}/)
-  assert.match(flow, /automation:status:paused/)
-  assert.doesNotMatch(runner, /offline-send|notification-deep-link|client\/bootstrap/)
+  const flow = await readFile(resolve(root, 'client/e2e/flows/dual-engine-suite.yaml'), 'utf8')
+  assert.match(suite, /dual-engine-suite\.yaml/)
+  assert.match(runner, /new WorkerHarness/)
+  assert.match(runner, /models\.verify/)
+  assert.doesNotMatch(runner, /protocol-worker|seed-automations|MockRuntime/)
+  assert.match(worker, /cmd\/tyrs-hand-worker/)
+  assert.match(worker, /inheritEnv: false/)
+  assert.match(worker, /sandbox-exec/)
+  assert.match(worker, /--net/)
+  for (const marker of ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
+    'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']) {
+    assert.ok(flow.includes(marker), marker + ' 必须经过 GUI')
+    assert.ok(runner.includes(marker), marker + ' 必须核对模型和副作用')
+  }
+  assert.match(flow, /interactive:.*:accept/)
+  assert.match(flow, /interactive:.*:decline/)
+  assert.match(flow, /MODE: "plan"/)
+  assert.match(flow, /PERMISSIONS: "danger-full-access"/)
+  assert.match(flow, /stopApp/)
 })

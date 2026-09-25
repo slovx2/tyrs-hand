@@ -1,0 +1,50 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
+- tapOn:
+    id: "tab:sessions"
+- extendedWaitUntil:
+    visible:
+      id: "session:project"
+    timeout: 30000
+- tapOn:
+    id: "session:project"
+- tapOn:
+    id: "session:project:option:.*"
+    index: 0
+- tapOn:
+    id: "session:new-task:add"
+- tapOn:
+    id: "composer:parameters"
+- scrollUntilVisible:
+    element:
+      id: "parameters:permissions:${PERMISSIONS}"
+    direction: DOWN
+- tapOn:
+    id: "parameters:permissions:${PERMISSIONS}"
+- scrollUntilVisible:
+    element:
+      id: "parameters:mode:${MODE}"
+    direction: DOWN
+- tapOn:
+    id: "parameters:mode:${MODE}"
+- tapOn:
+    id: "parameters:done"
+- tapOn:
+    id: "composer:input"
+- inputText: ${TASK_TEXT}
+- tapOn:
+    id: "composer:send"
