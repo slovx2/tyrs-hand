@@ -116,13 +116,13 @@ func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCall
 
 	var callID uuid.UUID
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO tool_calls(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT(thread_id, turn_id, call_id) DO NOTHING
+		INSERT INTO tool_calls(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments, control_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT control_id FROM codex_turn_runs WHERE id=$1))
+		ON CONFLICT(control_id, thread_id, turn_id, call_id) DO NOTHING
 		RETURNING id`, auth.RunID, auth.IntentID, request.ThreadID, request.TurnID, request.CallID,
 		request.Namespace, request.Tool, request.Arguments).Scan(&callID)
 	if errors.Is(err, sql.ErrNoRows) {
-		result, previousErr := s.previousResult(ctx, request)
+		result, previousErr := s.previousResult(ctx, auth, request)
 		if previousErr == nil && request.Tool == "create_pull_request" && auth.SourceType == "github_work_item" {
 			previousErr = s.linkCreatedPullRequest(ctx, auth, result)
 		}
@@ -400,16 +400,17 @@ func githubPermissionRank(permission string) int {
 	}
 }
 
-func (s *Service) previousResult(ctx context.Context, request CallRequest) (codex.ToolCallResult, error) {
+func (s *Service) previousResult(ctx context.Context, auth authorization, request CallRequest) (codex.ToolCallResult, error) {
 	var status string
 	var resultJSON []byte
 	var message sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT status, result, error FROM tool_calls
 		WHERE thread_id = $1 AND turn_id = $2 AND call_id = $3
-		  AND namespace = $4 AND tool = $5 AND arguments = $6::jsonb`,
+		  AND namespace = $4 AND tool = $5 AND arguments = $6::jsonb
+		  AND control_id = (SELECT control_id FROM codex_turn_runs WHERE id=$7)`,
 		request.ThreadID, request.TurnID, request.CallID, request.Namespace, request.Tool,
-		string(request.Arguments)).Scan(&status, &resultJSON, &message)
+		string(request.Arguments), auth.RunID).Scan(&status, &resultJSON, &message)
 	if errors.Is(err, sql.ErrNoRows) {
 		return codex.ToolCallResult{}, errors.New("tool call ID 与既有请求不一致")
 	}

@@ -88,9 +88,9 @@ func (s *Service) beginToolCall(ctx context.Context, tool ToolContext,
 ) (uuid.UUID, bool, error) {
 	var id uuid.UUID
 	err := s.db.QueryRowContext(ctx, `INSERT INTO tool_calls(
-		run_id,intent_id,thread_id,turn_id,call_id,namespace,tool,arguments)
-		VALUES ($1,$2,$3,$4,$5,'tyrs_hand','automation_update',$6)
-		ON CONFLICT(thread_id,turn_id,call_id) DO NOTHING RETURNING id`, tool.RunID,
+		run_id,intent_id,thread_id,turn_id,call_id,namespace,tool,arguments,control_id)
+		VALUES ($1,$2,$3,$4,$5,'tyrs_hand','automation_update',$6,(SELECT control_id FROM codex_turn_runs WHERE id=$1))
+		ON CONFLICT(control_id,thread_id,turn_id,call_id) DO NOTHING RETURNING id`, tool.RunID,
 		tool.IntentID, tool.ThreadID, tool.TurnID, tool.CallID, raw).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, true, nil
@@ -106,8 +106,9 @@ func (s *Service) previousToolResult(ctx context.Context, tool ToolContext,
 	var message sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT status,result,error FROM tool_calls
 		WHERE thread_id=$1 AND turn_id=$2 AND call_id=$3
-		  AND namespace='tyrs_hand' AND tool='automation_update' AND arguments=$4::jsonb`,
-		tool.ThreadID, tool.TurnID, tool.CallID, string(raw)).Scan(&status, &resultJSON, &message)
+		  AND namespace='tyrs_hand' AND tool='automation_update' AND arguments=$4::jsonb
+		  AND control_id=(SELECT control_id FROM codex_turn_runs WHERE id=$5)`,
+		tool.ThreadID, tool.TurnID, tool.CallID, string(raw), tool.RunID).Scan(&status, &resultJSON, &message)
 	if errors.Is(err, sql.ErrNoRows) {
 		return codex.ToolCallResult{}, errors.New("tool call ID 与既有请求不一致")
 	}

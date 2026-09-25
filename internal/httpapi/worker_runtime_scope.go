@@ -15,6 +15,11 @@ import (
 // 只有完成数据库、查询及写入隔离的接口才能向 Claude 开放。
 // 新接口默认关闭；全局 Worker 操作由单一调度器使用 Codex 客户端执行。
 func workerRuntimeScopedPath(path string) bool {
+	switch path {
+	case "/worker/v1/runs/:id/interactive", "/worker/v1/interactive/:id", "/worker/v1/interactive/answer",
+		"/worker/v1/runs/:id/tools/call":
+		return true
+	}
 	for _, prefix := range []string{
 		"/worker/v1/desktop-thread-requests",
 		"/worker/v1/session-title-tasks",

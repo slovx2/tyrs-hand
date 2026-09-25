@@ -49,7 +49,7 @@ func (s *Service) replyToGitHub(ctx context.Context, auth authorization,
 		return codex.ToolCallResult{}, err
 	}
 	if existing {
-		if result, previousErr := s.previousResult(ctx, request); previousErr == nil {
+		if result, previousErr := s.previousResult(ctx, auth, request); previousErr == nil {
 			return result, nil
 		} else if !strings.Contains(previousErr.Error(), "正在执行") {
 			return codex.ToolCallResult{}, previousErr
@@ -134,14 +134,15 @@ func (s *Service) persistReplyCall(ctx context.Context, auth authorization,
 ) (uuid.UUID, bool, error) {
 	var id uuid.UUID
 	err := s.db.QueryRowContext(ctx, `INSERT INTO tool_calls
-		(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(thread_id, turn_id, call_id) DO NOTHING
+		(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments, control_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,(SELECT control_id FROM codex_turn_runs WHERE id=$1)) ON CONFLICT(control_id, thread_id, turn_id, call_id) DO NOTHING
 		RETURNING id`, auth.RunID, auth.IntentID, request.ThreadID, request.TurnID,
 		request.CallID, request.Namespace, request.Tool, request.Arguments).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = s.db.QueryRowContext(ctx, `SELECT id FROM tool_calls
-			WHERE thread_id=$1 AND turn_id=$2 AND call_id=$3`, request.ThreadID,
-			request.TurnID, request.CallID).Scan(&id)
+			WHERE thread_id=$1 AND turn_id=$2 AND call_id=$3
+			AND control_id=(SELECT control_id FROM codex_turn_runs WHERE id=$4)`, request.ThreadID,
+			request.TurnID, request.CallID, auth.RunID).Scan(&id)
 		return id, true, err
 	}
 	return id, false, err

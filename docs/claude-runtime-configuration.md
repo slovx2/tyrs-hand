@@ -87,6 +87,12 @@ Worker 升级在持有数据锁时一次性迁移旧 Codex Journal，保存原�
 报告、JUnit 与测试日志在 `.artifacts/control-runtime/<runId>/`，CI 独立保存证据。
 这些是 Control 数据层验收，不计入 SSH→SDK→Mock LLM 的协议覆盖率。
 
+迁移 032 将工具调用与交互提问的协议 ID 去重限定在 Control 内，并用复合外键
+校验 Run、Intent 与 Control 的归属。历史工具结果与已回答提问保持原样。
+同引擎的工具重试返回原结果，改变参数会被拒绝；两引擎相同 ID 分别执行。
+交互提问校验原生进程 generation、request ID 和问题内容，多端竞争只接受一个答案。
+Control 必需用例包含实际定时任务记录、重复工具提交及交互回答仲裁断言。
+
 当前发布状态：`releaseReady=false`。控制台可预配置 Claude；正式 Worker 的 Claude
 Controller 已接入本地 SSH；Claude 的 Control 会话同步仍关闭，任务、Discord 和
 定时任务的引擎隔离尚未全部接线。未启用的 runtime 重启会明确报错。

@@ -62,6 +62,16 @@ RRULE:FREQ=HOURLY','UTC','interval',3600 FROM workspace_sessions;
 		FROM codex_thread_controls;
 		INSERT INTO session_messages(session_id,seq,local_id,message_role,content,turn_intent_id)
 		SELECT session_id,1,'desktop:'||idempotency_key,'user','{}',id FROM codex_turn_intents;
+		INSERT INTO codex_turn_runs(control_id,primary_intent_id,attempt,worker_id,status)
+		SELECT i.control_id,i.id,1,c.worker_id,'completed' FROM codex_turn_intents i
+		JOIN codex_thread_controls c ON c.id=i.control_id;
+		INSERT INTO tool_calls(run_id,intent_id,thread_id,turn_id,call_id,namespace,tool,arguments,status,result)
+		SELECT id,primary_intent_id,'legacy-thread','turn','call','tyrs_hand','automation_update','{}',
+			'completed','{"retained":true}' FROM codex_turn_runs;
+		INSERT INTO codex_interactive_requests(control_id,run_id,thread_id,turn_id,item_id,
+			app_server_generation,app_server_request_id,questions,status,answer)
+		SELECT control_id,id,'legacy-thread','turn','item',1,'1','[]','resolved','{"answers":{}}'
+		FROM codex_turn_runs;
 	`)
 	require.NoError(t, err)
 	var originalIntent string
@@ -89,4 +99,11 @@ RRULE:FREQ=HOURLY','UTC','interval',3600 FROM workspace_sessions;
 	require.Equal(t, "completed", status)
 	require.Contains(t, key, ":codex:")
 	require.Equal(t, "desktop:"+key, localID)
+	var retained bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT call.control_id=run.control_id
+		AND call.status='completed' AND call.result='{"retained":true}'::jsonb
+		AND q.status='resolved' AND q.answer='{"answers":{}}'::jsonb
+		FROM tool_calls call JOIN codex_turn_runs run ON run.id=call.run_id
+		JOIN codex_interactive_requests q ON q.run_id=run.id`).Scan(&retained))
+	require.True(t, retained, "迁移必须保留已确认的工具结果与交互答案")
 }

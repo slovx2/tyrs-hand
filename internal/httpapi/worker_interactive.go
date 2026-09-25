@@ -81,15 +81,22 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 		(control_id, run_id, session_id, thread_id, turn_id, item_id, app_server_generation,
 		 app_server_request_id, questions, deadline_at)
 		VALUES ($1,$2,NULLIF($3::text,'')::uuid,$4,$5,$6,$7,$8,$9,$10)
-		ON CONFLICT(thread_id, turn_id, item_id) DO NOTHING RETURNING id`,
+		ON CONFLICT(control_id, thread_id, turn_id, item_id) DO NOTHING RETURNING id`,
 		claimed.ControlID, runID, nilUUIDString(claimed.SessionID), params.ThreadID,
 		params.TurnID, params.ItemID,
 		request.AppServerGeneration, request.RequestID, questions, nullableTime(deadline)).
 		Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
+		// 仅同一次原生请求可重放；重启后的旧审批不能回答新请求。
 		err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_interactive_requests
-			WHERE thread_id=$1 AND turn_id=$2 AND item_id=$3`, params.ThreadID,
-			params.TurnID, params.ItemID).Scan(&id)
+			WHERE thread_id=$1 AND turn_id=$2 AND item_id=$3 AND control_id=$4
+			AND run_id=$5 AND app_server_generation=$6 AND app_server_request_id=$7::jsonb
+			AND questions=$8::jsonb`, params.ThreadID, params.TurnID, params.ItemID,
+			claimed.ControlID, runID, request.AppServerGeneration, request.RequestID, questions).Scan(&id)
+		if errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusConflict, "交互请求 ID 与既有请求不一致或已失效", nil)
+			return
+		}
 	} else if err == nil {
 		inserted = true
 	}

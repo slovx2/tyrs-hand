@@ -62,6 +62,24 @@
         "codex",
         "claude-code"
       ]
+    },
+    {
+      "id": "CONTROL-APPROVAL-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerInteractiveRuntimeIsolationAndArbitration",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-TOOLS-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerToolRuntimeDeduplicationAndSideEffects",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
     }
   ]
 }

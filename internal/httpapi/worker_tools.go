@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/scheduledtasks"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -26,6 +27,10 @@ func (s *Server) workerToolCall(c *gin.Context) {
 		namespace = *request.Request.Namespace
 	}
 	if namespace == "tyrs_hand" && isLiveVoiceTool(request.Request.Tool) {
+		if currentWorkerEngine(c) == runtimeidentity.Claude {
+			problem(c, http.StatusNotImplemented, "Claude 运行时不提供 Live 语音入口", nil)
+			return
+		}
 		result, callErr := s.callLiveVoiceTool(c.Request.Context(), claimed,
 			request.Request.ThreadID, request.Request.Tool, request.Request.Arguments)
 		if callErr != nil {
