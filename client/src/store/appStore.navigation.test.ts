@@ -9,6 +9,7 @@ import { officialClientFor } from "@/app-server/registry";
 import { createPreviewSeed } from "@/preview/fixtures";
 import { primaryPreviewServerId } from "@/preview/config";
 import type { OfficialAppServerClient, OfficialItemPage } from "@/app-server/officialClient";
+import { removePendingMessagePreview } from "@/db/pendingMessages";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("@/app-server/registry", () => ({ officialClientFor: vi.fn() }));
@@ -23,8 +24,10 @@ vi.mock("@/db/settings", () => ({ loadThemeMode: vi.fn(async () => "system"),
   loadSelectedProjectId: vi.fn(async () => null),
   saveSelectedProjectId: vi.fn(async () => undefined) }));
 vi.mock("@/app-server/outbox", () => ({ listOutbox: vi.fn(async () => []) }));
-vi.mock("@/db/pendingMessages", () => ({ listPendingMessagePreviews: vi.fn(async () => []) }));
-vi.mock("@/db/threadReads", () => ({ loadUnreadThreadIds: vi.fn(async () => []) }));
+vi.mock("@/db/pendingMessages", () => ({ listPendingMessagePreviews: vi.fn(async () => []),
+  removePendingMessagePreview: vi.fn(async () => undefined) }));
+vi.mock("@/db/threadReads", () => ({ loadUnreadThreadIds: vi.fn(async () => []),
+  removeThreadRead: vi.fn(async () => undefined) }));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -33,6 +36,67 @@ beforeEach(() => {
 });
 
 describe("会话导航状态", () => {
+  it("后台 Codex 的同 ID 审批事件不能覆盖当前 Claude 的待回答请求", async () => {
+    const thread = createPreviewSeed().controls[primaryPreviewServerId]!.threads[0]!;
+    const record = { thread, workspaceId: null, projectId: null, archived: false,
+      history: { kind: "summary" as const } };
+    const request = { id: "same-request", method: "item/tool/requestUserInput" as const,
+      params: { threadId: thread.id, turnId: "same-turn", itemId: "same-item", questions: [],
+        isBlocking: true, autoResolutionMs: null } };
+    let notify!: Parameters<OfficialAppServerClient["subscribe"]>[0];
+    const pendingRequests = vi.fn(() => [request]);
+    vi.mocked(officialClientFor).mockReturnValue({ connect: async () => undefined,
+      onClose: vi.fn(), subscribe: (listener: typeof notify) => { notify = listener; },
+      pendingRequests, listTurnItems: async () => ({ items: [], nextCursor: null }),
+    } as unknown as OfficialAppServerClient);
+    useAppStore.setState({ activeConnection: connection("codex-profile"), threads: [record] });
+    await useAppStore.getState().loadTurnItems(thread.id, "turn", null, "asc");
+    const claudeRequest = { ...request, params: { ...request.params, itemId: "claude-item" } };
+    useAppStore.setState({ activeConnection: { ...connection("claude-profile"), engine: "claude-code" },
+      pendingRequests: { [thread.id]: [claudeRequest] } });
+    notify(request);
+    expect(useAppStore.getState().pendingRequests[thread.id]).toEqual([claudeRequest]);
+    // 切回原入口后事件应照常更新，不能通过屏蔽全部审批来实现隔离。
+    useAppStore.setState({ activeConnection: connection("codex-profile") });
+    notify({ method: "serverRequest/resolved", params: { threadId: thread.id, requestId: request.id } });
+    expect(useAppStore.getState().pendingRequests[thread.id]).toEqual([request]);
+  });
+
+  it("旧入口迟到的归档结果不能归档另一引擎的同名会话", async () => {
+    const pending = deferred<void>();
+    const archive = vi.fn(() => pending.promise);
+    vi.mocked(officialClientFor).mockReturnValue({ connect: async () => undefined,
+      onClose: vi.fn(), subscribe: vi.fn(), archive } as unknown as OfficialAppServerClient);
+    const thread = createPreviewSeed().controls[primaryPreviewServerId]!.threads[0]!;
+    const record = { thread, workspaceId: null, projectId: null, archived: false,
+      history: { kind: "summary" as const } };
+    useAppStore.setState({ activeConnection: connection("archive-codex"), threads: [record] });
+    const operation = useAppStore.getState().setThreadArchived(thread.id, true);
+    await vi.waitFor(() => expect(archive).toHaveBeenCalled());
+    useAppStore.setState({ activeConnection: { ...connection("archive-claude"), engine: "claude-code" },
+      threads: [record], unreadThreadIds: { [thread.id]: true } });
+    pending.resolve();
+    await operation;
+    expect(useAppStore.getState().threads[0]?.archived).toBe(false);
+    expect(useAppStore.getState().unreadThreadIds[thread.id]).toBe(true);
+    expect(useAppStore.getState().refresh).not.toHaveBeenCalled();
+  });
+
+  it("旧入口的消息确认不能移除另一引擎的同 ID 待确认消息", async () => {
+    const pending = deferred<void>();
+    vi.mocked(removePendingMessagePreview).mockReturnValue(pending.promise);
+    useAppStore.setState({ activeConnection: connection("confirm-codex") });
+    const operation = useAppStore.getState().confirmPendingMessage("same-message");
+    const message = { profileId: "confirm-claude", clientMessageId: "same-message", threadId: "same-thread",
+      projectId: "shared-project", text: "Claude 消息", attachments: [], createdAt: "now" };
+    useAppStore.setState({ activeConnection: { ...connection("confirm-claude"), engine: "claude-code" },
+      pendingMessages: [message] });
+    pending.resolve();
+    await operation;
+    expect(removePendingMessagePreview).toHaveBeenCalledWith("confirm-codex", "same-message");
+    expect(useAppStore.getState().pendingMessages).toEqual([message]);
+  });
+
   it("详情请求按连接、会话、Turn 和游标去重，切换连接后丢弃返回页", async () => {
     const pending = deferred<OfficialItemPage>();
     const listTurnItems = vi.fn(() => pending.promise);

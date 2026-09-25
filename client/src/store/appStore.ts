@@ -313,7 +313,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (answered && request?.method === "item/tool/requestUserInput") {
       upsertUserInputResponse(connection.profileId, record, request, result, set, get);
     }
-    syncPendingRequests(client, threadId, set);
+    syncPendingRequests(connection.profileId, client, threadId, set);
     return answered;
   },
 
@@ -323,11 +323,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
     if (archived) await client.archive(threadId); else await client.unarchive(threadId);
+    if (archived) void removeThreadRead(connection.profileId, threadId).catch(() => undefined);
+    if (get().activeConnection?.profileId !== connection.profileId) return;
     set((state) => ({ threads: state.threads.map((item) => item.thread.id === threadId
       ? { ...item, archived } : item),
     unreadThreadIds: archived ? withoutUnread(state.unreadThreadIds, threadId)
       : state.unreadThreadIds }));
-    if (archived) void removeThreadRead(connection.profileId, threadId).catch(() => undefined);
     void get().refresh();
   },
 
@@ -337,11 +338,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
     await client.setThreadName(threadId, name);
+    if (get().activeConnection?.profileId !== connection.profileId) return;
     await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
   },
   confirmPendingMessage: async (clientMessageId) => {
     const connection = requireConnection(get());
     await removePendingMessagePreview(connection.profileId, clientMessageId);
+    if (get().activeConnection?.profileId !== connection.profileId) return;
     set((state) => ({ pendingMessages: state.pendingMessages.filter((item) =>
       item.clientMessageId !== clientMessageId) }));
   },
@@ -732,7 +735,7 @@ function bindClient(connection: Connection, workspaceId: string | null,
       applyStreamingDelta(connection.profileId, delta, set, get));
     client.subscribe((event) => {
       const threadId = eventThreadId(event);
-      if (threadId) syncPendingRequests(client, threadId, set);
+      if (threadId) syncPendingRequests(connection.profileId, client, threadId, set);
       if (get().activeConnection?.profileId !== connection.profileId) return;
       if (event.method === "thread/name/updated") {
         const name = eventThreadName(event);
@@ -899,10 +902,11 @@ function eventThreadId(event: { params: unknown }): string | null {
   return typeof params.thread?.id === "string" ? params.thread.id : null;
 }
 
-function syncPendingRequests(client: ReturnType<typeof officialClientFor>, threadId: string,
+function syncPendingRequests(profileId: string, client: ReturnType<typeof officialClientFor>, threadId: string,
   set: StoreSet): void {
   const pending = client.pendingRequests(threadId);
-  set((state) => ({ pendingRequests: { ...state.pendingRequests, [threadId]: pending } }));
+  set((state) => state.activeConnection?.profileId === profileId
+    ? { pendingRequests: { ...state.pendingRequests, [threadId]: pending } } : {});
 }
 
 function upsertUserInputResponse(profileId: string, record: ThreadRecord,
@@ -1041,7 +1045,7 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
     const next: ThreadRecord = { ...latest, thread: { ...resumed.thread, turns }, history,
       preferences: nextPreferences };
     await setAndCacheThread(connection.profileId, next, set, get);
-    syncPendingRequests(client, threadId, set);
+    syncPendingRequests(connection.profileId, client, threadId, set);
   })().finally(() => {
     if (threadLoadPromises.get(key) === promise) threadLoadPromises.delete(key);
   });
@@ -1086,7 +1090,7 @@ async function refreshOfficialThreadTail(connection: Connection, threadId: strin
       hasLoadedOldest: page.nextCursor === null };
   await setAndCacheThread(connection.profileId,
     { ...current, thread: { ...metadata, turns }, history }, set, get);
-  syncPendingRequests(client, threadId, set);
+  syncPendingRequests(connection.profileId, client, threadId, set);
 }
 
 async function loadOlderOfficialThread(threadId: string, set: StoreSet,
