@@ -20,8 +20,9 @@ export function normalizeTurnPreferences(value: TurnPreferences): TurnPreference
 export function turnPreferencesSummary(value: TurnPreferences): string {
   const normalized = normalizeTurnPreferences(value);
   const mode = normalized.collaborationMode === "plan" ? "先做计划" : "直接执行";
-  return `${normalized.model} · ${normalized.effort ?? "默认"} · ${permissionProfileLabel(
-    normalized.permissions)} · ${mode}`;
+  const permissionLabel = normalized.runtimePermissions ? "运行时自定义权限"
+    : permissionProfileLabel(normalized.permissions);
+  return `${normalized.model} · ${normalized.effort ?? "默认"} · ${permissionLabel} · ${mode}`;
 }
 
 export function resolveNewTaskPreferences(models: Model[],

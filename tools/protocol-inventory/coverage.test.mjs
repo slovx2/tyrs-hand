@@ -11,6 +11,15 @@ const index = new Map([[method, { kind: 'ClientRequest',
 }]])
 const validate = payloadValidator(index)
 
+test('MCP reload 的 null 参数与官方响应均进行真实 schema 校验', () => {
+  const root = resolve(import.meta.dirname, '../..')
+  const validate = payloadValidator(schemaIndex(resolve(root, 'protocol/codex-app-server/0.147.0/json-schema')))
+  validate('config/mcpServer/reload', 'params', null)
+  validate('config/mcpServer/reload', 'response', {})
+  assert.throws(() => validate('config/mcpServer/reload', 'params', {}))
+  assert.throws(() => validate('config/mcpServer/reload', 'response', null))
+})
+
 test('运行时扩展必须校验真实身份字段与版本，不能仅凭方法名计覆盖', () => {
   const root = resolve(import.meta.dirname, '../..')
   const validate = payloadValidator(schemaIndex(

@@ -5,9 +5,32 @@ import type { Turn } from "@codex-app-server/v2/Turn";
 import { describe, expect, it } from "vitest";
 
 import type { ThreadRecord } from "@/app-server/types";
-import { reduceThreadNotification } from "./threadNotificationReducer";
+import { isDirectThreadNotification, reduceThreadNotification } from "./threadNotificationReducer";
 
 describe("原生 Thread 通知 reducer", () => {
+  it("Claude 原生计划进入退出及权限变化同步到后续提交偏好", () => {
+    let current = record([]);
+    for (const mode of ["plan", "default"] as const) {
+      const event: ServerNotification = { method: "thread/settings/updated", params: {
+        threadId: "thread", threadSettings: { cwd: "/workspace", approvalPolicy: "never",
+          approvalsReviewer: "user", sandboxPolicy: { type: "dangerFullAccess" },
+          activePermissionProfile: { id: ":danger-full-access", extends: null },
+          model: "claude-sonnet-4-6", modelProvider: "anthropic", serviceTier: null,
+          effort: "high", summary: null, personality: null, multiAgentMode: "explicitRequestOnly",
+          collaborationMode: { mode, settings: { model: "claude-sonnet-4-6",
+            reasoning_effort: "high", developer_instructions: null } },
+        },
+      } };
+      expect(isDirectThreadNotification(event)).toBe(true);
+      const updated = reduceThreadNotification(current, event);
+      expect(updated.changed).toBe(true);
+      expect(updated.record.preferences).toMatchObject({ collaborationMode: mode,
+        permissions: ":danger-full-access", model: "claude-sonnet-4-6" });
+      current = updated.record;
+      expect(reduceThreadNotification(current, { ...event,
+        params: { ...event.params, threadId: "another-thread" } }).changed).toBe(false);
+    }
+  });
   it("正式 turn/started 按 clientId 替换乐观 Turn，不重复用户消息", () => {
     const provisional = turn("provisional:message", "inProgress", [user("p", "message")]);
     const official = turn("official", "inProgress", [user("u", "message")]);

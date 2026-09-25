@@ -13,11 +13,13 @@ export function schemaIndex(root, extensionsRoot) {
   }
   walk(root)
   const index = new Map()
+  // null 参数没有 Params 类型，必须显式关联官方生成的响应类型。
+  const responseNames = { 'config/mcpServer/reload': 'McpServerRefreshResponse' }
   for (const kind of ['ClientRequest', 'ServerRequest', 'ClientNotification', 'ServerNotification']) {
     const schema = JSON.parse(readFileSync(join(root, `${kind}.json`), 'utf8'))
     for (const variant of schema.oneOf) for (const method of variant.properties.method.enum) {
       const params = variant.properties.params
-      const responseName = params?.$ref?.split('/').at(-1)?.replace(/Params$/, 'Response')
+      const responseName = responseNames[method] ?? params?.$ref?.split('/').at(-1)?.replace(/Params$/, 'Response')
       const responseFile = kind.endsWith('Request') ? files.get(responseName) : undefined
       index.set(method, {
         kind, params: { ...params, definitions: schema.definitions },

@@ -16,8 +16,8 @@ export function ServerRequestCard({ request, onAnswer }: {
     request.method === "item/fileChange/requestApproval";
   if (approval) {
     const title = request.method === "item/commandExecution/requestApproval"
-      ? request.params.command ?? request.params.reason ?? "Codex 请求执行命令"
-      : request.params.reason ?? "Codex 请求修改文件";
+      ? request.params.command ?? request.params.reason ?? "AI 请求执行命令"
+      : request.params.reason ?? "AI 请求修改文件";
     return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
       <Title>需要确认</Title><Muted selectable>{title}</Muted>
       <View style={styles.actions}>
@@ -35,7 +35,7 @@ export function ServerRequestCard({ request, onAnswer }: {
     };
     return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
       <Title>额外权限</Title>
-      <Muted>{request.params.reason ?? "Codex 请求扩大本轮权限"}</Muted>
+      <Muted>{request.params.reason ?? "AI 请求扩大本轮权限"}</Muted>
       <View style={styles.actions}>
         <Button testID={`interactive:${String(request.id)}:decline`} title="拒绝" variant="secondary"
           onPress={() => onAnswer({ permissions: {}, scope: "turn" })} />
@@ -62,7 +62,7 @@ function QuestionRequest({ request, onAnswer }: {
   const complete = useMemo(() => request.params.questions.every((question) =>
     Boolean(answers[question.id]?.trim())), [answers, request.params.questions]);
   return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
-    <Title>Codex 需要你的回答</Title>
+    <Title>AI 需要你的回答</Title>
     {request.params.questions.map((question) => <View key={question.id} style={styles.question}>
       <Muted>{question.header}</Muted>
       <Text style={{ color: theme.colors.text, fontFamily: "Inter_500Medium" }}>{question.question}</Text>

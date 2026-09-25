@@ -11,6 +11,7 @@ go test -p=1 -tags=integration \
   -covermode=atomic \
   -coverpkg="$core_packages" \
   -coverprofile=coverage/go.out \
+	./internal/auth \
 	./internal/codex \
 	./internal/codexcontrol \
   ./internal/config \

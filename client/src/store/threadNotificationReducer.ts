@@ -3,6 +3,7 @@ import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
 
 import { projectItemForMobile, projectTurnForMobile } from "@/app-server/mobileProjection";
+import { runtimePermissionPreferences } from "@/app-server/permissionProfile";
 import type { MobileThreadItem, MobileTurn, ThreadRecord } from "@/app-server/types";
 import { mergeItemSnapshot, mergeTurnSnapshot } from "./threadHistory";
 
@@ -16,6 +17,15 @@ export type ThreadNotificationResult = {
 export function reduceThreadNotification(record: ThreadRecord,
   event: ServerNotification): ThreadNotificationResult {
   switch (event.method) {
+  case "thread/settings/updated": {
+    if (event.params.threadId !== record.thread.id) return unchanged(record, false);
+    const settings = event.params.threadSettings;
+    const preferences = { model: settings.model, effort: settings.effort,
+      serviceTier: settings.serviceTier, collaborationMode: settings.collaborationMode.mode,
+      ...runtimePermissionPreferences(settings.activePermissionProfile, settings.sandboxPolicy,
+        settings.approvalPolicy) };
+    return { record: { ...record, preferences }, changed: true, needsRefresh: false, terminal: false };
+  }
   case "turn/started":
     return updateTurn(record, projectTurnForMobile(event.params.turn), true, false);
   case "item/started":
@@ -44,7 +54,7 @@ export function reduceThreadNotification(record: ThreadRecord,
 }
 
 export function isDirectThreadNotification(event: { method: string }): event is ServerNotification {
-  return event.method === "turn/started" || event.method === "turn/completed" ||
+  return event.method === "thread/settings/updated" || event.method === "turn/started" || event.method === "turn/completed" ||
     event.method === "item/started" || event.method === "item/completed" ||
     event.method === "item/agentMessage/delta" || event.method === "item/plan/delta" ||
     event.method === "item/reasoning/summaryPartAdded" ||

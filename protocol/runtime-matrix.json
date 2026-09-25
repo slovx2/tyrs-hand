@@ -16,7 +16,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/CancelLoginAccountParams",
@@ -65,7 +66,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json",
@@ -89,7 +91,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ConsumeAccountRateLimitResetCreditParams",
@@ -178,7 +181,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/SendAddCreditsNudgeEmailParams",
@@ -220,7 +224,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json",
@@ -319,6 +324,26 @@
       "callers": [
         "client/src/app-server/officialClient.ts"
       ]
+    },
+    {
+      "method": "collaborationMode/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "PLAN-002"
+        ]
+      },
+      "callers": [
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/CollaborationModeListParams",
+        "response": "v2/CollaborationModeListResponse.json"
+      }
     },
     {
       "method": "command/exec",
@@ -472,14 +497,17 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "MCP-006"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/McpServerRefreshResponse.json"
       }
     },
     {
@@ -729,7 +757,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FeedbackUploadParams",
@@ -1027,7 +1056,8 @@
         ],
         "claude-code": [
           "CONTEXT-001",
-          "ENTRY-001"
+          "ENTRY-001",
+          "FAILURE-003"
         ]
       },
       "callers": [
@@ -1102,6 +1132,26 @@
       }
     },
     {
+      "method": "item/commandExecution/outputDelta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "PLAN-003"
+        ]
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/CommandExecutionOutputDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code"
+      ]
+    },
+    {
       "method": "item/commandExecution/requestApproval",
       "engines": {
         "codex": "required",
@@ -1109,7 +1159,9 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "PLAN-003"
+        ]
       },
       "schema": {
         "params": "ServerRequest.json#/definitions/CommandExecutionRequestApprovalParams",
@@ -1117,7 +1169,8 @@
       },
       "callers": [
         "client/src/app-server/officialClient.ts",
-        "client/src/features/chat/ServerRequestCard.tsx"
+        "client/src/features/chat/ServerRequestCard.tsx",
+        "wire:claude-code"
       ]
     },
     {
@@ -1186,7 +1239,12 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "APPROVAL-004",
+          "PLAN-003",
+          "PERMISSION-004",
+          "FAILURE-003"
+        ]
       },
       "schema": {
         "params": "ServerRequest.json#/definitions/FileChangeRequestApprovalParams",
@@ -1194,7 +1252,8 @@
       },
       "callers": [
         "client/src/app-server/officialClient.ts",
-        "client/src/features/chat/ServerRequestCard.tsx"
+        "client/src/features/chat/ServerRequestCard.tsx",
+        "wire:claude-code"
       ]
     },
     {
@@ -1224,7 +1283,11 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "PLAN-001",
+          "PLAN-002",
+          "PLAN-003"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/PlanDeltaNotification",
@@ -1363,7 +1426,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "APPROVAL-003"
+          "APPROVAL-003",
+          "PLAN-001",
+          "PLAN-003"
         ]
       },
       "callers": [
@@ -1420,7 +1485,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/MarketplaceRemoveParams",
@@ -1444,7 +1510,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/MarketplaceUpgradeParams",
@@ -1473,7 +1540,8 @@
       },
       "callers": [
         "client/src/app-server/officialClient.ts",
-        "client/src/store/appStore.ts"
+        "client/src/store/appStore.ts",
+        "wire:claude-code"
       ]
     },
     {
@@ -1502,15 +1570,38 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "MCP-006"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/McpResourceReadParams",
         "response": "v2/McpResourceReadResponse.json"
       }
+    },
+    {
+      "method": "mcpServer/startupStatus/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "MCP-006"
+        ]
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/McpServerStatusUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code"
+      ]
     },
     {
       "method": "mcpServer/tool/call",
@@ -1520,10 +1611,13 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "MCP-006"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/McpServerToolCallParams",
@@ -1538,10 +1632,13 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "MCP-006"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ListMcpServerStatusParams",
@@ -1619,7 +1716,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginInstallParams",
@@ -1643,7 +1741,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginInstalledParams",
@@ -1692,7 +1791,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginReadParams",
@@ -1716,7 +1816,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginShareCheckoutParams",
@@ -1740,7 +1841,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginShareDeleteParams",
@@ -1764,7 +1866,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginShareListParams",
@@ -1788,7 +1891,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginShareSaveParams",
@@ -1812,7 +1916,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginShareUpdateTargetsParams",
@@ -1836,7 +1941,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginSkillReadParams",
@@ -1860,7 +1966,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginUninstallParams",
@@ -2056,7 +2163,9 @@
       },
       "callers": [
         "internal/appserverhub/methods.go",
-        "internal/hostworker/runtime.go"
+        "internal/hostworker/runtime.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "extensions/runtime-info.json#/params",
@@ -2075,7 +2184,10 @@
           "APPROVAL-003",
           "EVENTS-004",
           "MCP-004",
-          "MCP-005"
+          "MCP-005",
+          "PLAN-001",
+          "PLAN-003",
+          "FAILURE-003"
         ]
       },
       "callers": [
@@ -2180,7 +2292,8 @@
         "internal/appserverhub/methods.go",
         "internal/appserverhub/routing.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadArchiveParams",
@@ -2205,7 +2318,8 @@
         "internal/appserverhub/tool_routing.go",
         "internal/testutil/mockcodex/server.go",
         "internal/worker/workspace_codex.go",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadArchivedNotification",
@@ -2287,7 +2401,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadDeleteParams",
@@ -2331,7 +2446,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadGoalClearParams",
@@ -2352,7 +2468,8 @@
         ]
       },
       "callers": [
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadGoalClearedNotification",
@@ -2373,7 +2490,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadGoalGetParams",
@@ -2394,7 +2512,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadGoalSetParams",
@@ -2481,7 +2600,8 @@
       "callers": [
         "internal/appserverhub/methods.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadListParams",
@@ -2503,7 +2623,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadLoadedListParams",
@@ -2524,7 +2645,8 @@
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadMetadataUpdateParams",
@@ -2550,7 +2672,8 @@
         "internal/codex/runtime.go",
         "internal/worker/workspace_sync.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadSetNameParams",
@@ -2575,7 +2698,8 @@
         "internal/testutil/mockcodex/server.go",
         "internal/worker/workspace_codex.go",
         "client/src/preview/runtime.ts",
-        "client/src/store/appStore.ts"
+        "client/src/store/appStore.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadNameUpdatedNotification",
@@ -2601,7 +2725,8 @@
           "EVENTS-002",
           "SUBMIT-003",
           "EVENTS-004",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "FAILURE-003"
         ]
       },
       "callers": [
@@ -2635,7 +2760,8 @@
           "SESSION-001",
           "SESSION-002",
           "EVENTS-004",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "PERMISSION-004"
         ]
       },
       "callers": [
@@ -2643,7 +2769,8 @@
         "internal/codex/runtime.go",
         "client/src/app-server/officialClient.ts",
         "client/src/preview/runtime.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadResumeParams",
@@ -2699,11 +2826,13 @@
       "cases": {
         "codex": [],
         "claude-code": [
+          "PLAN-001",
           "SESSION-002"
         ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadSettingsUpdateParams",
@@ -2719,12 +2848,18 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "SESSION-002"
+          "PLAN-001",
+          "PLAN-002",
+          "PLAN-003",
+          "SESSION-002",
+          "PERMISSION-004"
         ]
       },
       "callers": [
         "internal/testutil/mockcodex/server.go",
-        "internal/worker/workspace_codex.go"
+        "internal/worker/workspace_codex.go",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadSettingsUpdatedNotification",
@@ -2770,7 +2905,9 @@
           "EVENTS-002",
           "SUBMIT-003",
           "EVENTS-004",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "PERMISSION-004",
+          "FAILURE-003"
         ]
       },
       "callers": [
@@ -2905,7 +3042,8 @@
       "callers": [
         "internal/appserverhub/methods.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadUnarchiveParams",
@@ -2929,7 +3067,8 @@
         "internal/appserverhub/routing.go",
         "internal/testutil/mockcodex/server.go",
         "internal/worker/workspace_codex.go",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadUnarchivedNotification",
@@ -2954,7 +3093,8 @@
         "internal/appserverhub/hub.go",
         "internal/appserverhub/routing.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadUnsubscribeParams",
@@ -3053,7 +3193,8 @@
           "EVENTS-002",
           "SUBMIT-003",
           "EVENTS-004",
-          "EVENTS-005"
+          "EVENTS-005",
+          "FAILURE-003"
         ]
       },
       "callers": [
@@ -3087,14 +3228,17 @@
         ],
         "claude-code": [
           "EVENTS-004",
-          "EVENTS-005"
+          "EVENTS-005",
+          "FAILURE-003"
         ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
         "internal/codex/runtime.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/TurnInterruptParams",
@@ -3121,7 +3265,9 @@
           "EVENTS-002",
           "SUBMIT-003",
           "EVENTS-004",
-          "SUBMIT-004"
+          "SUBMIT-004",
+          "PERMISSION-004",
+          "FAILURE-003"
         ]
       },
       "callers": [
@@ -3195,7 +3341,9 @@
         "internal/appserverhub/methods.go",
         "internal/codex/runtime.go",
         "client/src/app-server/officialClient.ts",
-        "client/src/preview/runtime.ts"
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/TurnSteerParams",

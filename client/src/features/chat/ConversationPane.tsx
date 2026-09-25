@@ -141,6 +141,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     ? modelsByTarget[targetKey(profileId, workspaceId)] ?? EMPTY_MODELS
     : EMPTY_MODELS;
   const fallbackPreferences = useMemo(() => defaultTurnPreferences(models), [models]);
+  const runtimePreferences = record?.preferences;
+  useEffect(() => {
+    // 运行时模式和权限是权威状态，防止恢复后再次提交过期设置。
+    if (runtimePreferences) setPreferences(current => current
+      ? { ...current, collaborationMode: runtimePreferences.collaborationMode,
+        permissions: runtimePreferences.permissions, runtimePermissions: runtimePreferences.runtimePermissions } : current);
+  }, [runtimePreferences]);
   const resolvedPreferences = (() => {
     const current = preferences ?? record?.preferences ?? fallbackPreferences;
     return current ? normalizeTurnPreferences(current) : current;

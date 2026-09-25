@@ -21,7 +21,8 @@ import type { UserInput } from "@codex-app-server/v2/UserInput";
 import { JsonRpcRequestError } from "./jsonRpc";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import { DEFAULT_PERMISSION_PROFILE, normalizePermissionProfile,
-  permissionProfileFromRuntime, type PermissionProfile } from "./permissionProfile";
+  runtimePermissionPreferences, turnPermissionParams, type PermissionProfile,
+  type RuntimePermissions } from "./permissionProfile";
 import type { SubmissionJournal } from "./submissions";
 import type { MobileThread, ThreadPreferences } from "./types";
 
@@ -192,7 +193,8 @@ export class OfficialAppServerClient {
       page,
       preferences: { model: response.model, effort: response.reasoningEffort,
         serviceTier: response.serviceTier,
-        permissions: permissionProfileFromRuntime(response.activePermissionProfile, response.sandbox) },
+        ...runtimePermissionPreferences(response.activePermissionProfile, response.sandbox,
+          response.approvalPolicy) },
     };
   }
 
@@ -252,13 +254,23 @@ export class OfficialAppServerClient {
   }
 
   async startThread(cwd: string, model?: string, threadSource?: string,
-    permissions: PermissionProfile = DEFAULT_PERMISSION_PROFILE): Promise<ThreadStartResponse> {
+    permissions: PermissionProfile = DEFAULT_PERMISSION_PROFILE,
+    runtimePermissions?: RuntimePermissions): Promise<ThreadStartResponse> {
     const historyMode: ThreadHistoryMode = await this.supportsPaginatedHistory()
       ? "paginated" : "legacy";
     const permissionProfile = normalizePermissionProfile(permissions);
     const params: ThreadStartParams = model
       ? { cwd, model, runtimeWorkspaceRoots: [cwd], historyMode, permissions: permissionProfile }
       : { cwd, runtimeWorkspaceRoots: [cwd], historyMode, permissions: permissionProfile };
+    if (runtimePermissions) {
+      const modes = { dangerFullAccess: "danger-full-access", workspaceWrite: "workspace-write",
+        readOnly: "read-only" } as const;
+      const type = runtimePermissions.sandboxPolicy.type;
+      if (type === "externalSandbox") throw new Error("不能从手机创建外部沙箱策略的会话");
+      delete params.permissions;
+      params.approvalPolicy = runtimePermissions.approvalPolicy;
+      params.sandbox = modes[type];
+    }
     if (threadSource) {
       (params as ThreadStartParams & { threadSource: string }).threadSource = threadSource;
     }
@@ -471,7 +483,7 @@ export class OfficialAppServerClient {
       model: input.preferences.model,
       effort: input.preferences.effort,
       serviceTier: input.preferences.serviceTier,
-      permissions: normalizePermissionProfile(input.preferences.permissions),
+      ...turnPermissionParams(input.preferences),
       collaborationMode: {
         mode: input.preferences.collaborationMode,
         settings: { model: input.preferences.model, reasoning_effort: input.preferences.effort,

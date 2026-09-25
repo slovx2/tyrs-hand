@@ -374,6 +374,23 @@ describe("OfficialAppServerClient", () => {
       input: [textInput("hello")], preferences: { ...preferences, permissions: ":workspace" } });
   });
 
+  it("接力运行时自定义审批会话时不改成完全访问免审批", async () => {
+    const thread = officialThread([]);
+    const runtimePermissions = { approvalPolicy: "on-request" as const,
+      sandboxPolicy: { type: "dangerFullAccess" as const } };
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "turn/start") {
+        expect(params).toMatchObject(runtimePermissions);
+        expect(params).not.toHaveProperty("permissions");
+        return { turn: officialTurn("turn-custom", "inProgress", []) };
+      }
+      throw new Error("unexpected " + method);
+    });
+    const client = new OfficialAppServerClient("profile-claude", "claude-code", rpc, new MemoryJournal());
+    await client.submitNewThread(thread, { clientMessageId: "message-custom",
+      input: [textInput("继续")], preferences: { ...preferences, runtimePermissions } });
+  });
+
   it("Plan 未回答时先清空 requestUserInput，再 steer 当前 Turn", async () => {
     const thread = officialThread([officialTurn("turn-plan", "inProgress", [])]);
     const rpc = new FakeRpc((method) => {

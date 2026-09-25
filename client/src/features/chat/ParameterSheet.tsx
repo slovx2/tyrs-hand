@@ -83,10 +83,11 @@ export function ParameterSheet({ visible, models, value, onChange, onClose, onCa
           </>}
         </>}
         <Title>权限</Title>
+        {value.runtimePermissions && <Muted>当前使用运行时自定义权限；选择下方选项后才替换此策略。</Muted>}
         {PERMISSION_PROFILES.map((option) => <Choice key={option.id} label={option.label}
           testID={permissionProfileTestID(option.id)}
-          selected={value.permissions === option.id}
-          onPress={() => onChange({ ...value, permissions: option.id })} />)}
+          selected={!value.runtimePermissions && value.permissions === option.id}
+          onPress={() => onChange({ ...value, permissions: option.id, runtimePermissions: undefined })} />)}
         <Title>模式</Title>
         <SegmentedControl testIDPrefix="parameters:mode" value={value.collaborationMode}
           options={[{ value: "default", label: "直接执行" },
