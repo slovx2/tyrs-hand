@@ -30,11 +30,18 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
           if (!contract) throw new Error('缺少 schema')
           const expected = contract.kind.startsWith('Client') ? 'client' : 'server'
           if (sender !== expected) throw new Error('报文方向错误')
-          validate(message.method, 'params', message.params)
           if (contract.kind.endsWith('Request')) {
             if (message.id == null) throw new Error('请求缺少 ID')
+            if (pending.has(`${sender}:${message.id}`)) throw new Error('重复的未完成请求 ID')
             pending.set(`${sender}:${message.id}`, message)
+            try {
+              validate(message.method, 'params', message.params)
+            } catch (error) {
+              // 负例仍保存原始报文，并且必须收到匹配的参数错误；不能用注解跳过响应校验。
+              if (sender !== 'client' || message.expectedErrorCode !== -32602) throw error
+            }
           } else {
+            validate(message.method, 'params', message.params)
             evidence.push({ engine: artifact.engine, method: message.method, cases: execution.caseIds, outcome: 'success' })
           }
         } catch (error) {
@@ -46,6 +53,13 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
         if (!request) { missing.push({ reason: '响应没有匹配请求', caseName: artifact.caseName }); continue }
         pending.delete(key)
         try {
+          if (request.expectedErrorCode !== undefined) {
+            if (!Number.isInteger(request.expectedErrorCode) || message.error?.code !== request.expectedErrorCode ||
+                typeof message.error?.message !== 'string' || 'result' in message)
+              throw new Error('负例没有返回预期的标准错误')
+            evidence.push({ engine: artifact.engine, method: request.method, cases: execution.caseIds, outcome: 'rejected' })
+            continue
+          }
           if (message.error) {
             if (!Number.isInteger(message.error.code) || typeof message.error.message !== 'string') throw new Error('JSON-RPC 错误格式无效')
             if (request.method === 'unknown/protocol' && message.error.code !== -32601) throw new Error('未知方法错误码无效')

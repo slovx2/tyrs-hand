@@ -76,3 +76,33 @@ test('不适用能力必须有原因与真实拒绝响应，空成功不能通�
   fixture.artifacts[1].payload.messages[1] = { id: 1, error: { code: -32004, message: '不适用' } }
   assert.equal(run(fixture).complete, true)
 })
+
+test('非法参数负例必须显式登记并返回 -32602；不能替代成功覆盖', () => {
+  const fixture = fixtures()
+  const messages = fixture.artifacts[0].payload.messages
+  messages.push({ direction: 'client', id: 2, method, params: { threadId: 42 }, expectedErrorCode: -32602 },
+    { id: 2, error: { code: -32602, message: '参数无效' } })
+  assert.equal(run(fixture).complete, true)
+  assert.equal(run(fixture).evidence.filter(item => item.outcome === 'rejected').length, 1)
+  messages.splice(0, 2)
+  assert.equal(run(fixture).complete, false, '只有拒绝不能证明必需功能可用')
+})
+
+test('负例成功、错误码不符、没有响应或未声明的非法报文都不能通过', () => {
+  for (const mutate of [
+    messages => { messages[3] = { id: 2, result: { status: 'ready' } } },
+    messages => { messages[3].error.code = -32004 },
+    messages => { messages[3].result = { status: 'ready' } },
+    messages => { messages[3].error.message = 3 },
+    messages => { messages.pop() },
+    messages => { delete messages[2].expectedErrorCode },
+    messages => { messages[2].expectedErrorCode = -32004; messages[3].error.code = -32004 },
+  ]) {
+    const fixture = fixtures()
+    const messages = fixture.artifacts[0].payload.messages
+    messages.push({ direction: 'client', id: 2, method, params: {}, expectedErrorCode: -32602 },
+      { id: 2, error: { code: -32602, message: '参数无效' } })
+    mutate(messages)
+    assert.equal(run(fixture).complete, false)
+  }
+})

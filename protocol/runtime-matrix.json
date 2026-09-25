@@ -2177,6 +2177,27 @@
       }
     },
     {
+      "method": "thread/closed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
+      },
+      "callers": [
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadClosedNotification",
+        "response": null
+      }
+    },
+    {
       "method": "thread/compact/start",
       "engines": {
         "codex": "required",
