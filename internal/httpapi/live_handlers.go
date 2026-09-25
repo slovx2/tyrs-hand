@@ -580,6 +580,12 @@ func (s *Server) closeLiveSession(c *gin.Context) {
 	defer ticker.Stop()
 	for {
 		if err = s.db.QueryRowContext(closeCtx, `SELECT status FROM live_sessions WHERE id=$1`, id).Scan(&status); err != nil {
+			// 关闭已提交；ACK 截止时间也可能在数据库查询期间到达。
+			// 此时应返回已接受的 closing，不能因轮询先于 Done 被选中而随机返回 500。
+			if errors.Is(closeCtx.Err(), context.DeadlineExceeded) && requestCtx.Err() == nil {
+				c.JSON(http.StatusOK, gin.H{"sessionId": id, "status": "closing"})
+				return
+			}
 			problem(c, http.StatusInternalServerError, "读取关闭状态失败", err)
 			return
 		}
