@@ -131,6 +131,7 @@ func (r *Runner) recoverJournals(ctx context.Context, active *sync.WaitGroup) er
 			pendingRuns = append(pendingRuns, pending{executor, journal})
 		}
 	}
+	ready := pendingRuns[:0]
 	for _, run := range pendingRuns {
 		run.executor.rememberJournalInputs(run.journal)
 		if run.journal.ControlAbandoned {
@@ -139,15 +140,31 @@ func (r *Runner) recoverJournals(ctx context.Context, active *sync.WaitGroup) er
 				zap.String("run_id", run.journal.Task.Claimed.RunID.String()))
 			continue
 		}
-		select {
-		case r.turnSlots <- struct{}{}:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-		commands := make(chan workerprotocol.RunCommand, 16)
-		run.executor.coordinator.register(run.journal, commands)
-		active.Add(1)
-		go run.executor.runJournal(ctx, run.journal, commands, r.turnSlots, active)
+		ready = append(ready, run)
 	}
+	if len(ready) == 0 {
+		return nil
+	}
+	// 登记所有已接受输入后再异步排队，不能等待并发槽而阻塞心跳和活动命令领取。
+	// 调度器自身计入 WaitGroup，保证关闭时不会在 Wait 返回后启动恢复任务。
+	active.Add(1)
+	go func() {
+		defer active.Done()
+		for _, run := range ready {
+			select {
+			case r.turnSlots <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			if ctx.Err() != nil {
+				<-r.turnSlots
+				return
+			}
+			commands := make(chan workerprotocol.RunCommand, 16)
+			run.executor.coordinator.register(run.journal, commands)
+			active.Add(1)
+			go run.executor.runJournal(ctx, run.journal, commands, r.turnSlots, active)
+		}
+	}()
 	return nil
 }
