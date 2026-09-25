@@ -30,6 +30,7 @@ func TestWorkerClaimMaterializesScheduledTasksWithoutControlRunCapacity(t *testi
 	require.NoError(t, err)
 	client.SetCredential(enrolled.Credential)
 	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(worker.ID)),
 		WorkerVersion: "integration", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(worker.ID),
 	}))

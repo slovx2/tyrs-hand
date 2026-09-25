@@ -3,6 +3,7 @@ import { ArrowLeft, Box, FileCog, LayoutDashboard, Users } from 'lucide-react'
 import { Link, Navigate, NavLink, Outlet, useParams } from 'react-router'
 import { api } from '../api/client'
 import type { Worker } from './workerTypes'
+import { WorkerRuntimes } from './WorkerRuntimes'
 import {
   useWorkerDetail,
   type WorkerDetailContext,
@@ -42,7 +43,7 @@ export function WorkerDetailPage() {
   const isAdmin = me.data?.role === 'admin'
   const tabs = [
     { to: 'overview', label: '概览', icon: LayoutDashboard },
-    { to: 'codex', label: 'Codex 配置', icon: FileCog },
+    { to: 'codex', label: '运行时配置', icon: FileCog },
     { to: 'workspace', label: 'Workspace', icon: Box },
     ...(isAdmin ? [{ to: 'users', label: '用户分配', icon: Users }] : []),
   ]
@@ -104,6 +105,7 @@ export function WorkerOverviewPage() {
   const { worker } = useWorkerDetail()
   return (
     <div className="worker-detail-stack">
+      <WorkerRuntimes workerId={worker.id} />
       <section className="panel">
         <div className="worker-overview-heading">
           <div>

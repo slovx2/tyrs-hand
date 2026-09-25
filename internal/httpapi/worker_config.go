@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -252,6 +253,14 @@ func (s *Server) callWorkerConfig(ctx context.Context, workerID uuid.UUID,
 }
 
 func (s *Server) workerConfig(c *gin.Context, method string, params any) {
+	if strings.HasPrefix(method, "config.") || method == "runtime.restart" {
+		engine := runtimeidentity.Engine(c.Param("engine"))
+		if err := engine.Validate(); err != nil {
+			badRequest(c, err)
+			return
+		}
+		params = map[string]any{"engine": engine, "input": params}
+	}
 	workerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
@@ -304,6 +313,8 @@ func (s *Server) updateWorkerProvider(c *gin.Context) {
 		BaseURL     string `json:"baseUrl"`
 		APIKey      string `json:"apiKey"`
 		ClearAPIKey bool   `json:"clearApiKey"`
+		AuthMethod  string `json:"authMethod"`
+		Model       string `json:"model"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)
@@ -318,4 +329,4 @@ func (s *Server) workerOAuthStatus(c *gin.Context) { s.workerConfig(c, "oauth.de
 
 func (s *Server) workerOAuthLogout(c *gin.Context) { s.workerConfig(c, "oauth.logout", nil) }
 
-func (s *Server) workerCodexRestart(c *gin.Context) { s.workerConfig(c, "codex.restart", nil) }
+func (s *Server) workerRuntimeRestart(c *gin.Context) { s.workerConfig(c, "runtime.restart", nil) }

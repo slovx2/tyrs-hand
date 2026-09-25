@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,6 +18,9 @@ func TestClientUsesDirectWorkerV1Entrypoints(t *testing.T) {
 		request *http.Request,
 	) {
 		paths <- request.URL.Path
+		if request.URL.Path != "/worker/v1/enroll" {
+			require.Equal(t, strconv.Itoa(Version), request.Header.Get(VersionHeader))
+		}
 		switch request.URL.Path {
 		case "/worker/v1/enroll":
 			_ = json.NewEncoder(response).Encode(EnrollResponse{ProtocolVersion: Version})

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ type ChannelOptions struct {
 	ControlURL      string
 	Credential      string
 	Service         *Service
+	Claude          *ClaudeService
 	ProtocolVersion int
 	// Notify 在收到 Control 唤醒通知时回调，必须立即返回，不能阻塞读取循环。
 	Notify func(kinds []string)
@@ -41,13 +43,16 @@ func RunChannel(ctx context.Context, options ChannelOptions) error {
 	endpoint = strings.Replace(endpoint, "http://", "ws://", 1)
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+options.Credential)
+	header.Set(workerprotocol.VersionHeader, strconv.Itoa(options.ProtocolVersion))
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, endpoint, header)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	// 只有收到 Control 的 ping/pong 后才启用读超时。
-	// 旧版 Control 不做保活，此时保持现有行为，避免每 60 秒无谓重连。
+	// 协议 33 的 Control 定期保活；握手后立即检测失联，不保留旧协议回退。
+	if err := conn.SetReadDeadline(time.Now().Add(controlChannelPongWait)); err != nil {
+		return err
+	}
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(controlChannelPongWait))
 	})
@@ -118,7 +123,13 @@ func RunChannel(ctx context.Context, options ChannelOptions) error {
 			continue
 		}
 		response := workerprotocol.WorkerRPCResponse{ID: request.ID}
-		result, callErr := handleRequest(ctx, options.Service, request.Method, request.Params)
+		var result any
+		var callErr error
+		if strings.HasPrefix(request.Method, "config.") || request.Method == "runtime.restart" {
+			result, callErr = handleRuntimeRequest(options, request.Method, request.Params)
+		} else {
+			result, callErr = handleRequest(ctx, options.Service, request.Method, request.Params)
+		}
 		if callErr != nil {
 			response.Error = callErr.Error()
 		} else {
@@ -159,36 +170,12 @@ func handleRequest(ctx context.Context, service *Service, method string,
 	params json.RawMessage,
 ) (any, error) {
 	switch method {
-	case "config.read":
-		return service.Read()
-	case "config.agents.write":
-		var input struct {
-			Revision string `json:"revision"`
-			Content  string `json:"content"`
-		}
-		if err := json.Unmarshal(params, &input); err != nil {
-			return nil, err
-		}
-		return service.UpdateAgents(input.Revision, input.Content)
-	case "config.provider.write":
-		var input struct {
-			Revision    string `json:"revision"`
-			BaseURL     string `json:"baseUrl"`
-			APIKey      string `json:"apiKey"`
-			ClearAPIKey bool   `json:"clearApiKey"`
-		}
-		if err := json.Unmarshal(params, &input); err != nil {
-			return nil, err
-		}
-		return service.UpdateProvider(input.Revision, input.BaseURL, input.APIKey, input.ClearAPIKey)
 	case "oauth.devices.start":
 		return service.StartOAuth()
 	case "oauth.devices.status":
 		return service.OAuthStatus(), nil
 	case "oauth.logout":
 		return service.OAuthStatus(), service.Logout()
-	case "codex.restart":
-		return map[string]string{"status": "restart_requested"}, service.Restart()
 	case "workspace.projects.scan":
 		if service.workspaceRoot == "" || service.workspaceRoot == "." {
 			return nil, errors.New("Worker Workspace 根目录未配置")

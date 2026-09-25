@@ -4,6 +4,86 @@
  */
 
 export interface paths {
+    "/workers/{id}/runtimes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkerRuntimes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workers/{id}/runtimes/{engine}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkerRuntimeConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workers/{id}/runtimes/{engine}/config/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateWorkerRuntimeInstructions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workers/{id}/runtimes/{engine}/config/provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateWorkerRuntimeProvider"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workers/{id}/runtimes/{engine}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restartWorkerRuntime"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/client/live-conversations": {
         parameters: {
             query?: never;
@@ -1131,6 +1211,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/worker/v1/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkerIdentity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/config/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerConfigChannel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/worker/v1/heartbeat": {
         parameters: {
             query?: never;
@@ -1903,6 +2015,53 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        WorkerRuntime: {
+            /** Format: uuid */
+            workerId: string;
+            /** @enum {string} */
+            engine: "codex" | "claude-code";
+            enabled: boolean;
+            /** @enum {string} */
+            status: "running" | "unavailable" | "stopped" | "disabled" | "offline" | "incompatible";
+            sshListenAddress: string;
+            sshHostKeyFingerprint: string;
+            protocolVersion: string;
+            build: {
+                nodeVersion?: string;
+                sdkVersion?: string;
+                cliBuild: string;
+                cliSha256?: string;
+            };
+            capabilities: string[];
+            modelCatalog: {
+                [key: string]: unknown;
+            } | null;
+            releaseReady: boolean;
+            /** Format: date-time */
+            heartbeatAt: string | null;
+        };
+        WorkerRuntimeConfig: {
+            revision: string;
+            agents: string;
+            baseUrl: string;
+            envKey: string;
+            apiKeyConfigured: boolean;
+            /** @enum {string} */
+            authMethod: "" | "api-key" | "auth-token";
+            model: string;
+        };
+        WorkerRuntimeProviderInput: {
+            revision: string;
+            baseUrl: string;
+            apiKey?: string;
+            clearApiKey?: boolean;
+            /**
+             * @description Claude 必填
+             * @enum {string}
+             */
+            authMethod?: "api-key" | "auth-token";
+            model?: string;
+        };
         ClientModel: {
             id: string;
             model?: string;
@@ -2212,10 +2371,35 @@ export interface components {
             credential: string;
             protocolVersion: number;
         };
+        WorkerIdentity: {
+            /** Format: uuid */
+            workerId: string;
+            protocolVersion: number;
+        };
         WorkerHeartbeat: {
             workerVersion: string;
             protocolVersion: number;
             sshHostKeyFingerprint: string;
+            runtimes: {
+                /** @enum {string} */
+                engine: "codex" | "claude-code";
+                /** @enum {string} */
+                status: "running" | "unavailable" | "stopped";
+                sshListenAddress: string;
+                sshHostKeyFingerprint: string;
+                protocolVersion: string;
+                build: {
+                    nodeVersion?: string;
+                    sdkVersion?: string;
+                    cliBuild: string;
+                    cliSha256?: string;
+                };
+                capabilities: string[];
+                modelCatalog: {
+                    [key: string]: unknown;
+                } | null;
+                releaseReady: boolean;
+            }[];
             metadata?: {
                 [key: string]: unknown;
             };
@@ -2729,6 +2913,8 @@ export interface components {
         };
     };
     parameters: {
+        WorkerProtocolVersion: "33";
+        RuntimeEngine: "codex" | "claude-code";
         CSRFToken: string;
         Cursor: string;
         Limit: number;
@@ -2957,6 +3143,140 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getWorkerRuntimes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按引擎隔离的运行时身份和健康状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerRuntime"][];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getWorkerRuntimeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+                engine: components["parameters"]["RuntimeEngine"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 运行时配置（密钥不返回） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerRuntimeConfig"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateWorkerRuntimeInstructions: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+                engine: components["parameters"]["RuntimeEngine"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                    content: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已保存 AGENTS.md 或 CLAUDE.md */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerRuntimeConfig"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateWorkerRuntimeProvider: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+                engine: components["parameters"]["RuntimeEngine"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerRuntimeProviderInput"];
+            };
+        };
+        responses: {
+            /** @description 已保存 Provider */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerRuntimeConfig"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    restartWorkerRuntime: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+                engine: components["parameters"]["RuntimeEngine"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 对应运行时已重启 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     createLiveConversation: {
         parameters: {
             query?: never;
@@ -4939,10 +5259,56 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    getWorkerIdentity: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已认证 Worker 的固定身份 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerIdentity"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerConfigChannel: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Worker 配置与唤醒 WebSocket，连接后必须发送协议版本 hello */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     workerHeartbeat: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4965,7 +5331,9 @@ export interface operations {
     workerClaim: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -4990,7 +5358,9 @@ export interface operations {
     workerDecideInput: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5013,7 +5383,9 @@ export interface operations {
     workerClaimSessionTitle: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5034,7 +5406,9 @@ export interface operations {
     workerCompleteSessionTitle: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: string;
             };
@@ -5059,7 +5433,9 @@ export interface operations {
     workerFailSessionTitle: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: string;
             };
@@ -5084,7 +5460,9 @@ export interface operations {
     workerSSHConfiguration: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5112,7 +5490,9 @@ export interface operations {
     workerWorkspace: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5137,7 +5517,9 @@ export interface operations {
             query: {
                 runId: string;
             };
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: string;
             };
@@ -5162,7 +5544,9 @@ export interface operations {
             query: {
                 ordinal: number;
             };
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: string;
             };
@@ -5195,7 +5579,9 @@ export interface operations {
     workerPrepareDesktopThread: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5208,7 +5594,9 @@ export interface operations {
     workerDesktopThreadState: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5223,7 +5611,9 @@ export interface operations {
     workerCompleteDesktopThread: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5238,7 +5628,9 @@ export interface operations {
     workerFailDesktopThread: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5259,7 +5651,9 @@ export interface operations {
     workerRecordThreadMetadata: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5278,7 +5672,9 @@ export interface operations {
     workerPendingThreadNames: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5291,7 +5687,9 @@ export interface operations {
     workerAckThreadName: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5312,7 +5710,9 @@ export interface operations {
     workerPrepareDesktopThreadLifecycle: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5325,7 +5725,9 @@ export interface operations {
     workerPendingThreadLifecycles: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5338,7 +5740,9 @@ export interface operations {
     workerThreadLifecycleState: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5353,7 +5757,9 @@ export interface operations {
     workerCompleteThreadLifecycle: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5374,7 +5780,9 @@ export interface operations {
     workerPrepareDesktopTurn: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5387,7 +5795,9 @@ export interface operations {
     workerPreflightDesktopTurn: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5400,7 +5810,9 @@ export interface operations {
     workerDesktopImageTarget: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5415,7 +5827,9 @@ export interface operations {
     workerFailDesktopImage: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
                 ordinal: number;
@@ -5437,7 +5851,9 @@ export interface operations {
     workerPrepareDesktopRollback: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5450,7 +5866,9 @@ export interface operations {
     workerCompleteDesktopRollback: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5471,7 +5889,9 @@ export interface operations {
     workerRecordDesktopSteer: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5490,7 +5910,9 @@ export interface operations {
     workerRegisterInteractive: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5505,7 +5927,9 @@ export interface operations {
     workerInteractiveState: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5520,7 +5944,9 @@ export interface operations {
     workerAnswerInteractive: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -5533,7 +5959,9 @@ export interface operations {
     workerRunHeartbeat: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5548,7 +5976,9 @@ export interface operations {
     workerCommandAck: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5573,7 +6003,9 @@ export interface operations {
     workerRunEvents: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5598,7 +6030,9 @@ export interface operations {
     workerUploadAgentAttachment: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5643,7 +6077,9 @@ export interface operations {
     workerRunComplete: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5668,7 +6104,9 @@ export interface operations {
     workerRunFail: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5693,7 +6131,9 @@ export interface operations {
     workerSetThread: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5714,7 +6154,9 @@ export interface operations {
     workerRecordSubmission: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5735,7 +6177,9 @@ export interface operations {
     workerConfirmTurn: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5756,7 +6200,9 @@ export interface operations {
     workerWorkspaceProjectState: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5777,7 +6223,9 @@ export interface operations {
     workerWorkspaceState: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5798,7 +6246,9 @@ export interface operations {
     workerToolCall: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };
@@ -5813,7 +6263,9 @@ export interface operations {
     workerGitCredential: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Tyrs-Worker-Protocol": components["parameters"]["WorkerProtocolVersion"];
+            };
             path: {
                 id: components["parameters"]["WorkerResourceID"];
             };

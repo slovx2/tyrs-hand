@@ -174,6 +174,9 @@ existing_browser_services_root=
 existing_model_api_key=
 existing_model_base_url=
 existing_disable_control_sync=
+existing_claude_enabled=
+existing_claude_bin=
+existing_claude_listen=
 if [ -r "${worker_env_file}" ]; then
   existing_browser_mcp_url=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_URL" {
     value = substr($0, index($0, "=") + 1)
@@ -196,6 +199,9 @@ if [ -r "${worker_env_file}" ]; then
   existing_model_api_key=$(awk -F= '$1 == "TYRS_HAND_MODEL_API_KEY" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
   existing_model_base_url=$(awk -F= '$1 == "TYRS_HAND_MODEL_BASE_URL" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
   existing_disable_control_sync=$(awk -F= '$1 == "TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_claude_enabled=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_ENABLED" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_claude_bin=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_BIN" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_claude_listen=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
 fi
 if [ "${TYRS_HAND_BROWSER_MCP_URL+x}" = x ]; then
   worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL}
@@ -220,11 +226,16 @@ else
   worker_disable_control_sync=${existing_disable_control_sync}
 fi
 worker_browser_agent=${TYRS_HAND_BROWSER_AGENT_ADDRESS:-127.0.0.1:8934}
+worker_claude_enabled=${TYRS_HAND_WORKER_CLAUDE_ENABLED:-${existing_claude_enabled:-false}}
+worker_claude_bin=${TYRS_HAND_WORKER_CLAUDE_BIN:-${existing_claude_bin:-/usr/local/libexec/tyrs-hand-claude}}
+worker_claude_listen=${TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR:-${existing_claude_listen:-:3333}}
 worker_browser_files=${TYRS_HAND_BROWSER_FILES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-files}
 for pair in \
   "Control URL:${TYRS_HAND_WORKER_CONTROL_URL}" "Worker ID:${worker_id}" \
   "Enrollment Token:${enrollment_token}" "Home:${worker_home}" \
   "Codex Home:${worker_codex_home}" "Codex Bin:${worker_codex_bin}" \
+  "Claude Enabled:${worker_claude_enabled}" "Claude Bin:${worker_claude_bin}" \
+  "Claude Listen:${worker_claude_listen}" \
   "Shell:${worker_shell}" "PATH:${worker_path}" "Workspace:${worker_workspace}" \
   "Authorized Keys:${worker_keys}" "SSH Listen:${worker_listen}" \
   "Browser MCP URL:${worker_browser_mcp_url}" "Browser Token:${worker_browser_token_file}" \
@@ -263,7 +274,7 @@ fi
   if [ -n "${enrollment_token}" ]; then
     printf "TYRS_HAND_WORKER_ENROLLMENT_TOKEN='%s'\n" "${enrollment_token}"
   fi
-  printf "TYRS_HAND_WORKER_PROTOCOL_VERSION='32'\n"
+  printf "TYRS_HAND_WORKER_PROTOCOL_VERSION='33'\n"
   printf "TYRS_HAND_CODEX_BIN='%s'\n" "${worker_codex_bin}"
   printf "TYRS_HAND_WORKER_HOME='%s'\n" "${worker_home}"
   printf "TYRS_HAND_WORKER_CODEX_HOME='%s'\n" "${worker_codex_home}"
@@ -271,6 +282,9 @@ fi
   printf "TYRS_HAND_WORKER_WORKSPACE_ROOT='%s'\n" "${worker_workspace}"
   printf "TYRS_HAND_WORKER_AUTHORIZED_KEYS_FILE='%s'\n" "${worker_keys}"
   printf "TYRS_HAND_WORKER_SSH_LISTEN_ADDR='%s'\n" "${worker_listen}"
+  printf "TYRS_HAND_WORKER_CLAUDE_ENABLED='%s'\n" "${worker_claude_enabled}"
+  printf "TYRS_HAND_WORKER_CLAUDE_BIN='%s'\n" "${worker_claude_bin}"
+  printf "TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR='%s'\n" "${worker_claude_listen}"
   printf "TYRS_HAND_BROWSER_AGENT_ADDRESS='%s'\n" "${worker_browser_agent}"
   printf "TYRS_HAND_BROWSER_FILES_ROOT='%s'\n" "${worker_browser_files}"
   printf "TYRS_HAND_BROWSER_SERVICES_ROOT='%s'\n" "${worker_browser_services_root}"

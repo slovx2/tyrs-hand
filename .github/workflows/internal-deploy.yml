@@ -116,3 +116,35 @@ jobs:
             tyrs-hand-worker_*.tar.gz.sigstore.json
           retention-days: 30
           if-no-files-found: error
+
+  claude-runtime:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '24.14.0' }
+      - id: adapter
+        name: Read pinned adapter commit
+        run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: slovx2/claude-codex
+          ref: ${{ steps.adapter.outputs.commit }}
+          path: adapter-source
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with: { cosign-release: v2.5.3 }
+      - name: Build and sign isolated Claude runtime
+        run: |
+          sh tools/package-claude-runtime.sh adapter-source .artifacts/claude-runtime
+          for asset in .artifacts/claude-runtime/*.tar.gz; do
+            cosign sign-blob --yes --bundle "${asset}.sigstore.json" "${asset}"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: claude-runtime-linux-amd64
+          path: .artifacts/claude-runtime/*
+          retention-days: 30
+          if-no-files-found: error

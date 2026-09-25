@@ -6,6 +6,7 @@ const getControlDeviceToken = vi.hoisted(() => vi.fn());
 vi.mock("@/db/connections", () => ({ getControlDeviceToken }));
 
 const link = {
+  engine: "codex" as const,
   serverId: "server-1",
   baseUrl: "https://control.test",
   workerId: "worker-1",

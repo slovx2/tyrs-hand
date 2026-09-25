@@ -24,12 +24,13 @@ type HostDesktopController struct {
 	runtime          *hostworker.Runtime
 	integration      *desktopController
 	active           map[string]*hostCallState
+	catalogWake      chan struct{}
 	metadataSequence atomic.Int64
 	settingsSequence atomic.Int64
 }
 
 func NewHostDesktopController(processor *Processor, manifest *workerprotocol.WorkspaceManifest) *HostDesktopController {
-	c := &HostDesktopController{processor: processor, active: make(map[string]*hostCallState)}
+	c := &HostDesktopController{processor: processor, active: make(map[string]*hostCallState), catalogWake: make(chan struct{}, 1)}
 	c.setBinding(manifest)
 	return c
 }
@@ -122,6 +123,7 @@ func (c *HostDesktopController) AttachRuntime(ctx context.Context, runtime *host
 		c.bindClientLocked(c.integration.workspace, runtime.Client(), runtime.Generation())
 	}
 	c.mu.Unlock()
+	go c.runModelCatalogLoop(ctx)
 	if c.processor.cfg.ControlSyncEnabled() {
 		go c.reconcileControlState(ctx)
 		go c.runSessionTitleLoop(ctx)
@@ -161,20 +163,23 @@ func (c *HostDesktopController) RebindRuntime(_ context.Context, client *appserv
 			turn.controller.workspace.mu.Unlock()
 		}
 	}
+	select {
+	case c.catalogWake <- struct{}{}:
+	default:
+	}
 	return nil
 }
 
-func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
-	reconcile := func() {
-		if err := c.syncHostEnvironment(ctx); err != nil && ctx.Err() == nil {
-			c.processor.logger.Warn("同步宿主绑定失败，保留最近确认状态", zap.Error(err))
-		}
-		integration, runtime := c.snapshot()
-		if integration != nil {
-			if err := errors.Join(c.processor.applyPendingThreadNames(ctx), c.processor.applyPendingThreadLifecycles(ctx)); err != nil && ctx.Err() == nil {
-				c.processor.logger.Warn("同步宿主 Desktop Thread 状态失败", zap.Error(err))
-			}
-		}
+// 模型目录属于引擎本身，Control 离线或尚未绑定 Workspace 时也必须更新。
+func (c *HostDesktopController) runModelCatalogLoop(ctx context.Context) {
+	interval := c.processor.cfg.WorkerSyncFallbackInterval
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		_, runtime := c.snapshot()
 		if runtime != nil && runtime.Client() != nil {
 			fetchCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 			catalog, err := codexcatalog.Fetch(fetchCtx, runtime.Client())
@@ -182,7 +187,27 @@ func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
 			if err == nil {
 				c.processor.SetModelCatalog(catalog)
 			} else if ctx.Err() == nil {
-				c.processor.logger.Warn("获取宿主模型目录失败，将后台重试", zap.Error(err))
+				c.processor.logger.Warn("获取运行时模型目录失败，将后台重试", zap.Error(err))
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		case <-c.catalogWake:
+		}
+	}
+}
+
+func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
+	reconcile := func() {
+		if err := c.syncHostEnvironment(ctx); err != nil && ctx.Err() == nil {
+			c.processor.logger.Warn("同步宿主绑定失败，保留最近确认状态", zap.Error(err))
+		}
+		integration, _ := c.snapshot()
+		if integration != nil {
+			if err := errors.Join(c.processor.applyPendingThreadNames(ctx), c.processor.applyPendingThreadLifecycles(ctx)); err != nil && ctx.Err() == nil {
+				c.processor.logger.Warn("同步宿主 Desktop Thread 状态失败", zap.Error(err))
 			}
 		}
 	}

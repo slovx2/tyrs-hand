@@ -101,7 +101,7 @@ describe("会话导航状态", () => {
 });
 
 function connection(profileId: string): Connection {
-  return { kind: "ssh", profileId, name: profileId, active: true,
+  return { kind: "ssh", engine: "codex", workerId: null, profileId, name: profileId, active: true,
     machineFingerprint: `test:${profileId}`, controls: [], host: "localhost", port: 22,
     user: "tester", keyRef: "test-key", hostFingerprint: null };
 }

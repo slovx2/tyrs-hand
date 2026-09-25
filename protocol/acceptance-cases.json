@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "groups": [
+    { "id": "CONFIG", "description": "独立原生 settings.json 的地址、两种认证、模型及 CLAUDE.md 真实生效", "cases": ["CONFIG-001"] },
+    { "id": "ENTRY", "description": "双 SSH、专用包装器、幂等启动与独立恢复", "cases": ["ENTRY-001", "ENTRY-002"] },
+    { "id": "ISOLATION", "description": "入口路由、相同提交 ID、强制同名 thread、审批和缓存隔离", "cases": ["ISOLATION-001", "ISOLATION-002"] },
+    { "id": "SESSION", "description": "完整会话生命周期与离线继续执行", "cases": ["SESSION-001"] },
+    { "id": "HISTORY", "description": "双向分页、各 itemsView、超大工具输出和无模型读取", "cases": ["HISTORY-001", "HISTORY-002"] },
+    { "id": "CONTEXT", "description": "真实 SDK 恢复、分叉、回退、压缩及 SQLite 事务失败", "cases": ["CONTEXT-001", "CONTEXT-002", "CONTEXT-003"] },
+    { "id": "SUBMIT", "description": "提交去重、重启重试、工具不确定状态及并发操纵", "cases": ["SUBMIT-001", "SUBMIT-002", "SUBMIT-003"] },
+    { "id": "EVENTS", "description": "完整事件种类、顺序和终态与历史对账", "cases": ["EVENTS-001"] },
+    { "id": "APPROVAL", "description": "多端仲裁、取消、超时、重启失效与真实用户回答", "cases": ["APPROVAL-001", "APPROVAL-002", "APPROVAL-003", "APPROVAL-004"] },
+    { "id": "PERMISSION", "description": "实际文件写入、工作区边界、网络和审批权限变更", "cases": ["PERMISSION-read-only", "PERMISSION-plan", "PERMISSION-001"] },
+    { "id": "TOOLS", "description": "所有业务工具的成功副作用、错误、拒绝和取消", "cases": ["TOOLS-001", "TOOLS-002"] },
+    { "id": "MCP", "description": "HTTP、stdio、资源、elicitation、配置隔离及 Skills", "cases": ["MCP-001", "MCP-002", "MCP-003"] },
+    { "id": "FILES", "description": "文件 RPC、watch、进程、上传下载与边界", "cases": ["FILES-001"] },
+    { "id": "CHANNELS", "description": "桌面、手机、Discord 三端接力与身份投影", "cases": ["CHANNELS-001"] },
+    { "id": "AUTOMATION", "description": "创建、修改、暂停、到期、重试和结果继承引擎", "cases": ["AUTOMATION-001"] },
+    { "id": "FAILURE", "description": "模型故障、半断流、CLI、适配器、Worker 与 Control 离线", "cases": ["FAILURE-001", "FAILURE-401", "FAILURE-429", "FAILURE-500", "FAILURE-503", "FAILURE-SSE", "FAILURE-002"] },
+    { "id": "MIGRATION", "description": "Control 与手机数据迁移以及 Codex、GitHub、Live 回归", "cases": ["MIGRATION-001", "MIGRATION-002"] },
+    { "id": "CAPABILITY", "description": "专属能力明确拒绝、客户端处理及未知方法错误", "cases": ["CAPABILITY-001", "CAPABILITY-002"] }
+  ]
+}

@@ -52,15 +52,92 @@ function commonHandlers(role: 'admin' | 'user' = 'admin') {
   server.use(
     http.get('/api/v1/auth/me', () => HttpResponse.json({ role })),
     http.get(`/api/v1/workers/${workerId}`, () => HttpResponse.json(worker)),
+    http.get(`/api/v1/workers/${workerId}/runtimes`, () => HttpResponse.json([])),
   )
 }
 
 describe('WorkerDetailPage', () => {
+  it('Claude 配置使用独立路径并隐藏 OpenAI 登录，切换回 Codex 不混入草稿', async () => {
+    commonHandlers()
+    const provider = vi.fn()
+    const agents = vi.fn()
+    const oauth = vi.fn()
+    server.use(
+      http.get(
+        `/api/v1/workers/${workerId}/runtimes/:engine/config`,
+        ({ params }) =>
+          HttpResponse.json({
+            revision: 'rev-1',
+            agents: `${params.engine} instructions`,
+            baseUrl: 'http://localhost:4321',
+            envKey: 'ANTHROPIC_AUTH_TOKEN',
+            apiKeyConfigured: true,
+            authMethod: 'auth-token',
+            model: 'claude-config-model',
+          }),
+      ),
+      http.get(`/api/v1/workers/${workerId}/codex/oauth/devices`, () => {
+        oauth()
+        return HttpResponse.json({ status: 'idle' })
+      }),
+      http.put(
+        `/api/v1/workers/${workerId}/runtimes/claude-code/config/provider`,
+        async ({ request }) => {
+          provider(await request.json())
+          return HttpResponse.json({ revision: 'rev-2' })
+        },
+      ),
+      http.put(
+        `/api/v1/workers/${workerId}/runtimes/claude-code/config/agents`,
+        async ({ request }) => {
+          agents(await request.json())
+          return HttpResponse.json({ revision: 'rev-3' })
+        },
+      ),
+    )
+    renderRoute(`/workers/${workerId}/codex`)
+    const user = userEvent.setup()
+    await screen.findByText('AGENTS.md')
+    const oauthCalls = oauth.mock.calls.length
+    await user.selectOptions(screen.getByLabelText('运行时'), 'claude-code')
+    await screen.findByText('CLAUDE.md')
+    expect(screen.queryByText('登录 ChatGPT 账号')).not.toBeInTheDocument()
+    expect(oauth).toHaveBeenCalledTimes(oauthCalls)
+    expect(screen.getByLabelText('默认模型')).toHaveValue('claude-config-model')
+    await user.click(screen.getByRole('button', { name: '保存 Provider' }))
+    await vi.waitFor(() =>
+      expect(provider).toHaveBeenCalledWith({
+        revision: 'rev-1',
+        baseUrl: 'http://localhost:4321',
+        apiKey: '',
+        authMethod: 'auth-token',
+        model: 'claude-config-model',
+      }),
+    )
+    const instructions = screen.getByDisplayValue('claude-code instructions')
+    await user.clear(instructions)
+    await user.type(instructions, 'Claude runtime instructions')
+    await user.click(screen.getByRole('button', { name: '保存 CLAUDE.md' }))
+    await vi.waitFor(() =>
+      expect(agents).toHaveBeenCalledWith({
+        revision: 'rev-2',
+        content: 'Claude runtime instructions',
+      }),
+    )
+    await user.selectOptions(screen.getByLabelText('运行时'), 'codex')
+    expect(
+      await screen.findByDisplayValue('codex instructions'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByDisplayValue('Claude runtime instructions'),
+    ).not.toBeInTheDocument()
+  })
+
   it('直接访问详情路由并在进入 Codex 页后才读取配置', async () => {
     commonHandlers()
     const configRequest = vi.fn()
     server.use(
-      http.get(`/api/v1/workers/${workerId}/config`, () => {
+      http.get(`/api/v1/workers/${workerId}/runtimes/codex/config`, () => {
         configRequest()
         return HttpResponse.json({
           revision: 'rev-1',
@@ -79,7 +156,7 @@ describe('WorkerDetailPage', () => {
 
     expect(await screen.findByText('运行状态')).toBeInTheDocument()
     expect(configRequest).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('link', { name: 'Codex 配置' }))
+    await user.click(screen.getByRole('link', { name: '运行时配置' }))
     expect(await screen.findByText('Model Provider')).toBeInTheDocument()
     expect(configRequest).toHaveBeenCalledTimes(1)
   })
@@ -94,7 +171,7 @@ describe('WorkerDetailPage', () => {
     let configBaseUrl = 'https://model.example/v1'
     let oauthPending = false
     server.use(
-      http.get(`/api/v1/workers/${workerId}/config`, () =>
+      http.get(`/api/v1/workers/${workerId}/runtimes/codex/config`, () =>
         HttpResponse.json({
           revision: configRevision,
           agents: 'old agents',
@@ -104,7 +181,7 @@ describe('WorkerDetailPage', () => {
         }),
       ),
       http.put(
-        `/api/v1/workers/${workerId}/config/provider`,
+        `/api/v1/workers/${workerId}/runtimes/codex/config/provider`,
         async ({ request }) => {
           const input = (await request.json()) as { baseUrl: string }
           provider(input)
@@ -114,13 +191,13 @@ describe('WorkerDetailPage', () => {
         },
       ),
       http.put(
-        `/api/v1/workers/${workerId}/config/agents`,
+        `/api/v1/workers/${workerId}/runtimes/codex/config/agents`,
         async ({ request }) => {
           agents(await request.json())
           return HttpResponse.json({ revision: 'rev-3' })
         },
       ),
-      http.post(`/api/v1/workers/${workerId}/codex/restart`, () => {
+      http.post(`/api/v1/workers/${workerId}/runtimes/codex/restart`, () => {
         restart()
         return new HttpResponse(null, { status: 202 })
       }),

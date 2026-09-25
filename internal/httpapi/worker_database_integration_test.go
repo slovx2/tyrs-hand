@@ -99,11 +99,13 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	rotated, err := workerprotocol.NewClient(endpoint, "", 5*time.Second).Enroll(ctx, rotationToken)
 	require.NoError(t, err)
 	require.Error(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(workerA.ID)),
 		WorkerVersion: "old", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(workerA.ID),
 	}), "凭据轮换后旧节点 Token 必须立即失效")
 	clientA.SetCredential(rotated.Credential)
 	require.NoError(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(workerA.ID)),
 		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(workerA.ID),
 	}))
@@ -112,16 +114,19 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 		FROM workers WHERE id=$1`, workerA.ID).Scan(&persistedFingerprint))
 	require.Equal(t, testWorkerFingerprint(workerA.ID), persistedFingerprint)
 	require.Error(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(uuid.New())),
 		WorkerVersion: "changed-host-key", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(uuid.New()),
 	}), "同一 Worker 不得静默变更 SSH Host Key")
 	require.NoError(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(workerA.ID)),
 		WorkerVersion: "future", ProtocolVersion: workerprotocol.Version + 1,
 		SSHHostKeyFingerprint: testWorkerFingerprint(workerA.ID),
 	}), "协议不兼容时仍允许心跳上报")
 	_, err = clientA.Claim(ctx, workerprotocol.ClaimRequest{Role: "github"})
 	require.Error(t, err, "协议不兼容时必须拒绝 Claim")
 	require.NoError(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(workerA.ID)),
 		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(workerA.ID),
 	}))
@@ -129,10 +134,12 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	clientB := workerprotocol.NewClient(endpoint, credentialB, 5*time.Second)
 	require.Error(t, clientB.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(workerA.ID)),
 		WorkerVersion: "conflicting-host-key", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(workerA.ID),
 	}), "同一 SSH Host Key 不得绑定到多个 Worker")
 	require.NoError(t, clientB.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(workerB.ID)),
 		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(workerB.ID),
 	}))
@@ -433,6 +440,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(worker.ID)),
 		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(worker.ID),
 	}))

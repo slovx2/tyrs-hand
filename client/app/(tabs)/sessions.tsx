@@ -44,6 +44,7 @@ export default function SessionsScreen() {
   const workerId = controlLink?.workerId;
   const workerName = controlLink?.workerName;
   const deviceId = controlLink?.deviceId;
+  const engine = controlLink?.engine;
   const projectPath = selectedProject?.cwd;
   const liveProjectKey = JSON.stringify([connection?.profileId, selectedProjectId, projectPath,
     serverId, baseUrl, workerId, deviceId]);
@@ -66,11 +67,11 @@ export default function SessionsScreen() {
     void switchConnection(profileId);
   };
   const openLivePage = () => {
-    if (!selectedProject || machineBinding.status !== "bound") return;
+    if (!selectedProject || machineBinding.status !== "bound" || engine !== "codex") return;
     openLive();
   };
   useEffect(() => {
-    if (!serverId || !baseUrl || !workerId || !deviceId || !projectPath) return;
+    if (!serverId || !baseUrl || !workerId || !deviceId || !projectPath || engine !== "codex") return;
     let cancelled = false;
     let pending = false;
     const check = async () => {
@@ -79,7 +80,7 @@ export default function SessionsScreen() {
       // 后台复查保留上次结果，不插入会改变列表高度的瞬时加载文字。
       try {
         const { projects: controlProjects } = await listLiveWorkerProjects({ serverId, baseUrl,
-          workerId, deviceId, workerName: workerName ?? "" }, workerId);
+          engine, workerId, deviceId, workerName: workerName ?? "" }, workerId);
         if (cancelled) return;
         const resolution = resolveLiveProjectForSSHProject({ cwd: projectPath }, controlProjects);
         const message = resolution.status === "matched" ? "" : resolution.message;
@@ -96,7 +97,7 @@ export default function SessionsScreen() {
     });
     return () => { cancelled = true; subscription.remove(); };
     // 目录同步会重建项目对象；匹配只依赖稳定身份和路径。
-  }, [baseUrl, deviceId, liveProjectKey, projectPath, serverId, workerId, workerName]);
+  }, [baseUrl, deviceId, engine, liveProjectKey, projectPath, serverId, workerId, workerName]);
   const navigation = <Tabs.Screen options={{
     title: selectedId ? (() => {
       const record = allSessions.find((item) => item.thread.id === selectedId);
@@ -130,7 +131,7 @@ export default function SessionsScreen() {
       hideFilter archivedOnly={showArchived} />
       : <EmptyState title="无项目" detail="请在连接页为当前机器添加项目目录。" />}
   </View>;
-  const canOpenLive = Boolean(selectedProject && machineBinding.status === "bound");
+  const canOpenLive = Boolean(selectedProject && machineBinding.status === "bound" && engine === "codex");
   const actions = selectedProject ? <View style={[styles.actions,
     { bottom: Math.max(insets.bottom, 16) }]}>
     <Pressable testID="session:new-task:add" accessibilityRole="button"
@@ -139,17 +140,17 @@ export default function SessionsScreen() {
           { backgroundColor: theme.colors.accent, opacity: pressed ? 0.78 : 1 }, theme.shadow]}>
       <Ionicons name="add" size={30} color={theme.colors.accentForeground} />
     </Pressable>
-    <Pressable testID="session:live:add" accessibilityRole="button" accessibilityLabel="Live"
+    {connection?.engine === "codex" && <Pressable testID="session:live:add" accessibilityRole="button" accessibilityLabel="Live"
       accessibilityState={{ disabled: !canOpenLive }}
       disabled={!canOpenLive} onPress={openLivePage}
       style={({ pressed }) => [styles.fab, { backgroundColor: theme.colors.accent,
         opacity: canOpenLive ? (pressed ? 0.78 : 1) : 0.4 }, theme.shadow]}>
       <Ionicons name="mic-outline" size={27} color={theme.colors.accentForeground} />
-    </Pressable>
+    </Pressable>}
   </View> : null;
   const liveMessage = machineBinding.status !== "bound" ? machineBinding.message
     : liveProjectResult?.key === liveProjectKey ? liveProjectResult.message : "";
-  const liveStatus = selectedProject && liveMessage
+  const liveStatus = connection?.engine === "codex" && selectedProject && liveMessage
     ? <Text style={[styles.liveStatus, { color: theme.colors.textMuted }]}>{liveMessage}</Text> : null;
 
   if (!tablet) return <Screen>{navigation}{selectors}{liveStatus}

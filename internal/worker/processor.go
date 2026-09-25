@@ -19,29 +19,32 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
 type Processor struct {
-	cfg            config.Config
-	client         *workerprotocol.Client
-	workspace      ports.WorkspaceManager
-	catalog        *githubtools.Catalog
-	workspaces     *workspaceCodexRegistry
-	journals       *journalStore
-	logger         *zap.Logger
-	hostRuntime    *hostworker.Runtime
-	browserScopeID uuid.UUID
-	metadataMu     sync.RWMutex
-	modelCatalog   json.RawMessage
-	imageHTTP      *http.Client
-	imageRuntime   *codex.Runtime
-	imageRoot      string
-	imageNow       func() time.Time
-	imageTimeout   time.Duration
-	coordinator    *runCoordinator
-	wake           *wakeSignals
+	cfg             config.Config
+	client          *workerprotocol.Client
+	workspace       ports.WorkspaceManager
+	catalog         *githubtools.Catalog
+	workspaces      *workspaceCodexRegistry
+	journals        *journalStore
+	logger          *zap.Logger
+	hostRuntime     *hostworker.Runtime
+	runtimeIdentity runtimeidentity.Identity
+	browserScopeID  uuid.UUID
+	metadataMu      sync.RWMutex
+	modelCatalog    json.RawMessage
+	imageHTTP       *http.Client
+	imageRuntime    *codex.Runtime
+	imageRoot       string
+	imageNow        func() time.Time
+	imageTimeout    time.Duration
+	coordinator     *runCoordinator
+	wake            *wakeSignals
+	turnSlots       chan struct{}
 }
 
 func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, scopeID uuid.UUID,
@@ -51,6 +54,7 @@ func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, scopeID uuid.UUI
 	p.browserScopeID = scopeID
 	p.modelCatalog = append(json.RawMessage(nil), modelCatalog...)
 	if runtime != nil {
+		p.runtimeIdentity = runtime.Info().Identity
 		p.imageRoot = filepath.Join(runtime.StateDir(), generatedImagesDirectory)
 		if err := p.cleanupStaleGeneratedImages(p.currentImageTime()); err != nil && p.logger != nil {
 			p.logger.Warn("清理过期生成图片失败", zap.Error(err))
@@ -75,7 +79,7 @@ func (p *Processor) HeartbeatMetadata() map[string]any {
 	if runtime != nil {
 		metadata["host"] = map[string]any{
 			"home": runtime.Home(), "codexHome": runtime.CodexHome(),
-			"workspaceRoot": runtime.WorkspaceRoot(), "appServer": "running",
+			"workspaceRoot": runtime.WorkspaceRoot(), "appServer": runtime.Info().Status,
 		}
 	}
 	if len(modelCatalog) > 0 {
@@ -92,6 +96,7 @@ func NewProcessor(ctx context.Context, cfg config.Config, client *workerprotocol
 ) *Processor {
 	processor := &Processor{cfg: cfg, client: client, workspace: workspace, catalog: catalog,
 		logger: logger, wake: newWakeSignals()}
+	processor.turnSlots = make(chan struct{}, max(1, cfg.WorkerMaxConcurrentJobs))
 	if journals, err := newJournalStore(cfg.WorkerDataRoot); err == nil {
 		processor.journals = journals
 		processor.coordinator = newRunCoordinator(journals)
@@ -101,6 +106,9 @@ func NewProcessor(ctx context.Context, cfg config.Config, client *workerprotocol
 	processor.workspaces = newWorkspaceCodexRegistry(ctx, processor)
 	return processor
 }
+
+// ShareTurnBudget 只共享调度额度；会话、日志、Controller 与配置仍由各运行时持有。
+func (p *Processor) ShareTurnBudget(other *Processor) { p.turnSlots = other.turnSlots }
 
 func (p *Processor) Process(ctx context.Context, task *workerprotocol.Task,
 	commands <-chan workerprotocol.RunCommand,

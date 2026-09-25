@@ -13,14 +13,20 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"go.uber.org/zap"
 )
 
 type RuntimeOptions struct {
+	Engine               runtimeidentity.Engine
+	WorkerID             string
+	Environment          []string
+	EntryCommand         []string
 	CodexBin             string
 	CodexHome            string
 	Home                 string
@@ -38,8 +44,10 @@ type RuntimeOptions struct {
 }
 
 type Runtime struct {
+	info         RuntimeInfo
 	options      RuntimeOptions
 	serviceProxy *serviceProxy
+	entryGateway *entryGateway
 	restartMu    sync.Mutex
 	start        func(context.Context) (*appServerGeneration, error)
 
@@ -52,6 +60,7 @@ type Runtime struct {
 }
 
 type appServerGeneration struct {
+	stopOnce   sync.Once
 	command    *exec.Cmd
 	hub        *appserverhub.Hub
 	client     *appserverhub.Client
@@ -76,6 +85,11 @@ type runtimeInteractiveBinding struct {
 }
 
 func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error) {
+	return startRuntime(ctx, options, false)
+}
+
+// 受管入口允许单引擎暂不可用；静态配置错误仍阻止启动。
+func startRuntime(ctx context.Context, options RuntimeOptions, supervised bool) (*Runtime, error) {
 	if options.CodexBin == "" || options.CodexHome == "" || options.Home == "" ||
 		options.WorkspaceRoot == "" || options.StateDir == "" {
 		return nil, errors.New("宿主 Worker 的 Codex 路径、Home、工作区和状态目录不能为空")
@@ -83,13 +97,13 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if options.Logger == nil {
 		options.Logger = zap.NewNop()
 	}
-	versionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	err := codex.ValidateVersion(versionCtx, options.CodexBin)
-	cancel()
-	if err != nil {
+	if options.Environment == nil {
+		options.Environment = os.Environ()
+	}
+	if err := options.Engine.Validate(); err != nil {
 		return nil, err
 	}
-	for _, directory := range []string{options.CodexHome, options.WorkspaceRoot, options.StateDir} {
+	for _, directory := range []string{options.Home, options.CodexHome, options.WorkspaceRoot, options.StateDir} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			return nil, err
 		}
@@ -98,27 +112,49 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if err != nil {
 		return nil, fmt.Errorf("启动浏览器服务代理: %w", err)
 	}
-	runtime := &Runtime{options: options, serviceProxy: serviceProxy,
+	info := RuntimeInfo{Identity: runtimeidentity.Identity{WorkerID: options.WorkerID, Engine: options.Engine}, ProtocolVersion: codex.RequiredVersion}
+	runtime := &Runtime{options: options, info: info, serviceProxy: serviceProxy,
 		toolHandlers:        make(map[string]runtimeToolBinding),
 		interactiveHandlers: make(map[string]runtimeInteractiveBinding)}
 	runtime.start = runtime.startGeneration
 	generation, err := runtime.start(ctx)
 	if err != nil {
-		serviceProxy.close()
-		return nil, err
+		if supervised {
+			options.Logger.Warn("运行时暂不可用，保留 SSH 入口并后台恢复", zap.String("engine", string(options.Engine)), zap.Error(err))
+		} else {
+			serviceProxy.close()
+			return nil, err
+		}
 	}
 	runtime.current = generation
+	runtime.entryGateway, err = startEntryGateway(runtime)
+	if err != nil {
+		_ = runtime.Close()
+		return nil, fmt.Errorf("启动专用命令入口: %w", err)
+	}
 	return runtime, nil
 }
 
 func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, error) {
 	options := r.options
+	versionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	info, err := validateRuntimeBuild(versionCtx, options)
+	cancel()
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	r.info = info
+	r.mu.Unlock()
 	socketPath := filepath.Join(options.StateDir, "app-server.sock")
 	_ = os.Remove(socketPath)
 	command := exec.Command(options.CodexBin,
 		codex.HomeAppServerArguments("unix://"+socketPath)...)
+	// CLI 启动器可能再创建原生子进程；按进程组关闭，避免孤儿占用 Socket 或输出管道。
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.WaitDelay = 2 * time.Second
 	command.Dir = options.WorkspaceRoot
-	environment := appServerEnvironment(os.Environ())
+	environment := runtimeBaseEnvironment(options)
 	values := map[string]string{
 		"CODEX_HOME": options.CodexHome,
 		"HOME":       options.Home,
@@ -133,6 +169,21 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		for name, value := range secretValues {
 			values[name] = value
 		}
+	}
+	if options.Engine == runtimeidentity.Claude {
+		claudeValues, err := loadClaudeEnvironment(envFile)
+		if err != nil {
+			return nil, err
+		}
+		for name, value := range claudeValues {
+			values[name] = value
+		}
+		values["CLAUDE_CONFIG_DIR"] = filepath.Join(options.CodexHome, "claude")
+		values["CLAUDE_CODEX_HOME"] = options.StateDir
+		values["CLAUDE_CODEX_IDLE_EXIT_MS"] = "0"
+		values["CLAUDE_CODEX_RUNTIME"] = "agent-sdk-sidecar"
+		delete(values, "TYRS_HAND_MODEL_API_KEY")
+		delete(values, "TYRS_HAND_MODEL_BASE_URL")
 	}
 	if options.SSHAuthSock != "" {
 		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
@@ -162,8 +213,7 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		close(generation.done)
 	}()
 	if err := waitSocket(ctx, socketPath, generation.done, 15*time.Second); err != nil {
-		_ = command.Process.Kill()
-		<-generation.done
+		stopAppServerGeneration(generation)
 		return nil, err
 	}
 	controller := options.Controller
@@ -177,8 +227,7 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		Controller:         controller,
 	})
 	if err != nil {
-		_ = command.Process.Kill()
-		<-generation.done
+		stopAppServerGeneration(generation)
 		return nil, fmt.Errorf("启动 Worker AppServerHub: %w", err)
 	}
 	generation.hub = hub
@@ -186,12 +235,19 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		Role: appserverhub.RoleWorker, ServerRequestHandler: r.handleServerRequest,
 	})
 	if err != nil {
-		_ = hub.Close()
-		_ = command.Process.Kill()
-		<-generation.done
+		stopAppServerGeneration(generation)
 		return nil, err
 	}
 	generation.client = client
+	if options.Engine == runtimeidentity.Claude {
+		var live RuntimeInfo
+		if err := client.Call(ctx, "runtime/info", map[string]any{}, &live); err != nil ||
+			live.Engine != runtimeidentity.Claude || live.SDKVersion != info.SDKVersion ||
+			live.CLISHA256 != info.CLISHA256 || live.ProtocolVersion != info.ProtocolVersion {
+			stopAppServerGeneration(generation)
+			return nil, fmt.Errorf("Claude 在线协议身份校验失败: %v", err)
+		}
+	}
 	return generation, nil
 }
 
@@ -275,6 +331,8 @@ func (r *Runtime) WorkspaceRoot() string { return r.options.WorkspaceRoot }
 
 func (r *Runtime) StateDir() string { return r.options.StateDir }
 
+func (r *Runtime) EntryBin() string { return filepath.Join(r.StateDir(), "entry-bin") }
+
 func (r *Runtime) Generation() int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -287,6 +345,11 @@ func (r *Runtime) Generation() int64 {
 func (r *Runtime) Done() <-chan struct{} {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.current == nil {
+		done := make(chan struct{})
+		close(done)
+		return done
+	}
 	return r.current.done
 }
 
@@ -396,8 +459,11 @@ func (r *Runtime) recoverAfterDesktopFailure(ctx context.Context,
 		return nil
 	}
 	r.mu.Unlock()
-	r.options.Logger.Warn("Desktop 转接发现 Codex App Server 已退出，开始按需恢复",
-		zap.Error(failed.waitErr))
+	var waitErr error
+	if failed != nil {
+		waitErr = failed.waitErr
+	}
+	r.options.Logger.Warn("运行时不可用，开始恢复", zap.String("engine", string(r.options.Engine)), zap.Error(waitErr))
 	stopAppServerGeneration(failed)
 	next, err := r.start(ctx)
 	if err != nil {
@@ -422,6 +488,8 @@ func (r *Runtime) recoverAfterDesktopFailure(ctx context.Context,
 }
 
 func (r *Runtime) Close() error {
+	// 入口连接可能正在等待 Runtime 恢复锁，必须先释放该锁再回收连接。
+	defer r.entryGateway.close()
 	r.restartMu.Lock()
 	defer r.restartMu.Unlock()
 	r.mu.Lock()
@@ -453,21 +521,36 @@ func stopAppServerGeneration(generation *appServerGeneration) {
 	if generation == nil {
 		return
 	}
+	generation.stopOnce.Do(func() { stopGeneration(generation) })
+}
+
+func stopGeneration(generation *appServerGeneration) {
 	if generation.client != nil {
 		_ = generation.client.Close()
 	}
 	if generation.hub != nil {
 		_ = generation.hub.Close()
 	}
-	if generation.command == nil || generation.command.Process == nil ||
-		generationStopped(generation) {
+	if generation.command == nil || generation.command.Process == nil {
 		return
 	}
-	_ = generation.command.Process.Signal(os.Interrupt)
+	signal := func(value syscall.Signal) {
+		if generation.command.SysProcAttr != nil && generation.command.SysProcAttr.Setpgid {
+			_ = syscall.Kill(-generation.command.Process.Pid, value)
+		} else {
+			_ = generation.command.Process.Signal(value)
+		}
+	}
+	if generationStopped(generation) {
+		signal(syscall.SIGKILL)
+		return
+	}
+	signal(syscall.SIGINT)
 	select {
 	case <-generation.done:
+		signal(syscall.SIGKILL)
 	case <-time.After(5 * time.Second):
-		_ = generation.command.Process.Kill()
+		signal(syscall.SIGKILL)
 		<-generation.done
 	}
 }
@@ -516,7 +599,8 @@ func appServerEnvironment(base []string) []string {
 	result := make([]string, 0, len(base))
 	for _, item := range base {
 		name, _, found := cutEnvironment(item)
-		if !found || strings.HasPrefix(name, "TYRS_HAND_") {
+		if !found || strings.HasPrefix(name, "TYRS_HAND_") || strings.HasPrefix(name, "ANTHROPIC_") ||
+			strings.HasPrefix(name, "CLAUDE_") {
 			continue
 		}
 		switch name {

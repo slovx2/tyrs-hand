@@ -12,16 +12,22 @@ import (
 const RequiredVersion = "0.147.0"
 
 func ValidateVersion(ctx context.Context, bin string) error {
+	_, err := ValidatedVersion(ctx, bin)
+	return err
+}
+
+// ValidatedVersion 同时返回已验证的真实 CLI 版本，供运行时登记构建身份。
+func ValidatedVersion(ctx context.Context, bin string) (string, error) {
 	output, err := exec.CommandContext(ctx, bin, "--version").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("读取 Codex 版本: %w", err)
+		return "", fmt.Errorf("读取 Codex 版本: %w", err)
 	}
 	actual := strings.TrimSpace(string(output))
 	version := strings.TrimPrefix(actual, "codex-cli ")
 	if !IsVersionAtLeast(version, RequiredVersion) {
-		return fmt.Errorf("要求 Codex 版本 >= %s，当前为 %s", RequiredVersion, actual)
+		return "", fmt.Errorf("要求 Codex 版本 >= %s，当前为 %s", RequiredVersion, actual)
 	}
-	return nil
+	return version, nil
 }
 
 // IsVersionAtLeast 判断 Codex 版本是否达到最低要求。预发布版本不会被视为对应稳定版本。

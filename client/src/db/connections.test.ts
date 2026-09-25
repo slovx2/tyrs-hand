@@ -29,6 +29,8 @@ vi.mock("./database", () => ({
 
 const input = {
   kind: "ssh" as const,
+  engine: "codex" as const,
+  workerId: "worker-1",
   profileId: "profile-1",
   name: "Worker",
   host: "192.0.2.10",
@@ -54,7 +56,7 @@ describe("SSH connection persistence", () => {
 
     const [statement, ...parameters] = database.runAsync.mock.calls[0] as [string, ...unknown[]];
     expect(statement.match(/\?/g)).toHaveLength(parameters.length);
-    expect(parameters).toHaveLength(11);
+    expect(parameters).toHaveLength(13);
     expect(parameters.slice(0, 2)).toEqual(["profile-1", "Worker"]);
   });
 
@@ -73,7 +75,7 @@ describe("SSH connection persistence", () => {
 
   it("扫码先发生时把 SSH 补到相同 Host Key 的机器 profile", async () => {
     database.getFirstAsync.mockReset().mockResolvedValueOnce({ profile_id: "paired-profile" });
-    const profileId = await saveControlMachineLink({ profileId: "new-profile", name: "Worker",
+    const profileId = await saveControlMachineLink({ engine: "codex", profileId: "new-profile", name: "Worker",
       machineFingerprint: "SHA256:test", serverId: "server-1", baseUrl: "https://control.test",
       workerId: "worker-1", workerName: "Worker", deviceId: "device-1" });
     expect(profileId).toBe("paired-profile");
@@ -92,7 +94,7 @@ describe("SSH connection persistence", () => {
     vi.clearAllMocks();
     database.getFirstAsync.mockResolvedValueOnce({ profile_id: "profile-1" });
     database.runAsync.mockResolvedValue(undefined);
-    expect(await saveControlMachineLink({ profileId: "scan-profile", name: "Worker",
+    expect(await saveControlMachineLink({ engine: "codex", profileId: "scan-profile", name: "Worker",
       machineFingerprint: "SHA256:test", serverId: "server-1", baseUrl: "https://control.test",
       workerId: "worker-1", workerName: "Worker", deviceId: "device-1" })).toBe("profile-1");
     expect(database.runAsync.mock.calls.some((call) =>
@@ -101,7 +103,7 @@ describe("SSH connection persistence", () => {
 
   it("不同 Host Key 保持为不同机器", async () => {
     database.getFirstAsync.mockReset().mockResolvedValueOnce(null).mockResolvedValueOnce({ count: 1 });
-    await saveControlMachineLink({ profileId: "different-profile", name: "Other",
+    await saveControlMachineLink({ engine: "codex", profileId: "different-profile", name: "Other",
       machineFingerprint: "SHA256:other", serverId: "server-1", baseUrl: "https://control.test",
       workerId: "worker-2", workerName: "Other", deviceId: "device-1" });
     const insert = database.runAsync.mock.calls.find((call) =>

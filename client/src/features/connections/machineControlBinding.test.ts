@@ -4,7 +4,7 @@ import type { Connection } from "@/db/connections";
 import { resolveMachineControlBinding } from "./machineControlBinding";
 
 const control = (workerId: string, serverId = "server") => ({
-  serverId, baseUrl: "https://control.example", workerId,
+  engine: "codex" as const, serverId, baseUrl: "https://control.example", workerId,
   workerName: `Worker ${workerId}`, deviceId: "device",
 });
 
@@ -33,7 +33,7 @@ describe("机器与 Control Worker 绑定", () => {
 });
 
 function sshConnection(controls: Connection["controls"]): Connection {
-  return { kind: "ssh", profileId: "machine", name: "machine", active: true,
+  return { kind: "ssh", engine: "codex", workerId: null, profileId: "machine", name: "machine", active: true,
     machineFingerprint: "fingerprint", controls, host: "localhost", port: 22,
     user: "tester", keyRef: "key", hostFingerprint: null };
 }

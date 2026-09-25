@@ -31,6 +31,7 @@ func TestWorkerOwnedRunDecisionOfflineAndTerminalReplay(t *testing.T) {
 	}))
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      testCodexRuntimeReports(testWorkerFingerprint(worker.ID)),
 		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 		SSHHostKeyFingerprint: testWorkerFingerprint(worker.ID),
 	}))

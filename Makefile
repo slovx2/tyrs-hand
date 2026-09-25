@@ -1,6 +1,14 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 CODEX ?= codex
+.DEFAULT_GOAL := dependencies
+
+.PHONY: test-protocol-matrix test-runtime-e2e
+test-protocol-matrix:
+	node tools/protocol-matrix.mjs
+
+test-runtime-e2e:
+	node tools/protocol-matrix.mjs --runtime-only
 
 .PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-export-android client-export-ios client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-mobile-transport-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
 

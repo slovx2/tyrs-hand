@@ -18,6 +18,14 @@ public final class TyrsSSHTransportModule: Module {
       SshtransportClose(profileId)
     }
 
+    AsyncFunction("inspectRuntime") { (options: [String: Any]) -> [String: Any] in
+      try parseObject(SshtransportInspectRuntime(
+        string(options, "host"), int64(options, "port"), string(options, "user"),
+        string(options, "privateKey"), optionalString(options, "passphrase"),
+        string(options, "expectedHostFingerprint")
+      ))
+    }
+
     AsyncFunction("generateEd25519Key") { () -> [String: Any] in
       try parseObject(SshtransportGenerateEd25519Key())
     }

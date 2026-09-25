@@ -34,6 +34,7 @@ type heartbeatMetadataProvider interface {
 }
 
 type Runner struct {
+	workerID              uuid.UUID
 	cfg                   config.Config
 	client                *workerprotocol.Client
 	processor             taskProcessor
@@ -44,6 +45,8 @@ type Runner struct {
 	coordinator           *runCoordinator
 	sshHostKeyFingerprint string
 	wake                  *wakeSignals
+	turnSlots             chan struct{}
+	runtimeReports        func() []workerprotocol.RuntimeReport
 
 	catalogMu         sync.Mutex
 	catalogRevision   string
@@ -52,6 +55,11 @@ type Runner struct {
 
 func (r *Runner) SetSSHHostKeyFingerprint(fingerprint string) {
 	r.sshHostKeyFingerprint = fingerprint
+}
+
+// 在 Run 前绑定；心跳读取当下的引擎状态，不缓存重启前的状态。
+func (r *Runner) SetRuntimeReports(provider func() []workerprotocol.RuntimeReport) {
+	r.runtimeReports = provider
 }
 
 // NotifyControlWake 接收 Control 推送的唤醒种类。
@@ -90,6 +98,11 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 	}
 	runner := &Runner{cfg: cfg, client: client, processor: processor, logger: logger,
 		journals: journals, coordinator: coordinator}
+	if concrete, ok := processor.(*Processor); ok {
+		runner.turnSlots = concrete.turnSlots
+	} else {
+		runner.turnSlots = make(chan struct{}, max(1, cfg.WorkerMaxConcurrentJobs))
+	}
 	if concrete, ok := processor.(*Processor); ok && concrete.wake != nil {
 		runner.wake = concrete.wake
 	} else {
@@ -125,7 +138,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		}()
 		defer r.ssh.Close()
 	}
-	slots := make(chan struct{}, r.cfg.WorkerMaxConcurrentJobs)
+	slots := r.turnSlots
 	var active sync.WaitGroup
 	stored, err := r.journals.loadAll()
 	if err != nil {
@@ -220,7 +233,7 @@ func (r *Runner) Authenticate(ctx context.Context) error {
 	}
 	if credential != "" {
 		r.client.SetCredential(credential)
-		return nil
+		return r.resolveAuthenticatedIdentity(ctx, credential)
 	}
 	if r.cfg.WorkerEnrollmentToken == "" {
 		return errors.New("节点尚未注册，且没有提供一次性 Enrollment Token")
@@ -237,7 +250,7 @@ func (r *Runner) Authenticate(ctx context.Context) error {
 		return err
 	}
 	r.client.SetCredential(response.Credential)
-	return nil
+	return r.saveIdentity(response.WorkerID, response.Credential)
 }
 
 func (r *Runner) roles() []string {
@@ -260,7 +273,7 @@ func (r *Runner) roleAllowed(source string) bool {
 }
 
 func (r *Runner) sendHeartbeat(ctx context.Context) error {
-	values := map[string]any{"workerId": r.cfg.WorkerID,
+	values := map[string]any{"workerId": r.WorkerID(),
 		"roles": r.roles(), "maxConcurrentJobs": r.cfg.WorkerMaxConcurrentJobs,
 		"protocolVersion": r.cfg.WorkerProtocolVersion}
 	values["ssh"] = map[string]any{"status": "ready",
@@ -282,7 +295,12 @@ func (r *Runner) sendHeartbeat(ctx context.Context) error {
 	}
 	revision, catalogIncluded := r.applyCatalogRevision(values)
 	metadata, _ := json.Marshal(values)
+	var runtimes []workerprotocol.RuntimeReport
+	if r.runtimeReports != nil {
+		runtimes = r.runtimeReports()
+	}
 	if err := r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		Runtimes:      runtimes,
 		WorkerVersion: workerVersion, ProtocolVersion: r.cfg.WorkerProtocolVersion,
 		SSHHostKeyFingerprint: r.sshHostKeyFingerprint,
 		ModelCatalogRevision:  revision, Metadata: metadata,

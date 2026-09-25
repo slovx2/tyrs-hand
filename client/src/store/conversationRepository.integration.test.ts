@@ -345,7 +345,7 @@ describe("会话分页 Repository", () => {
 function installState(profileId: string, record: ThreadRecord,
   client: FakeOfficialClient): void {
   harness.client = client;
-  const connection: Connection = { kind: "ssh", profileId, name: profileId, active: true,
+  const connection: Connection = { kind: "ssh", engine: "codex", workerId: null, profileId, name: profileId, active: true,
     machineFingerprint: `test:${profileId}`, controls: [], host: "worker", port: 2222,
     user: "codex", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ activeConnection: connection, connections: [connection], threads: [record],

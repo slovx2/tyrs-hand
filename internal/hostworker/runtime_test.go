@@ -2,8 +2,12 @@ package hostworker
 
 import (
 	"context"
+	"io"
+	"os/exec"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/stretchr/testify/require"
@@ -117,4 +121,23 @@ func TestAppServerGenerationOutlivesRecoveryStartupContext(t *testing.T) {
 
 	require.ErrorIs(t, startup.Err(), context.Canceled)
 	require.NoError(t, lifetime.Err())
+}
+
+func TestShutdownKillsLauncherProcessGroupAndDoesNotHangOnPipes(t *testing.T) {
+	command := exec.Command("/bin/sh", "-c", "sleep 300 & wait")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Stdout, command.Stderr = io.Discard, io.Discard
+	command.WaitDelay = time.Second
+	require.NoError(t, command.Start())
+	generation := &appServerGeneration{command: command, done: make(chan struct{})}
+	go func() { generation.waitErr = command.Wait(); close(generation.done) }()
+	done := make(chan struct{})
+	go func() { stopAppServerGeneration(generation); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(8 * time.Second):
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		t.Fatal("关闭被启动器子进程持有的管道阻塞")
+	}
+	stopAppServerGeneration(generation)
 }

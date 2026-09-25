@@ -48,6 +48,9 @@ type Config struct {
 	WorkerEnrollmentToken          string
 	WorkerProtocolVersion          int
 	WorkerSSHListenAddr            string
+	WorkerClaudeEnabled            bool
+	WorkerClaudeBin                string
+	WorkerClaudeSSHListenAddr      string
 	WorkerSSHHostKeyFile           string
 	WorkerAuthorizedKeysFile       string
 	WorkerWorkspaceRoot            string
@@ -127,6 +130,9 @@ func load(workerProcess bool) (Config, error) {
 		WorkerEnrollmentToken:          strings.TrimSpace(v.GetString("worker_enrollment_token")),
 		WorkerProtocolVersion:          v.GetInt("worker_protocol_version"),
 		WorkerSSHListenAddr:            strings.TrimSpace(v.GetString("worker_ssh_listen_addr")),
+		WorkerClaudeEnabled:            v.GetBool("worker_claude_enabled"),
+		WorkerClaudeBin:                strings.TrimSpace(v.GetString("worker_claude_bin")),
+		WorkerClaudeSSHListenAddr:      strings.TrimSpace(v.GetString("worker_claude_ssh_listen_addr")),
 		WorkerSSHHostKeyFile:           filepath.Clean(v.GetString("worker_ssh_host_key_file")),
 		WorkerAuthorizedKeysFile:       filepath.Clean(v.GetString("worker_authorized_keys_file")),
 		WorkerWorkspaceRoot:            filepath.Clean(v.GetString("worker_workspace_root")),
@@ -233,7 +239,7 @@ func (c Config) ValidateWorker() error {
 	if err := c.validateWorkerCapabilities(); err != nil {
 		return err
 	}
-	return nil
+	return c.validateClaudeRuntime()
 }
 
 func (c Config) validateWorkerCapabilities() error {
@@ -327,6 +333,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_enrollment_token", "")
 	v.SetDefault("worker_protocol_version", workerprotocol.Version)
 	v.SetDefault("worker_ssh_listen_addr", ":2222")
+	v.SetDefault("worker_claude_enabled", false)
+	v.SetDefault("worker_claude_bin", "/usr/local/libexec/tyrs-hand-claude")
+	v.SetDefault("worker_claude_ssh_listen_addr", ":3333")
 	v.SetDefault("worker_ssh_host_key_file", filepath.Join(stateRoot, "ssh", "host_key"))
 	v.SetDefault("worker_authorized_keys_file", filepath.Join(stateRoot, "ssh", "authorized_keys"))
 	v.SetDefault("worker_workspace_root", filepath.Join(home, "tyrs-hand", "workspaces"))

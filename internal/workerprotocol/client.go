@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,15 @@ func NewClient(baseURL, credential string, timeout time.Duration) *Client {
 }
 
 func (c *Client) SetCredential(value string) { c.credential = value }
+
+func (c *Client) Identity(ctx context.Context) (WorkerIdentityResponse, error) {
+	var result WorkerIdentityResponse
+	err := c.call(ctx, http.MethodGet, "/worker/v1/identity", nil, &result, true)
+	if err == nil && (result.WorkerID == uuid.Nil || result.ProtocolVersion != Version) {
+		err = errors.New("Control 返回的 Worker 身份或协议版本无效")
+	}
+	return result, err
+}
 
 func (c *Client) Enroll(ctx context.Context, token string) (EnrollResponse, error) {
 	var result EnrollResponse
@@ -488,6 +498,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 		return "", 0, errors.New("Worker尚未注册")
 	}
 	request.Header.Set("Authorization", "Bearer "+c.credential)
+	request.Header.Set(VersionHeader, strconv.Itoa(Version))
 	response, err := c.http.Do(request)
 	if err != nil {
 		return "", 0, err
@@ -603,6 +614,7 @@ func (c *Client) execute(request *http.Request, output any, authenticated bool) 
 			return errors.New("Worker尚未注册")
 		}
 		request.Header.Set("Authorization", "Bearer "+c.credential)
+		request.Header.Set(VersionHeader, strconv.Itoa(Version))
 	}
 	response, err := c.http.Do(request)
 	if err != nil {

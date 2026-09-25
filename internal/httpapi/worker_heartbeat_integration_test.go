@@ -35,6 +35,7 @@ func TestWorkerHeartbeatMergesCatalogMetadata(t *testing.T) {
 		encoded, err := json.Marshal(metadata)
 		require.NoError(t, err)
 		require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+			Runtimes:      testCodexRuntimeReports(fingerprint),
 			WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 			SSHHostKeyFingerprint: fingerprint, Metadata: encoded}))
 	}

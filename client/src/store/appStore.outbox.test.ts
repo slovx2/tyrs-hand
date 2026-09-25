@@ -61,7 +61,7 @@ describe("移动端 Outbox 新 Thread", () => {
       closeListener = listener;
       return () => undefined;
     });
-    activate(profileId, [{ serverId: "control-1", baseUrl: "https://control.example",
+    activate(profileId, [{ engine: "codex", serverId: "control-1", baseUrl: "https://control.example",
       workerId: "worker-1", workerName: "worker", deviceId: "device-1" }]);
     const started = thread("thread-close");
     client.startThread.mockResolvedValue({ thread: started });
@@ -295,7 +295,7 @@ describe("移动端 Outbox 新 Thread", () => {
 });
 
 function activate(profileId: string, controls: Connection["controls"] = []): void {
-  const connection: Connection = { profileId, kind: "ssh", name: "worker", active: true,
+  const connection: Connection = { profileId, kind: "ssh", engine: "codex", workerId: null, name: "worker", active: true,
     machineFingerprint: `test:${profileId}`, controls, host: "worker", port: 22,
     user: "tester", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ ready: true, refreshing: false, error: null,

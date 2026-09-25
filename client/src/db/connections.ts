@@ -1,9 +1,11 @@
 import * as SecureStore from "expo-secure-store";
 
 import { isPreviewMode, isPreviewServerId } from "@/preview/config";
+import { engineSchema, type Engine, type RuntimeInfo } from "@/types/runtime";
 import { runDatabaseWrite, withDatabaseTransaction } from "./database";
 
 export type ControlMachineLink = {
+  engine: Engine;
   serverId: string;
   baseUrl: string;
   workerId: string;
@@ -12,6 +14,8 @@ export type ControlMachineLink = {
 };
 
 type ConnectionBase = {
+  engine: Engine;
+  workerId: string | null;
   profileId: string;
   name: string;
   active: boolean;
@@ -32,6 +36,8 @@ export type ControlOnlyConnection = ConnectionBase & { kind: "control" };
 export type Connection = SSHConnection | ControlOnlyConnection;
 
 type ConnectionRow = {
+  engine: Engine;
+  worker_id: string | null;
   profile_id: string;
   name: string;
   active: number;
@@ -44,6 +50,7 @@ type ConnectionRow = {
 };
 
 type ControlLinkRow = {
+  engine: Engine;
   profile_id: string;
   server_id: string;
   base_url: string;
@@ -53,6 +60,8 @@ type ControlLinkRow = {
 };
 
 export type SaveSSHConnectionInput = {
+  engine: Engine;
+  workerId: string;
   kind: "ssh";
   profileId: string;
   name: string;
@@ -66,6 +75,7 @@ export type SaveSSHConnectionInput = {
 };
 
 export type SaveControlMachineInput = {
+  engine: Engine;
   profileId: string;
   name: string;
   machineFingerprint: string;
@@ -97,13 +107,14 @@ export async function listConnections(): Promise<Connection[]> {
   for (const row of linkRows) {
     const values = links.get(row.profile_id) ?? [];
     values.push({ serverId: row.server_id, baseUrl: row.base_url, workerId: row.worker_id,
-      workerName: row.worker_name, deviceId: row.device_id });
+      engine: engineSchema.parse(row.engine), workerName: row.worker_name, deviceId: row.device_id });
     links.set(row.profile_id, values);
   }
   return rows.map((row) => connectionFromRow(row, links.get(row.profile_id) ?? []));
 }
 
 export async function saveSSHConnection(input: SaveSSHConnectionInput): Promise<string> {
+  engineSchema.parse(input.engine);
   await SecureStore.setItemAsync(sshPrivateKeyKey(input.keyRef), input.privateKey, deviceOnly);
   if (input.passphrase) {
     await SecureStore.setItemAsync(sshPassphraseKey(input.keyRef), input.passphrase, deviceOnly);
@@ -116,24 +127,28 @@ export async function saveSSHConnection(input: SaveSSHConnectionInput): Promise<
       const existing = await database.getFirstAsync<{
         profile_id: string;
         ssh_key_ref: string | null;
-      }>("SELECT profile_id,ssh_key_ref FROM connection_profiles WHERE machine_fingerprint=?",
-        input.hostFingerprint);
+        worker_id: string | null;
+      }>("SELECT profile_id,ssh_key_ref,worker_id FROM connection_profiles WHERE machine_fingerprint=? AND engine=?",
+        input.hostFingerprint, input.engine);
       if (existing) {
+        if (existing.worker_id && existing.worker_id !== input.workerId) {
+          throw new Error("此 SSH 指纹已关联另一 Worker，不能覆盖运行时身份");
+        }
         savedProfileId = existing.profile_id;
         replacedKeyRef = existing.ssh_key_ref;
         await database.runAsync(`UPDATE connection_profiles SET name=?,ssh_host=?,ssh_port=?,
-          ssh_user=?,ssh_key_ref=?,ssh_host_fingerprint=?,updated_at=? WHERE profile_id=?`,
+          ssh_user=?,ssh_key_ref=?,ssh_host_fingerprint=?,worker_id=?,updated_at=? WHERE profile_id=?`,
         input.name, input.host, input.port, input.user, input.keyRef, input.hostFingerprint,
-        now, savedProfileId);
+        input.workerId, now, savedProfileId);
         return;
       }
       const count = await database.getFirstAsync<{ count: number }>(
         "SELECT count(*) count FROM connection_profiles");
       await database.runAsync(`INSERT INTO connection_profiles(profile_id,kind,name,active,
         machine_fingerprint,ssh_host,ssh_port,ssh_user,ssh_key_ref,ssh_host_fingerprint,
-        created_at,updated_at) VALUES (?,'machine',?,?,?,?,?,?,?,?,?,?)`, input.profileId,
+        engine,worker_id,created_at,updated_at) VALUES (?,'machine',?,?,?,?,?,?,?,?,?,?,?,?)`, input.profileId,
       input.name, count?.count === 0 ? 1 : 0, input.hostFingerprint, input.host, input.port,
-      input.user, input.keyRef, input.hostFingerprint, now, now);
+      input.user, input.keyRef, input.hostFingerprint, input.engine, input.workerId, now, now);
     });
     if (replacedKeyRef && replacedKeyRef !== input.keyRef) {
       await SecureStore.deleteItemAsync(sshPrivateKeyKey(replacedKeyRef));
@@ -148,29 +163,34 @@ export async function saveSSHConnection(input: SaveSSHConnectionInput): Promise<
 }
 
 export async function saveControlMachineLink(input: SaveControlMachineInput): Promise<string> {
+  engineSchema.parse(input.engine);
   let savedProfileId = input.profileId;
   const now = new Date().toISOString();
   await withDatabaseTransaction(async (database) => {
-    const existing = await database.getFirstAsync<{ profile_id: string }>(
-      "SELECT profile_id FROM connection_profiles WHERE machine_fingerprint=?",
-      input.machineFingerprint);
+    const existing = await database.getFirstAsync<{ profile_id: string; worker_id: string | null }>(
+      "SELECT profile_id,worker_id FROM connection_profiles WHERE machine_fingerprint=? AND engine=?",
+      input.machineFingerprint, input.engine);
     if (existing) {
+      if (existing.worker_id && existing.worker_id !== input.workerId) {
+        throw new Error("Control 的 Worker 身份与此 SSH 入口不一致");
+      }
       savedProfileId = existing.profile_id;
     } else {
       const count = await database.getFirstAsync<{ count: number }>(
         "SELECT count(*) count FROM connection_profiles");
       await database.runAsync(`INSERT INTO connection_profiles(profile_id,kind,name,active,
-        machine_fingerprint,created_at,updated_at) VALUES (?,'machine',?,?,?,?,?)`,
-      input.profileId, input.name, count?.count === 0 ? 1 : 0, input.machineFingerprint, now, now);
+        machine_fingerprint,engine,worker_id,created_at,updated_at) VALUES (?,'machine',?,?,?,?,?,?,?)`,
+      input.profileId, input.name, count?.count === 0 ? 1 : 0, input.machineFingerprint,
+      input.engine, input.workerId, now, now);
     }
     await database.runAsync("DELETE FROM control_machine_links WHERE profile_id=? AND server_id=?",
       savedProfileId, input.serverId);
     await database.runAsync(`INSERT INTO control_machine_links(profile_id,server_id,base_url,
-      worker_id,worker_name,device_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)
-      ON CONFLICT(server_id,worker_id) DO UPDATE SET profile_id=excluded.profile_id,
+      worker_id,engine,worker_name,device_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(server_id,worker_id,engine) DO UPDATE SET profile_id=excluded.profile_id,
       base_url=excluded.base_url,worker_name=excluded.worker_name,device_id=excluded.device_id,
       updated_at=excluded.updated_at`, savedProfileId, input.serverId,
-    input.baseUrl.replace(/\/$/, ""), input.workerId, input.workerName, input.deviceId, now, now);
+    input.baseUrl.replace(/\/$/, ""), input.workerId, input.engine, input.workerName, input.deviceId, now, now);
   });
   return savedProfileId;
 }
@@ -223,8 +243,15 @@ export async function setActiveConnection(profileId: string): Promise<void> {
 
 export async function updateSSHHostFingerprint(profileId: string, fingerprint: string): Promise<void> {
   await withDatabaseTransaction(async (database) => {
-    const target = await database.getFirstAsync<{ profile_id: string }>(
-      "SELECT profile_id FROM connection_profiles WHERE machine_fingerprint=?", fingerprint);
+    const source = await database.getFirstAsync<{ worker_id: string | null }>(
+      "SELECT worker_id FROM connection_profiles WHERE profile_id=?", profileId);
+    if (!source) throw new Error("SSH 连接不存在");
+    const target = await database.getFirstAsync<{ profile_id: string; worker_id: string | null }>(
+      `SELECT profile_id,worker_id FROM connection_profiles WHERE machine_fingerprint=? AND engine=(
+        SELECT engine FROM connection_profiles WHERE profile_id=?)`, fingerprint, profileId);
+    if (source.worker_id && target?.worker_id && source.worker_id !== target.worker_id) {
+      throw new Error("两个连接属于不同 Worker，不能合并");
+    }
     if (!target || target.profile_id === profileId) {
       await database.runAsync(`UPDATE connection_profiles SET machine_fingerprint=?,
         ssh_host_fingerprint=?,updated_at=? WHERE profile_id=?`, fingerprint, fingerprint,
@@ -289,10 +316,29 @@ export async function renameConnection(profileId: string, name: string): Promise
 
 function connectionFromRow(row: ConnectionRow, controls: ControlMachineLink[]): Connection {
   const base = { profileId: row.profile_id, name: row.name, active: row.active === 1,
+    engine: engineSchema.parse(row.engine), workerId: row.worker_id,
     machineFingerprint: row.machine_fingerprint, controls };
   if (row.ssh_host && row.ssh_port && row.ssh_user && row.ssh_key_ref) {
     return { ...base, kind: "ssh", host: row.ssh_host, port: row.ssh_port, user: row.ssh_user,
       keyRef: row.ssh_key_ref, hostFingerprint: row.ssh_host_fingerprint };
   }
   return { ...base, kind: "control" };
+}
+
+// 旧 profile 只在已验证 Host Key 的 SSH 连接上补齐身份；不能借重连更换引擎。
+export async function bindRuntimeIdentity(profileId: string, runtime: RuntimeInfo): Promise<void> {
+  await withDatabaseTransaction(async (database) => {
+    const row = await database.getFirstAsync<{ engine: string; worker_id: string | null }>(
+      "SELECT engine,worker_id FROM connection_profiles WHERE profile_id=?", profileId);
+    if (!row || row.engine !== runtime.engine || (row.worker_id && row.worker_id !== runtime.workerId)) {
+      throw new Error("SSH 入口的 Worker 或引擎与保存的连接不一致");
+    }
+    const links = await database.getAllAsync<{ worker_id: string; engine: string }>(
+      "SELECT worker_id,engine FROM control_machine_links WHERE profile_id=?", profileId);
+    if (links.some((link) => link.engine !== runtime.engine || link.worker_id !== runtime.workerId)) {
+      throw new Error("SSH 入口与 Control 关联的运行时身份不一致");
+    }
+    await database.runAsync("UPDATE connection_profiles SET worker_id=? WHERE profile_id=?",
+      runtime.workerId, profileId);
+  });
 }

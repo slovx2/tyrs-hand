@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 }
 
 func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
+	group.GET("/identity", s.workerIdentity)
 	group.POST("/heartbeat", s.workerHeartbeat)
 	group.POST("/claims", s.workerClaim)
 	group.POST("/inputs/decide", s.workerDecideInput)
@@ -76,6 +78,12 @@ func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
 	group.POST("/runs/:id/workspace-project-state", s.workerWorkspaceProjectState)
 	group.POST("/runs/:id/workspace-state", s.workerWorkspaceState)
 	group.POST("/runs/:id/tools/call", s.workerToolCall)
+}
+
+func (s *Server) workerIdentity(c *gin.Context) {
+	c.JSON(http.StatusOK, workerprotocol.WorkerIdentityResponse{
+		WorkerID: currentWorker(c).ID, ProtocolVersion: workerprotocol.Version,
+	})
 }
 
 func (s *Server) workerBlob(c *gin.Context) {
@@ -156,6 +164,11 @@ func (s *Server) requireWorker() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if c.GetHeader(workerprotocol.VersionHeader) != strconv.Itoa(workerprotocol.Version) {
+			problem(c, http.StatusConflict, "Worker 协议版本不兼容，请协调升级 Worker 与 Control", workerregistry.ErrIncompatible)
+			c.Abort()
+			return
+		}
 		c.Set(workerContextKey, worker)
 		c.Next()
 	}
@@ -174,9 +187,11 @@ func (s *Server) workerHeartbeat(c *gin.Context) {
 		return
 	}
 	worker := currentWorker(c)
-	if err := s.workers.Heartbeat(c.Request.Context(), worker.ID, request.WorkerVersion,
-		request.ProtocolVersion, request.SSHHostKeyFingerprint, request.Metadata); err != nil {
+	if err := s.workers.Heartbeat(c.Request.Context(), worker.ID, request); err != nil {
 		status := http.StatusInternalServerError
+		if errors.Is(err, workerregistry.ErrInvalidRuntimeReport) {
+			status = http.StatusBadRequest
+		}
 		if errors.Is(err, workerregistry.ErrInvalidHostKeyFingerprint) ||
 			errors.Is(err, workerregistry.ErrHostKeyFingerprintChanged) ||
 			errors.Is(err, workerregistry.ErrHostKeyFingerprintConflict) {

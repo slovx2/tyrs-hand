@@ -9,7 +9,9 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 32
+const Version = 33
+
+const VersionHeader = "X-Tyrs-Worker-Protocol"
 
 // 控制通道报文类型。空类型保持旧行为，即 Control 发起的 RPC 请求。
 const (
@@ -69,6 +71,8 @@ type WorkerNotification struct {
 }
 
 type WorkerConfig struct {
+	AuthMethod       string         `json:"authMethod"`
+	Model            string         `json:"model"`
 	Revision         string         `json:"revision"`
 	ModelProvider    string         `json:"-"`
 	ModelProviders   map[string]any `json:"-"`
@@ -114,7 +118,14 @@ type EnrollResponse struct {
 	ProtocolVersion int       `json:"protocolVersion"`
 }
 
+// WorkerIdentityResponse 的 ID 来自已认证凭据，不接受客户端提交的机器名。
+type WorkerIdentityResponse struct {
+	WorkerID        uuid.UUID `json:"workerId"`
+	ProtocolVersion int       `json:"protocolVersion"`
+}
+
 type HeartbeatRequest struct {
+	Runtimes              []RuntimeReport `json:"runtimes"`
 	WorkerVersion         string          `json:"workerVersion"`
 	ProtocolVersion       int             `json:"protocolVersion"`
 	SSHHostKeyFingerprint string          `json:"sshHostKeyFingerprint"`

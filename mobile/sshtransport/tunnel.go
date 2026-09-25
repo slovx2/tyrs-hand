@@ -19,8 +19,9 @@ import (
 )
 
 type appServerEndpoint struct {
-	URL   string `json:"url"`
-	Token string `json:"token"`
+	URL     string      `json:"url"`
+	Token   string      `json:"token"`
+	Runtime runtimeInfo `json:"runtime"`
 }
 
 type loopbackTunnel struct {
@@ -55,6 +56,11 @@ func OpenAppServer(profileID, host string, port int, user, privateKey, passphras
 	if err != nil {
 		return "", err
 	}
+	info, err := readRuntimeInfo(client)
+	if err != nil {
+		_ = client.Close()
+		return "", err
+	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		_ = client.Close()
@@ -79,6 +85,7 @@ func OpenAppServer(profileID, host string, port int, user, privateKey, passphras
 	go tunnel.serve()
 	return marshalJSON(appServerEndpoint{
 		URL: "ws://" + listener.Addr().String() + "/" + token, Token: token,
+		Runtime: info,
 	})
 }
 

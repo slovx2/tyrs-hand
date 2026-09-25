@@ -1,0 +1,85 @@
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
+const artifactsRoot = resolve(process.env.PROTOCOL_ARTIFACT_DIR ?? resolve(root, '.artifacts/protocol'))
+const runId = randomUUID()
+const artifacts = resolve(artifactsRoot, 'runs', runId)
+const codex = process.env.TYRS_HAND_TEST_CODEX_BIN ?? 'codex'
+const go = process.env.GO ?? 'go'
+if (process.versions.node !== '24.14.0') throw new Error('协议矩阵必须使用 Node 24.14.0')
+mkdirSync(artifacts, { recursive: true })
+writeFileSync(resolve(artifactsRoot, 'latest.json'), JSON.stringify({ runId, directory: artifacts,
+  scope: process.argv.includes('--runtime-only') ? 'runtime-only' : 'full-matrix' }))
+const env = { ...process.env, PROTOCOL_ARTIFACT_DIR: artifacts,
+  CODEX_SCHEMA_DIR: resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'),
+  PROTOCOL_RUN_ID: runId, TYRS_HAND_TEST_CODEX_BIN: codex,
+  TYRS_HAND_TEST_CLAUDE_BIN: resolve(adapter, 'scripts/worker-runtime'),
+}
+writeFileSync(resolve(artifacts, 'run.json'), JSON.stringify({ runId: env.PROTOCOL_RUN_ID, startedAt: new Date().toISOString() }))
+const run = (command, args, cwd = root) => execFileSync(command, args, { cwd, env, stdio: 'inherit' })
+const output = (command, args, cwd = root) => execFileSync(command, args, { cwd, env, encoding: 'utf8' }).trim()
+const version = output(codex, ['--version'])
+if (version !== 'codex-cli 0.147.0') throw new Error(`Codex 测试 CLI 版本错误: ${version}`)
+const pin = JSON.parse(readFileSync(resolve(root, 'protocol/adapter-lock.json'), 'utf8'))
+const actual = output('git', ['rev-parse', 'HEAD'], adapter)
+if (actual !== pin.commit) throw new Error(`适配器 commit 不匹配: ${actual}; 预期 ${pin.commit}`)
+if (process.env.CI && output('git', ['status', '--porcelain'], adapter))
+  throw new Error('CI 禁止使用未提交的适配器源码')
+run('npm', ['run', 'build'], adapter)
+writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: process.versions.node,
+  codex: version, adapterCommit: actual, adapterDirty: !!output('git', ['status', '--porcelain'], adapter),
+  workerCommit: output('git', ['rev-parse', 'HEAD']), platform: process.platform, arch: process.arch,
+}, null, 2))
+
+// 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
+const suites = [
+  { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
+    cases: ['ENTRY-001', 'ISOLATION-001', 'FAILURE-001'] },
+  { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
+    cases: ['ENTRY-002', 'TOOLS-002'] },
+]
+for (const suite of suites) {
+  suite.binary = resolve(artifacts, `${suite.name}.test`)
+  run(go, ['test', '-c', '-tags=integration', '-o', suite.binary, suite.pkg])
+}
+const command = process.platform === 'darwin' ? '/usr/bin/sandbox-exec' : 'unshare'
+const isolation = process.platform === 'darwin'
+  ? ['-p', '(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*") (remote unix-socket))']
+  : ['--user', '--map-root-user', '--net', '/bin/sh', '-ec', 'ip link set lo up; exec "$@"', 'runtime-test']
+const xml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')
+let runtimeExecutions = ''
+for (const suite of suites) {
+  const runtime = spawnSync(command, [...isolation, go, 'tool', 'test2json', '-t', '-p', `${suite.name}-e2e`, suite.binary,
+    '-test.v', `-test.run=^${suite.test}$`, '-test.timeout=90s'],
+    { cwd: root, env, encoding: 'utf8', timeout: 110_000, maxBuffer: 16 * 1024 * 1024 })
+  writeFileSync(resolve(artifacts, `${suite.name}.jsonl`), runtime.stdout ?? '')
+  const events = (runtime.stdout ?? '').split('\n').filter(Boolean).map(line => JSON.parse(line))
+  const succeeded = events.some(event => event.Action === 'pass' && event.Test === suite.test)
+  const failed = runtime.error || runtime.status !== 0 || !succeeded || events.some(event => event.Action === 'skip' || event.Action === 'fail')
+  writeFileSync(resolve(artifacts, `${suite.name}-junit.xml`), `<?xml version="1.0"?><testsuite name="${suite.name}-e2e" tests="1" failures="${failed ? 1 : 0}" skipped="0"><testcase name="${suite.test}">${failed ? `<failure message="${xml(runtime.error ?? '真实 SSH 验收失败')}">${xml(runtime.stdout)}</failure>` : ''}</testcase></testsuite>`)
+  if (failed) {
+    process.stderr.write(runtime.stdout ?? '')
+    process.stderr.write(runtime.stderr ?? '')
+    throw runtime.error ?? new Error(`${suite.name} 真实 SSH 双引擎验收失败`)
+  }
+  runtimeExecutions += ['codex', 'claude-code'].map(engine => JSON.stringify({
+    runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
+    caseIds: [...suite.cases, ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001'] : [])], status: 'passed',
+  })).join('\n') + '\n'
+}
+console.log('真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
+writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
+if (!process.argv.includes('--runtime-only')) {
+  let adapterFailure
+  try { run('npm', ['run', 'test:protocol'], adapter) } catch (error) { adapterFailure = error }
+  const executionPath = resolve(artifacts, 'executions.jsonl')
+  writeFileSync(executionPath, readFileSync(executionPath, 'utf8') + runtimeExecutions)
+  // 即使 adapter 用例失败仍输出本轮覆盖缺口，不能由旧成功报表掩盖失败。
+  run(process.execPath, ['tools/protocol-inventory/inventory.mjs'])
+  if (adapterFailure) throw adapterFailure
+}

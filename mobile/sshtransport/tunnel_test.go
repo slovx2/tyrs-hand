@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -77,6 +78,10 @@ func TestLoopbackRelaysWorkerSSHProxy(t *testing.T) {
 			ID: "mobile", PublicKey: signer.PublicKey(),
 		}},
 		Runtime: mobileWebSocketRuntime{}, Logger: zap.NewNop(),
+		RuntimeInfo: func() hostworker.RuntimeInfo {
+			return hostworker.RuntimeInfo{Identity: runtimeidentity.Identity{WorkerID: "test-worker", Engine: runtimeidentity.Codex},
+				ProtocolVersion: "0.147.0", Status: "running", Capabilities: []string{}, ReleaseReady: true}
+		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, server.Close()) })

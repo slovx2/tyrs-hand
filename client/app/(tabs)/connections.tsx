@@ -15,7 +15,7 @@ import { removeConnection, renameConnection, saveSSHConnection,
   updateSSHHostFingerprint, type SSHConnection } from "@/db/connections";
 import { addSSHProject } from "@/db/sshProjects";
 import { connectPairingUri } from "@/features/connections/connectPairing";
-import { listSSHDirectory, probeSSHHost, probeSSHHostAddress,
+import { inspectSSHRuntime, listSSHDirectory, probeSSHHost, probeSSHHostAddress,
   sshTransport } from "@/native/sshTransport";
 import { isDefaultAssistant, openAssistantSettings } from "@/native/voiceWake";
 import { LiveCodexSettings } from "@/features/live/LiveCodexSettings";
@@ -23,6 +23,7 @@ import { isPreviewMode } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { ThemeMode } from "@/theme/tokens";
+import { engineName } from "@/types/runtime";
 
 export default function ConnectionsScreen() {
   const theme = useTheme();
@@ -201,8 +202,11 @@ export default function ConnectionsScreen() {
         { text: "确认并保存", onPress: () => void (async () => {
           try {
             const profileId = Crypto.randomUUID();
+            const runtime = await inspectSSHRuntime({ host: ssh.host.trim(), port, user: ssh.user.trim(),
+              privateKey: ssh.privateKey, passphrase: ssh.passphrase || null, expectedHostFingerprint: fingerprint });
             const savedProfileId = await saveSSHConnection({ kind: "ssh", profileId,
-              name: ssh.name.trim() || `${ssh.user.trim()}@${ssh.host.trim()}`,
+              engine: runtime.engine, workerId: runtime.workerId,
+              name: ssh.name.trim() || `${ssh.user.trim()}@${ssh.host.trim()} · ${engineName(runtime.engine)}`,
               host: ssh.host.trim(), port, user: ssh.user.trim(), keyRef: Crypto.randomUUID(),
               hostFingerprint: fingerprint,
               privateKey: ssh.privateKey, ...(ssh.passphrase ? { passphrase: ssh.passphrase } : {}) });
@@ -260,7 +264,7 @@ export default function ConnectionsScreen() {
           onPress={() => void enableAssistant()} />
       </View>
     </Card> : null}
-    <LiveCodexSettings />
+    {active?.engine === "codex" && <LiveCodexSettings />}
     <ConnectionErrorBanner />
     <View style={styles.list}>{connections.length === 0
       ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码关联 Control Worker。" />
@@ -271,6 +275,7 @@ export default function ConnectionsScreen() {
           ? connectionError ? "danger" : "success" : "muted"} />
           <View testID={active?.profileId === connection.profileId ? "connection:active" : "connection:inactive"}
             style={styles.connectionCopy}><Title>{connection.name}</Title>
+            <Muted>{engineName(connection.engine)}</Muted>
             <Muted numberOfLines={1}>{connection.kind === "ssh"
               ? `${connection.user}@${connection.host}:${connection.port}`
               : "尚未配置 SSH"}</Muted>

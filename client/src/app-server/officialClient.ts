@@ -88,6 +88,7 @@ export class OfficialAppServerClient {
 
   constructor(
     readonly profileId: string,
+    readonly engine: import("@/types/runtime").Engine,
     private readonly rpc: OfficialRpcClient,
     private readonly journal: SubmissionJournal,
   ) {
@@ -364,9 +365,9 @@ export class OfficialAppServerClient {
     const prompt = input.prompt.trim();
     if (!prompt) return null;
     const params: ThreadStartParams = {
-      model: TITLE_MODEL,
+      model: this.engine === "codex" ? TITLE_MODEL : null,
       modelProvider: null,
-      allowProviderModelFallback: true,
+      allowProviderModelFallback: this.engine === "codex",
       cwd: input.cwd,
       runtimeWorkspaceRoots: [],
       approvalPolicy: "never",

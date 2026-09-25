@@ -66,7 +66,7 @@ const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: n
 describe("OfficialAppServerClient", () => {
   it("App Server 断线时清理旧交互请求，并允许新连接重新登记请求", () => {
     const rpc = new FakeRpc(() => undefined);
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
     const closeErrors: string[] = [];
     client.onClose((error) => closeErrors.push(error.message));
     const request = (id: string): ServerRequest => ({ id,
@@ -88,11 +88,12 @@ describe("OfficialAppServerClient", () => {
     expect(client.pendingRequests("thread-1").map((item) => String(item.id))).toEqual(["new"]);
   });
 
-  it("使用受限 Luna 临时线程生成结构化标题并在结束后取消订阅", async () => {
+  it.each(["codex", "claude-code"] as const)("%s 使用所属引擎的受限临时线程生成标题", async (engine) => {
     let rpc!: FakeRpc;
     rpc = new FakeRpc((method, params) => {
       if (method === "thread/start") {
-        expect(params).toMatchObject({ model: "gpt-5.6-luna", ephemeral: true,
+        expect(params).toMatchObject({ model: engine === "codex" ? "gpt-5.6-luna" : null, ephemeral: true,
+          allowProviderModelFallback: engine === "codex",
           approvalPolicy: "never", permissions: ":read-only", runtimeWorkspaceRoots: [] });
         return { thread: { ...officialThread([]), id: "title-thread", ephemeral: true } };
       }
@@ -114,7 +115,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "thread/unsubscribe") return { status: "notLoaded" };
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", engine, rpc, new MemoryJournal());
     const visible: string[] = [];
     client.subscribe((event) => visible.push(event.method));
 
@@ -141,7 +142,7 @@ describe("OfficialAppServerClient", () => {
         sortKey: "updated_at", sortDirection: "desc" });
       return { data: [officialThread([])], nextCursor: null };
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     expect(await client.listThreads()).toHaveLength(1);
   });
@@ -153,7 +154,7 @@ describe("OfficialAppServerClient", () => {
         archived: false, sortKey: "updated_at", sortDirection: "desc" });
       return { data: [officialThread([])], nextCursor: "more" };
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     expect(await client.listRecentThreads()).toHaveLength(1);
     expect(rpc.calls).toHaveLength(1);
@@ -164,7 +165,7 @@ describe("OfficialAppServerClient", () => {
       throw new JsonRpcRequestError("No rollout found for thread id thread-phantom",
         method, "rejected", -32004);
     });
-    const missingClient = new OfficialAppServerClient("profile-1", missingRpc,
+    const missingClient = new OfficialAppServerClient("profile-1", "codex", missingRpc,
       new MemoryJournal());
 
     await expect(missingClient.readThreadMetadataIfExists("thread-phantom")).resolves.toBeNull();
@@ -172,7 +173,7 @@ describe("OfficialAppServerClient", () => {
     const networkRpc = new FakeRpc((method) => {
       throw new JsonRpcRequestError("thread/read 响应超时", method, "unknown");
     });
-    const networkClient = new OfficialAppServerClient("profile-1", networkRpc,
+    const networkClient = new OfficialAppServerClient("profile-1", "codex", networkRpc,
       new MemoryJournal());
 
     await expect(networkClient.readThreadMetadataIfExists("thread-unknown"))
@@ -184,7 +185,7 @@ describe("OfficialAppServerClient", () => {
       throw new JsonRpcRequestError("no rollout found for thread id thread-phantom",
         method, "rejected", -32004);
     });
-    const missingClient = new OfficialAppServerClient("profile-1", missingRpc,
+    const missingClient = new OfficialAppServerClient("profile-1", "codex", missingRpc,
       new MemoryJournal());
 
     await expect(missingClient.resumeThreadForSubmissionIfExists("thread-phantom"))
@@ -193,7 +194,7 @@ describe("OfficialAppServerClient", () => {
     const networkRpc = new FakeRpc((method) => {
       throw new JsonRpcRequestError("thread/resume 响应超时", method, "unknown");
     });
-    const networkClient = new OfficialAppServerClient("profile-1", networkRpc,
+    const networkClient = new OfficialAppServerClient("profile-1", "codex", networkRpc,
       new MemoryJournal());
 
     await expect(networkClient.resumeThreadForSubmissionIfExists("thread-unknown"))
@@ -211,7 +212,7 @@ describe("OfficialAppServerClient", () => {
       expect(params).toMatchObject({ initialTurnsPage: { itemsView: "full" } });
       return resumeResult(officialThread([recovered]), [recovered]);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const thread = await client.resumeThreadForSubmissionIfExists("thread-1");
 
@@ -233,7 +234,7 @@ describe("OfficialAppServerClient", () => {
       }
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const resumed = await client.resumeThreadPage("thread-1");
 
@@ -259,7 +260,7 @@ describe("OfficialAppServerClient", () => {
       }
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const page = await client.listTurnPage("thread-1", "older-1");
 
@@ -279,7 +280,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "thread/items/list") return itemsForTurn(turns, params);
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const page = await client.listTurnPage("thread-1", null, 5, "full", "paginated");
 
@@ -299,7 +300,7 @@ describe("OfficialAppServerClient", () => {
         }
         throw new Error(`unexpected ${method}`);
       });
-      return { client: new OfficialAppServerClient("profile-1", rpc, new MemoryJournal()), rpc };
+      return { client: new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal()), rpc };
     };
     const unsupported = createClient(-32601, "legacy");
     const supported = createClient(-32004, "paginated");
@@ -332,7 +333,7 @@ describe("OfficialAppServerClient", () => {
       }
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     await client.startThread("/workspace", "gpt-test", source);
     expect((await client.findThreadBySource(source))?.threadSource).toBe(source);
@@ -346,7 +347,7 @@ describe("OfficialAppServerClient", () => {
       }
       throw new Error(`新 Thread 首次提交不应调用 ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const result = await client.submitNewThread(thread, { clientMessageId: "message-first",
       input: [textInput("hello")], preferences });
@@ -368,7 +369,7 @@ describe("OfficialAppServerClient", () => {
       }
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
     await client.submitNewThread(thread, { clientMessageId: "message-workspace",
       input: [textInput("hello")], preferences: { ...preferences, permissions: ":workspace" } });
   });
@@ -380,7 +381,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "turn/steer") return { turnId: "turn-plan" };
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
     rpc.emitRequest({ id: "question-1", method: "item/tool/requestUserInput", params: {
       threadId: thread.id, turnId: "turn-plan", itemId: "item-question", questions: [],
       isBlocking: true, autoResolutionMs: null,
@@ -413,7 +414,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "turn/steer") return { turnId: "turn-new" };
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const result = await client.submit({ threadId: "thread-1", clientMessageId: "message-2",
       input: [textInput("steer")], preferences });
@@ -439,7 +440,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "turn/steer") return { turnId: "turn-external" };
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
 
     const result = await client.submit({ threadId: "thread-1", clientMessageId: "message-race",
       input: [textInput("join")], preferences });
@@ -472,7 +473,7 @@ describe("OfficialAppServerClient", () => {
       throw new Error(`unexpected ${method}`);
     });
     const journal = new MemoryJournal();
-    const client = new OfficialAppServerClient("profile-1", rpc, journal);
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, journal);
 
     const result = await client.submit({ threadId: "thread-1", clientMessageId: "message-3",
       input: [textInput("hello")], preferences });
@@ -506,7 +507,7 @@ describe("OfficialAppServerClient", () => {
       throw new Error(`提交恢复期间不应调用 ${method}`);
     });
     const journal = new MemoryJournal();
-    const client = new OfficialAppServerClient("profile-1", rpc, journal);
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, journal);
 
     const result = await client.submit({ threadId: "thread-1",
       clientMessageId: "message-bootstrap", input: [textInput("hello")], preferences });
@@ -532,7 +533,7 @@ describe("OfficialAppServerClient", () => {
       throw new Error(`冷启动去重不应调用 ${method}`);
     });
     const journal = new MemoryJournal();
-    const client = new OfficialAppServerClient("profile-1", rpc, journal);
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, journal);
 
     const result = await client.recoverSubmission({ threadId: "thread-1",
       clientMessageId: "message-persisted", projectId: "project-1",
@@ -560,7 +561,7 @@ describe("OfficialAppServerClient", () => {
       throw new Error(`unexpected ${method}`);
     });
     const journal = new MemoryJournal();
-    const client = new OfficialAppServerClient("profile-1", rpc, journal);
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, journal);
 
     const result = await client.recoverSubmission({ threadId: "thread-1",
       clientMessageId: "message-retry", projectId: "project-1",
@@ -580,7 +581,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "turn/start") { await gate; return { turn: officialTurn("turn-1", "inProgress", []) }; }
       throw new Error(`unexpected ${method}`);
     });
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
     const input = { threadId: "thread-1", clientMessageId: "plan:thread-1:item-plan",
       input: [textInput("PLEASE IMPLEMENT THIS PLAN:\nplan")], preferences };
     const first = client.submit(input);
@@ -593,7 +594,7 @@ describe("OfficialAppServerClient", () => {
 
   it("其他端已回答的 Server Request 不再重复回应", () => {
     const rpc = new FakeRpc(() => ({}));
-    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());
     rpc.emitRequest({ id: 9, method: "item/fileChange/requestApproval", params: {
       threadId: "thread-1", turnId: "turn-1", itemId: "item-1", reason: null,
       grantRoot: null, startedAtMs: 1,
@@ -639,7 +640,7 @@ describe("移动端摘要与详情请求边界", () => {
       }
       throw new Error(`禁止首屏详情请求 ${method}`);
     });
-    const client = new OfficialAppServerClient("profile", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile", "codex", rpc, new MemoryJournal());
     await client.resumeThreadPage("thread-1", "summary", 5, "paginated");
     await client.listTurnPage("thread-1", "older", 5, "summary", "paginated");
     expect(rpc.calls.map((call) => call.method)).toEqual(["thread/resume", "thread/turns/list"]);
@@ -649,7 +650,7 @@ describe("移动端摘要与详情请求边界", () => {
     const rpc = new FakeRpc(() => ({ data: ["new", "old"].map((id) => ({ turnId: "target",
       item: { type: "agentMessage", id, text: id, phase: "commentary", memoryCitation: null } })),
     nextCursor: "more", backwardsCursor: null }));
-    const client = new OfficialAppServerClient("profile", rpc, new MemoryJournal());
+    const client = new OfficialAppServerClient("profile", "codex", rpc, new MemoryJournal());
     const page = await client.listTurnItems("thread-1", "target", null, "desc");
     expect(rpc.calls).toEqual([{ method: "thread/items/list", params: {
       threadId: "thread-1", turnId: "target", cursor: null, limit: 50, sortDirection: "desc" } }]);

@@ -19,6 +19,7 @@ type hostCallState struct {
 	inner        any
 	subscription *appserverhub.Subscription
 	unbind       func()
+	releaseSlot  func()
 	once         sync.Once
 }
 
@@ -67,6 +68,16 @@ func (c *HostDesktopController) PrepareCall(ctx context.Context, call appserverh
 			c.mu.Unlock()
 			state.subscription.Close()
 			return appserverhub.CallPlan{}, errors.New("此 Thread 已有正在执行的 turn")
+		}
+		if c.processor.turnSlots != nil {
+			select {
+			case c.processor.turnSlots <- struct{}{}:
+				state.releaseSlot = func() { <-c.processor.turnSlots }
+			default:
+				c.mu.Unlock()
+				state.subscription.Close()
+				return appserverhub.CallPlan{}, errors.New("Worker 已达到两个引擎共享的并发上限")
+			}
 		}
 		c.active[threadID] = state
 		c.mu.Unlock()
@@ -131,7 +142,7 @@ func (c *HostDesktopController) CompleteCall(ctx context.Context, call appserver
 }
 
 func (c *HostDesktopController) observeHostCall(threadID, turnID string, state *hostCallState) {
-	taskID := localBrowserTaskID(threadID, turnID)
+	taskID := c.processor.localBrowserTaskID(threadID, turnID)
 	if bound, ok := state.inner.(*desktopCallState); ok {
 		taskID = bound.task.Claimed.ID.String()
 	}
@@ -159,6 +170,9 @@ func (c *HostDesktopController) observeHostCall(threadID, turnID string, state *
 
 func (c *HostDesktopController) finishHostCall(threadID string, state *hostCallState) {
 	state.once.Do(func() {
+		if state.releaseSlot != nil {
+			state.releaseSlot()
+		}
 		if state.subscription != nil {
 			state.subscription.Close()
 		}
@@ -201,8 +215,9 @@ func (c *HostDesktopController) WaitArchiveReady(ctx context.Context, call appse
 	return state.controller.WaitArchiveReady(ctx, call, plan)
 }
 
-func localBrowserTaskID(threadID, turnID string) string {
-	digest := sha256.Sum256([]byte(threadID + "\x00" + turnID))
+func (p *Processor) localBrowserTaskID(threadID, turnID string) string {
+	identity := p.runtimeIdentity
+	digest := sha256.Sum256([]byte(identity.WorkerID + "\x00" + string(identity.Engine) + "\x00" + threadID + "\x00" + turnID))
 	return "desktop-" + hex.EncodeToString(digest[:])
 }
 
@@ -220,7 +235,7 @@ func (p *Processor) handleLocalHostTool(ctx context.Context, runtime hostWorkspa
 			return p.executeImageGenerationTool(ctx, runtime.Workspace, request), nil
 		}
 	case browserToolNamespace:
-		return executeBrowserTool(ctx, p.cfg, localBrowserTaskID(request.ThreadID, request.TurnID), runtime.Workspace, request)
+		return executeBrowserTool(ctx, p.cfg, p.localBrowserTaskID(request.ThreadID, request.TurnID), runtime.Workspace, request)
 	case "git":
 		if request.Tool == "publish_branch" {
 			return codex.TextToolResult("Forum 发布需要有效的 Workspace 绑定", false), nil

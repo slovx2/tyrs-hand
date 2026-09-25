@@ -14,6 +14,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestDesktopEventReporterBatchesEvents(t *testing.T) {
@@ -28,7 +29,7 @@ func TestDesktopEventReporterBatchesEvents(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second},
+	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second}, logger: zap.NewNop(),
 		client: workerprotocol.NewClient(server.URL, "credential", time.Second)}
 	task := &workerprotocol.Task{Claimed: codexcontrol.ClaimedControl{
 		RunID: uuid.New(), Intent: codexcontrol.Intent{ID: uuid.New()}}}

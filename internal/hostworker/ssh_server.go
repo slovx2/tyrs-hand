@@ -26,7 +26,9 @@ type SSHOptions struct {
 	CodexHome         string
 	Shell             string
 	AuthorizedClients []AuthorizedClient
+	Authorization     *ClientAuthorization
 	Runtime           DesktopServer
+	RuntimeInfo       func() RuntimeInfo
 	BrowserProxy      func(context.Context, io.ReadWriteCloser) error
 	Logger            *zap.Logger
 }
@@ -62,20 +64,19 @@ func StartSSHServer(ctx context.Context, options SSHOptions) (*SSHServer, error)
 	if err != nil {
 		return nil, err
 	}
-	clients := make(map[string]string, len(options.AuthorizedClients))
-	for _, client := range options.AuthorizedClients {
-		clients[string(client.PublicKey.Marshal())] = client.ID
+	if options.Authorization == nil {
+		options.Authorization = NewClientAuthorization(options.AuthorizedClients)
 	}
 	configuration := &ssh.ServerConfig{
 		PublicKeyCallback: func(metadata ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			clientID, ok := clients[string(key.Marshal())]
+			clientID, ok := options.Authorization.lookup(string(key.Marshal()))
 			if !ok {
 				options.Logger.Warn("拒绝未授权 Worker SSH 公钥",
 					zap.String("fingerprint", ssh.FingerprintSHA256(key)),
 					zap.String("remote", metadata.RemoteAddr().String()))
 				return nil, errors.New("SSH 公钥未授权")
 			}
-			return &ssh.Permissions{Extensions: map[string]string{"client-id": clientID}}, nil
+			return &ssh.Permissions{Extensions: map[string]string{"client-id": clientID, "client-key": string(key.Marshal())}}, nil
 		},
 		MaxAuthTries: 3,
 	}
@@ -87,6 +88,9 @@ func StartSSHServer(ctx context.Context, options SSHOptions) (*SSHServer, error)
 	server := &SSHServer{options: options, listener: listener, config: configuration,
 		hostKeyFingerprint: ssh.FingerprintSHA256(signer.PublicKey()),
 		connections:        make(map[*ssh.ServerConn]struct{})}
+	options.Authorization.mu.Lock()
+	options.Authorization.servers[server] = struct{}{}
+	options.Authorization.mu.Unlock()
 	server.wg.Add(1)
 	go server.serve(ctx)
 	return server, nil
@@ -97,6 +101,9 @@ func (s *SSHServer) Addr() net.Addr { return s.listener.Addr() }
 func (s *SSHServer) HostKeyFingerprint() string { return s.hostKeyFingerprint }
 
 func (s *SSHServer) Close() error {
+	s.options.Authorization.mu.Lock()
+	delete(s.options.Authorization.servers, s)
+	s.options.Authorization.mu.Unlock()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -144,6 +151,9 @@ func (s *SSHServer) handleConnection(raw net.Conn) {
 	}
 	s.connections[connection] = struct{}{}
 	s.mu.Unlock()
+	if id, ok := s.options.Authorization.lookup(connection.Permissions.Extensions["client-key"]); !ok || id != connection.Permissions.Extensions["client-id"] {
+		_ = connection.Close()
+	}
 	defer func() {
 		s.mu.Lock()
 		delete(s.connections, connection)

@@ -1,0 +1,64 @@
+//go:build integration
+
+package hostworker
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
+	"github.com/stretchr/testify/require"
+)
+
+type protocolTraceTransport struct {
+	codex.MessageTransport
+	mu       sync.Mutex
+	messages []map[string]any
+}
+
+func (p *protocolTraceTransport) record(direction string, payload []byte) {
+	var message map[string]any
+	if json.Unmarshal(payload, &message) != nil {
+		return
+	}
+	message["direction"] = direction
+	p.mu.Lock()
+	p.messages = append(p.messages, message)
+	p.mu.Unlock()
+}
+
+func (p *protocolTraceTransport) ReadMessage() (int, []byte, error) {
+	kind, payload, err := p.MessageTransport.ReadMessage()
+	if err == nil {
+		p.record("server", payload)
+	}
+	return kind, payload, err
+}
+
+func (p *protocolTraceTransport) WriteMessage(kind int, payload []byte) error {
+	p.record("client", payload)
+	return p.MessageTransport.WriteMessage(kind, payload)
+}
+
+func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engine) {
+	t.Helper()
+	directory := os.Getenv("PROTOCOL_ARTIFACT_DIR")
+	if directory == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	data, err := json.MarshalIndent(map[string]any{
+		"formatVersion": 1, "runId": os.Getenv("PROTOCOL_RUN_ID"), "engine": engine,
+		"caseName": t.Name(), "caseIds": []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"},
+		"kind": "wire", "payload": map[string]any{"messages": p.messages, "protocolErrors": []string{}},
+	}, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(directory, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "wire-runtime-"+string(engine)+"-"+uuid.NewString()+".json"), data, 0o600))
+}

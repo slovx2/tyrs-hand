@@ -37,3 +37,11 @@ func TestParseAuthorizedClientsRejectsOptionsAndDuplicates(t *testing.T) {
 	_, err = ParseAuthorizedClients([]byte(line + "\n" + line))
 	require.Error(t, err)
 }
+
+func TestParseAuthorizedClientsAllowsRevokingAllKeys(t *testing.T) {
+	for _, data := range []string{"", " \n", "# 所有客户端已撤销", "# comment\n\n# another\n"} {
+		clients, err := ParseAuthorizedClients([]byte(data))
+		require.NoError(t, err)
+		require.Empty(t, clients)
+	}
+}

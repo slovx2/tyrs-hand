@@ -21,6 +21,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -179,7 +180,7 @@ supports_websockets=false
 	require.NoError(t, err)
 	tokens, err := DeriveBrowserAppServerTokens(cfg, scope)
 	require.NoError(t, err)
-	runtime, err := hostworker.StartRuntime(ctx, hostworker.RuntimeOptions{CodexBin: bin, CodexHome: home, Home: root, WorkspaceRoot: cwd, StateDir: data, Controller: c, BrowserWorkerToken: tokens.Worker, BrowserDesktopToken: tokens.Desktop})
+	runtime, err := hostworker.StartRuntime(ctx, hostworker.RuntimeOptions{Engine: runtimeidentity.Codex, CodexBin: bin, CodexHome: home, Home: root, WorkspaceRoot: cwd, StateDir: data, Controller: c, BrowserWorkerToken: tokens.Worker, BrowserDesktopToken: tokens.Desktop})
 	require.NoError(t, err)
 	defer runtime.Close()
 	p.UseHostRuntime(runtime, scope, nil)

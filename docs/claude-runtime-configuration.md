@@ -1,0 +1,76 @@
+# Claude 运行时配置
+
+控制台的 Worker「运行时配置」页分别管理 Codex 和 Claude Code。Claude 使用原生
+`CLAUDE.md` 与 `settings.json`，格式遵循 [Claude 配置目录文档](https://code.claude.com/docs/en/claude-directory)。
+
+Worker 的 Claude 配置目录为：
+
+```text
+<WorkerDataRoot>/claude-code/config/claude/
+  CLAUDE.md
+  settings.json
+  settings.json.bak.1 … settings.json.bak.4
+```
+
+该目录作为 Claude runtime 的 `CLAUDE_CONFIG_DIR`，对应原生默认的 `~/.claude`。
+不会改写运行 Worker 的用户个人配置目录，也不复制 Codex 的 AGENTS.md 或登录态。
+全局 `CLAUDE.md` 对该 runtime 下的项目生效；项目自己的指令文件继续按原生规则加载。
+
+Provider 示例（虚拟凭据）：
+
+```json
+{
+  "model": "claude-sonnet-4-6",
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4321",
+    "ANTHROPIC_AUTH_TOKEN": "example-only"
+  }
+}
+```
+
+控制台支持 API Key (`ANTHROPIC_API_KEY`，x-api-key) 和 Auth Token
+(`ANTHROPIC_AUTH_TOKEN`，Bearer)。切换认证方式需填入对应凭据，保存时移除另一种认证字段。
+密钥输入留空保留当前方式的密钥，清除操作显式删除。响应不包含密钥或任意原始设置。
+现有 hooks、权限和其他 settings 字段会保留。保存模型时清理旧的 `ANTHROPIC_MODEL`，
+避免它继续覆盖 `model`；默认模型留空则使用 Claude 原生默认值。
+
+Claude 专用环境文件只允许运行开关，不接受 Provider 字段；宿主模型环境变量不继承。
+客户端未指定模型时，适配器的 `claude-default` 将选择交给 SDK，从而遵循原生配置。
+显式会话模型仍优先于全局默认模型。原生项目设置及受管理设置仍遵循 Claude 自身优先级。
+
+配置 API 为 `/workers/{id}/runtimes/{engine}/config`，引擎仅允许 `codex` 与
+`claude-code`。控制通道 RPC 必须携带同一引擎，缺省和未知值直接拒绝。
+每次修改携带读取时的 revision；并发或过期修改返回冲突，不覆盖新版本。
+Claude 文件原子写入，权限 0600，修改前保留四份历史版本。备份失败则不覆盖现配置。
+
+验证包含配置真实 WebSocket 通道、原生文件与备份检查、并发冲突及控制台交互测试。
+`make test-runtime-e2e` 使用真实双 SSH、Hub、SDK/CLI 与本地 Mock LLM，断言
+settings 中的认证、地址、模型以及 CLAUDE.md 实际进入请求。
+
+入口配置使用 `TYRS_HAND_WORKER_CLAUDE_ENABLED=true` 显式启用 Claude，
+`TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR` 默认 `:3333`，Codex 保留 `:2222`。
+两个入口读取同一份客户端授权公钥，Host Key、状态目录、进程和 Controller 独立。
+两引擎和任务调度共用 Worker 并发配额。
+授权文件变更在一秒内同步到两个入口，并关闭被撤销密钥的既有连接。
+授权文件丢失、不可读或损坏时撤销全部授权；修复文件后自动恢复，不重启引擎。
+
+Control 的 `worker_runtimes` 以 `(worker_id, engine)` 保存完整心跳快照。
+运行状态、指纹、构建版本和模型目录独立保存；未出现在新快照中的引擎停用但不删除。
+任一指纹变化或冲突会回滚整次心跳。旧 Worker 数据一次性回填为 Codex，
+新协议拒绝缺失运行时快照的心跳。控制台概览通过 `/workers/{id}/runtimes`
+展示各入口；心跳超过两分钟显示离线。
+所有已认证 Worker 请求（含 WebSocket 握手和文件传输）必须携带
+`X-Tyrs-Worker-Protocol: 33`，缺失或版本不符返回 409。数据库迁移更新期望版本
+不会授权仍在运行的旧 Worker；协调升级完成后才恢复任务派发。
+
+`TestWorkerBootstrapRealSSHSharedBudgetAndGitTool` 使用正式 Worker 启动流程，
+验证真实 SSH、SDK→Hub→Git commit 的文件副作用、工具结果回到下一次模型请求，
+以及两个引擎的并发限制。该用例加入 `make test-runtime-e2e`，输出独立 JUnit、
+wire trace、模型请求和 Git 副作用证据。
+每轮证据保存在 `.artifacts/protocol/runs/<runId>/`，`latest.json` 指向最近一轮及
+其验收范围。只运行入口验收不会沿用上一轮完整矩阵的覆盖报告。
+
+当前发布状态：`releaseReady=false`。控制台可预配置 Claude；正式 Worker 的 Claude
+Controller 已接入本地 SSH；Claude 的 Control 会话同步仍关闭，任务、Discord 和
+定时任务的引擎隔离尚未全部接线。未启用的 runtime 重启会明确报错。
+这部分验收通过不代表完整双引擎协议矩阵或移动/桌面 GUI 发布验收通过。

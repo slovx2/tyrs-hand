@@ -17,7 +17,8 @@ export function resolveMachineControlBinding(
       message: "当前机器尚未关联 Control Worker，请到设置页扫码关联" };
   }
   const workerIds = [...new Set(connection.controls.map((item) => item.workerId))];
-  if (workerIds.length !== 1) {
+  if (workerIds.length !== 1 || connection.controls.some((item) => item.engine !== connection.engine) ||
+    (connection.workerId !== null && connection.workerId !== workerIds[0])) {
     return { status: "ambiguous", link: null, workerId: null,
       message: "当前机器关联了多个 Worker，请到设置页修复绑定" };
   }

@@ -13,7 +13,10 @@ const (
 )
 
 var methodClasses = map[string]methodClass{
-	"initialize": methodLocal,
+	"initialize":        methodLocal,
+	"runtime/info":      methodForward,
+	"thread/turns/list": methodForward,
+	"thread/items/list": methodForward,
 
 	"account/rateLimits/read":                  methodForward,
 	"account/usage/read":                       methodForward,

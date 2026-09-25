@@ -26,6 +26,14 @@ func ParseAuthorizedClients(data []byte) ([]AuthorizedClient, error) {
 	clients := make([]AuthorizedClient, 0)
 	seen := make(map[string]struct{})
 	for len(remaining) > 0 {
+		if remaining[0] == '#' {
+			_, rest, found := bytes.Cut(remaining, []byte{'\n'})
+			if !found {
+				break
+			}
+			remaining = bytes.TrimSpace(rest)
+			continue
+		}
 		key, comment, options, rest, err := ssh.ParseAuthorizedKey(remaining)
 		if err != nil {
 			return nil, fmt.Errorf("解析 Worker SSH 授权公钥: %w", err)
@@ -45,8 +53,6 @@ func ParseAuthorizedClients(data []byte) ([]AuthorizedClient, error) {
 		clients = append(clients, AuthorizedClient{ID: id, PublicKey: key})
 		remaining = bytes.TrimSpace(rest)
 	}
-	if len(clients) == 0 {
-		return nil, errors.New("worker SSH 至少需要一个授权公钥")
-	}
+	// 撤销全部客户端后仍允许 Worker 重启并连接 Control，不放行任何 SSH 登录。
 	return clients, nil
 }

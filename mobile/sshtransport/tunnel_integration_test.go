@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -45,7 +46,8 @@ stream_max_retries = 0
 supports_websockets = false
 `), 0o600))
 	ctx, cancel := context.WithCancel(context.Background())
-	runtime, err := hostworker.StartRuntime(ctx, hostworker.RuntimeOptions{
+	runtime, err := hostworker.StartRuntime(ctx, hostworker.RuntimeOptions{Engine: runtimeidentity.Codex,
+		WorkerID: "mobile-test-worker",
 		CodexBin: fixedMobileCodex(t), CodexHome: filepath.Join(root, "codex-home"),
 		Home: filepath.Join(root, "home"), WorkspaceRoot: filepath.Join(root, "workspaces"),
 		StateDir: filepath.Join(root, "state"), CodexStdout: io.Discard,
@@ -62,7 +64,7 @@ supports_websockets = false
 	server, err := hostworker.StartSSHServer(ctx, hostworker.SSHOptions{
 		ListenAddr: "127.0.0.1:0", HostKeyFile: filepath.Join(root, "host-key"),
 		Home: filepath.Join(root, "home"), CodexHome: filepath.Join(root, "codex-home"),
-		Shell: "/bin/sh", Runtime: runtime, Logger: zap.NewNop(),
+		Shell: "/bin/sh", Runtime: runtime, RuntimeInfo: runtime.Info, Logger: zap.NewNop(),
 		AuthorizedClients: []hostworker.AuthorizedClient{{
 			ID: "mobile-integration", PublicKey: signer.PublicKey(),
 		}},

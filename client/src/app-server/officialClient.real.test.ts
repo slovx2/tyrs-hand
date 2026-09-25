@@ -15,7 +15,7 @@ describe.skipIf(!targetPath)("真实 Codex 摘要与单轮分页", () => {
   it.skipIf(process.env.TYRS_HAND_REAL_CODEX_WRITE !== "true")("真实工具流与摘要刷新合并，完成自动收起", async () => {
     const target = JSON.parse(readFileSync(targetPath!, "utf8")) as { url: string; threadId: string };
     const rpc = new CodexJsonRpcClient(() => new WebSocket(target.url) as unknown as AppServerSocket);
-    const client = new OfficialAppServerClient("real-stream-acceptance", rpc, {
+    const client = new OfficialAppServerClient("real-stream-acceptance", "codex", rpc, {
       async prepare() {}, async setThread() {}, async markUnknown() {}, async complete() {},
     });
     await client.connect();
@@ -72,7 +72,7 @@ describe.skipIf(!targetPath)("真实 Codex 摘要与单轮分页", () => {
       }
     }
     const rpc = new MeasuredRpc(() => new WebSocket(target.url) as unknown as AppServerSocket);
-    const client = new OfficialAppServerClient("real-acceptance", rpc, {
+    const client = new OfficialAppServerClient("real-acceptance", "codex", rpc, {
       async prepare() {}, async setThread() {}, async markUnknown() {}, async complete() {},
     });
     await client.connect();

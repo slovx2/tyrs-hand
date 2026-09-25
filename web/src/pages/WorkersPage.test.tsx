@@ -40,7 +40,7 @@ describe('WorkersPage', () => {
     server.use(
       http.get('/api/v1/auth/me', () => HttpResponse.json({ role: 'user' })),
       http.get('/api/v1/workers', () => HttpResponse.json({ items })),
-      http.get('/api/v1/workers/:id/config', () => {
+      http.get('/api/v1/workers/:id/runtimes/codex/config', () => {
         unexpected()
         return HttpResponse.json({})
       }),

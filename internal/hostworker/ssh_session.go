@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/pkg/sftp"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 )
@@ -40,6 +42,26 @@ func (s *SSHServer) serveSFTP(channel ssh.Channel) {
 
 func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, command string) {
 	trimmed := strings.TrimSpace(command)
+	if s.options.RuntimeInfo != nil {
+		info := s.options.RuntimeInfo()
+		switch trimmed {
+		case "tyrs-hand-worker runtime info":
+			_ = json.NewEncoder(channel).Encode(info)
+			s.writeExit(channel, 0)
+			return
+		case "codex --version", "codex -V":
+			_, _ = io.WriteString(channel, "codex-cli "+info.ProtocolVersion+"\n")
+			s.writeExit(channel, 0)
+			return
+		case "codex app-server daemon start":
+			if info.Status != "running" {
+				s.writeExit(channel, 1)
+			} else {
+				s.writeExit(channel, 0)
+			}
+			return
+		}
+	}
 	switch trimmed {
 	case "tyrs-hand-worker browser proxy":
 		if s.options.BrowserProxy == nil {
@@ -118,6 +140,9 @@ func (s *SSHServer) runShell(channel ssh.Channel, state *sshSessionState) {
 func (s *SSHServer) runProcess(channel ssh.Channel, state *sshSessionState, command string, input io.Reader) {
 	arguments := []string(nil)
 	if strings.TrimSpace(command) != "" {
+		if runtime, ok := s.options.Runtime.(*Runtime); ok {
+			command = "export PATH=" + shellQuote(runtime.EntryBin()) + ":\"$PATH\"; " + command
+		}
 		arguments = []string{"-lc", command}
 	}
 	process := exec.Command(s.options.Shell, arguments...)
@@ -131,7 +156,16 @@ func (s *SSHServer) runProcess(channel ssh.Channel, state *sshSessionState, comm
 	if state.term != "" {
 		values["TERM"] = state.term
 	}
-	process.Env = replaceEnvironment(os.Environ(), values)
+	environment := os.Environ()
+	if runtime, ok := s.options.Runtime.(*Runtime); ok {
+		environment = runtimeBaseEnvironment(runtime.options)
+		values["PATH"] = runtime.EntryBin() + string(os.PathListSeparator) + os.Getenv("PATH")
+		if runtime.options.Engine == runtimeidentity.Claude {
+			values["CLAUDE_CONFIG_DIR"] = filepath.Join(runtime.CodexHome(), "claude")
+			values["CLAUDE_CODEX_HOME"] = runtime.StateDir()
+		}
+	}
+	process.Env = replaceEnvironment(environment, values)
 	if state.term != "" {
 		s.runPTY(channel, state, process)
 		return

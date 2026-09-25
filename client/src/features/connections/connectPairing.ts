@@ -13,6 +13,7 @@ export async function connectPairingUri(value: string): Promise<string> {
   await waitForPairing(code, claim.claimToken);
   const machine = await fetchPairedMachine(code, claim.credential);
   return saveControlMachineLink({
+    engine: "codex",
     profileId: Crypto.randomUUID(),
     name: machine.name,
     machineFingerprint: machine.sshHostKeyFingerprint,

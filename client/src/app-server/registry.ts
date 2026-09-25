@@ -22,7 +22,7 @@ export function officialClientFor(connection: Connection,
   current?.rpc.close();
   const rpc = new CodexJsonRpcClient(createSocketFactory(workspaceId === null
     ? { connection } : { connection, workspaceId }));
-  const client = new OfficialAppServerClient(connection.profileId, rpc,
+  const client = new OfficialAppServerClient(connection.profileId, connection.engine, rpc,
     persistentSubmissionJournal);
   entries.set(key, { signature, client, rpc });
   return client;

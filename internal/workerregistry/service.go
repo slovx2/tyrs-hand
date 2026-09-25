@@ -222,7 +222,26 @@ func (s *Service) Authenticate(ctx context.Context, credential string) (Worker, 
 	return worker, nil
 }
 
-func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
+func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, request workerprotocol.HeartbeatRequest) error {
+	if err := validateRuntimeReports(request.Runtimes, request.SSHHostKeyFingerprint); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := heartbeatWorker(ctx, tx, id, request.WorkerVersion, request.ProtocolVersion,
+		request.SSHHostKeyFingerprint, request.Metadata); err != nil {
+		return err
+	}
+	if err := saveRuntimeReports(ctx, tx, id, request.Runtimes, request.ProtocolVersion != ProtocolVersion); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func heartbeatWorker(ctx context.Context, tx *sql.Tx, id uuid.UUID, version string,
 	protocolVersion int, sshHostKeyFingerprint string, metadata json.RawMessage,
 ) error {
 	sshHostKeyFingerprint = strings.TrimSpace(sshHostKeyFingerprint)
@@ -241,7 +260,7 @@ func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
 	// metadata 采用合并写入：心跳可以只上报变化的字段，
 	// 未携带的键（例如 modelCatalog）保留上一次的值。
 	// modelCatalogRevision 为空表示目录已清空，需要删除旧快照。
-	result, err := s.db.ExecContext(ctx, `UPDATE workers SET worker_version = $2,
+	result, err := tx.ExecContext(ctx, `UPDATE workers SET worker_version = $2,
 		metadata = CASE
 				WHEN $3::jsonb->>'modelCatalogRevision' = ''
 					THEN (workers.metadata || $3::jsonb) - 'modelCatalog'
@@ -269,7 +288,7 @@ func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
 		return nil
 	}
 	var current sql.NullString
-	if err := s.db.QueryRowContext(ctx, `SELECT ssh_host_key_fingerprint FROM workers
+	if err := tx.QueryRowContext(ctx, `SELECT ssh_host_key_fingerprint FROM workers
 		WHERE id=$1`, id).Scan(&current); err != nil {
 		return err
 	}

@@ -26,6 +26,7 @@ export type LiveWorkerProject = {
 };
 
 async function controlRequest<T>(link: ControlMachineLink, path: string, init?: RequestInit, parse?: (value: unknown) => T): Promise<T> {
+  if (link.engine !== "codex") throw new Error("Live 语音仅适用于 Codex 入口");
   const token = await getControlDeviceToken(link.serverId);
   if (!token) throw new Error("Control 凭证不存在，请重新授权设备");
   const response = await fetch(`${link.baseUrl.replace(/\/$/, "")}/api/v1/client${path}`, {

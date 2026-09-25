@@ -22,6 +22,14 @@ class TyrsSSHTransportModule : Module() {
       Sshtransport.close(profileId)
     }
 
+    AsyncFunction("inspectRuntime") { options: Map<String, Any?> ->
+      parseObject(Sshtransport.inspectRuntime(
+        options.string("host"), options.long("port"), options.string("user"),
+        options.string("privateKey"), options.optionalString("passphrase"),
+        options.string("expectedHostFingerprint"),
+      ))
+    }
+
     AsyncFunction("generateEd25519Key") {
       parseObject(Sshtransport.generateEd25519Key())
     }

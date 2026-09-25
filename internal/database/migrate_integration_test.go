@@ -23,7 +23,7 @@ func TestFreshHostWorkerBaseline(t *testing.T) {
 	for _, table := range []string{
 		"workers", "worker_enrollments", "worker_workspaces", "workspace_projects",
 		"workspace_sessions", "ssh_host_workers", "github_agent_repository_overrides",
-		"client_device_workers",
+		"client_device_workers", "worker_runtimes",
 	} {
 		var exists bool
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT EXISTS(
@@ -69,7 +69,12 @@ func TestWorkerProtocolUpgradeMigrations(t *testing.T) {
 	var protocolVersion int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM workers
 		WHERE name='protocol-upgrade-worker'`).Scan(&protocolVersion))
-	require.Equal(t, 32, protocolVersion)
+	require.Equal(t, 33, protocolVersion)
+	var engine, runtimeStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT r.engine,r.status FROM worker_runtimes r
+		JOIN workers w ON w.id=r.worker_id WHERE w.name='protocol-upgrade-worker'`).Scan(&engine, &runtimeStatus))
+	require.Equal(t, "codex", engine)
+	require.Equal(t, "offline", runtimeStatus, "迁移不能将旧心跳伪装成新运行时已验证在线")
 }
 
 func migrationTestDatabase(t *testing.T) *sql.DB {

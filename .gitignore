@@ -35,6 +35,8 @@ community-research/
 
 # 本地运行数据
 /.local/
+/.artifacts/
+/tools/protocol-inventory/node_modules/
 /data/
 /repo-cache/
 /worktrees/

@@ -57,12 +57,12 @@ const (
 
 // Defines values for ClientScheduledTaskRunStatus.
 const (
-	Canceled       ClientScheduledTaskRunStatus = "canceled"
-	Failed         ClientScheduledTaskRunStatus = "failed"
-	Queued         ClientScheduledTaskRunStatus = "queued"
-	Running        ClientScheduledTaskRunStatus = "running"
-	Succeeded      ClientScheduledTaskRunStatus = "succeeded"
-	WaitingForUser ClientScheduledTaskRunStatus = "waiting_for_user"
+	ClientScheduledTaskRunStatusCanceled       ClientScheduledTaskRunStatus = "canceled"
+	ClientScheduledTaskRunStatusFailed         ClientScheduledTaskRunStatus = "failed"
+	ClientScheduledTaskRunStatusQueued         ClientScheduledTaskRunStatus = "queued"
+	ClientScheduledTaskRunStatusRunning        ClientScheduledTaskRunStatus = "running"
+	ClientScheduledTaskRunStatusSucceeded      ClientScheduledTaskRunStatus = "succeeded"
+	ClientScheduledTaskRunStatusWaitingForUser ClientScheduledTaskRunStatus = "waiting_for_user"
 )
 
 // Defines values for ClientScheduledTaskRunTrigger.
@@ -144,12 +144,12 @@ const (
 
 // Defines values for WorkerStatus.
 const (
-	Disabled     WorkerStatus = "disabled"
-	Error        WorkerStatus = "error"
-	Incompatible WorkerStatus = "incompatible"
-	Offline      WorkerStatus = "offline"
-	Online       WorkerStatus = "online"
-	Pending      WorkerStatus = "pending"
+	WorkerStatusDisabled     WorkerStatus = "disabled"
+	WorkerStatusError        WorkerStatus = "error"
+	WorkerStatusIncompatible WorkerStatus = "incompatible"
+	WorkerStatusOffline      WorkerStatus = "offline"
+	WorkerStatusOnline       WorkerStatus = "online"
+	WorkerStatusPending      WorkerStatus = "pending"
 )
 
 // Defines values for WorkerClaimRequestRole.
@@ -170,6 +170,19 @@ const (
 	WorkerCreatedExpiresInN900 WorkerCreatedExpiresIn = 900
 )
 
+// Defines values for WorkerHeartbeatRuntimesEngine.
+const (
+	WorkerHeartbeatRuntimesEngineClaudeCode WorkerHeartbeatRuntimesEngine = "claude-code"
+	WorkerHeartbeatRuntimesEngineCodex      WorkerHeartbeatRuntimesEngine = "codex"
+)
+
+// Defines values for WorkerHeartbeatRuntimesStatus.
+const (
+	WorkerHeartbeatRuntimesStatusRunning     WorkerHeartbeatRuntimesStatus = "running"
+	WorkerHeartbeatRuntimesStatusStopped     WorkerHeartbeatRuntimesStatus = "stopped"
+	WorkerHeartbeatRuntimesStatusUnavailable WorkerHeartbeatRuntimesStatus = "unavailable"
+)
+
 // Defines values for WorkerInputRoles.
 const (
 	Discord WorkerInputRoles = "discord"
@@ -181,6 +194,35 @@ const (
 	WorkerInputDecisionActionInterrupt WorkerInputDecisionAction = "interrupt"
 	WorkerInputDecisionActionStart     WorkerInputDecisionAction = "start"
 	WorkerInputDecisionActionSteer     WorkerInputDecisionAction = "steer"
+)
+
+// Defines values for WorkerRuntimeEngine.
+const (
+	WorkerRuntimeEngineClaudeCode WorkerRuntimeEngine = "claude-code"
+	WorkerRuntimeEngineCodex      WorkerRuntimeEngine = "codex"
+)
+
+// Defines values for WorkerRuntimeStatus.
+const (
+	WorkerRuntimeStatusDisabled     WorkerRuntimeStatus = "disabled"
+	WorkerRuntimeStatusIncompatible WorkerRuntimeStatus = "incompatible"
+	WorkerRuntimeStatusOffline      WorkerRuntimeStatus = "offline"
+	WorkerRuntimeStatusRunning      WorkerRuntimeStatus = "running"
+	WorkerRuntimeStatusStopped      WorkerRuntimeStatus = "stopped"
+	WorkerRuntimeStatusUnavailable  WorkerRuntimeStatus = "unavailable"
+)
+
+// Defines values for WorkerRuntimeConfigAuthMethod.
+const (
+	WorkerRuntimeConfigAuthMethodApiKey    WorkerRuntimeConfigAuthMethod = "api-key"
+	WorkerRuntimeConfigAuthMethodAuthToken WorkerRuntimeConfigAuthMethod = "auth-token"
+	WorkerRuntimeConfigAuthMethodEmpty     WorkerRuntimeConfigAuthMethod = ""
+)
+
+// Defines values for WorkerRuntimeProviderInputAuthMethod.
+const (
+	WorkerRuntimeProviderInputAuthMethodApiKey    WorkerRuntimeProviderInputAuthMethod = "api-key"
+	WorkerRuntimeProviderInputAuthMethodAuthToken WorkerRuntimeProviderInputAuthMethod = "auth-token"
 )
 
 // Defines values for WorkspaceForumBindingStatus.
@@ -233,6 +275,17 @@ const (
 	WorkspaceProjectSnapshotProjectSourceWorkspaceRoot   WorkspaceProjectSnapshotProjectSource = "workspace_root"
 )
 
+// Defines values for RuntimeEngine.
+const (
+	RuntimeEngineClaudeCode RuntimeEngine = "claude-code"
+	RuntimeEngineCodex      RuntimeEngine = "codex"
+)
+
+// Defines values for WorkerProtocolVersion.
+const (
+	WorkerProtocolVersionN33 WorkerProtocolVersion = "33"
+)
+
 // Defines values for ListClientMachineScheduledTasksParamsStatus.
 const (
 	Active    ListClientMachineScheduledTasksParamsStatus = "active"
@@ -245,6 +298,260 @@ const (
 const (
 	PutDiscordForumAccessJSONBodyAccessLevelOperator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
 	PutDiscordForumAccessJSONBodyAccessLevelReadonly PutDiscordForumAccessJSONBodyAccessLevel = "readonly"
+)
+
+// Defines values for DownloadWorkerBlobParamsXTyrsWorkerProtocol.
+const (
+	DownloadWorkerBlobParamsXTyrsWorkerProtocolN33 DownloadWorkerBlobParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for UploadWorkerBlobParamsXTyrsWorkerProtocol.
+const (
+	UploadWorkerBlobParamsXTyrsWorkerProtocolN33 UploadWorkerBlobParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerClaimParamsXTyrsWorkerProtocol.
+const (
+	WorkerClaimParamsXTyrsWorkerProtocolN33 WorkerClaimParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerConfigChannelParamsXTyrsWorkerProtocol.
+const (
+	WorkerConfigChannelParamsXTyrsWorkerProtocolN33 WorkerConfigChannelParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocol.
+const (
+	WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocolN33 WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocol.
+const (
+	WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocolN33 WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRecordDesktopSteerParamsXTyrsWorkerProtocol.
+const (
+	WorkerRecordDesktopSteerParamsXTyrsWorkerProtocolN33 WorkerRecordDesktopSteerParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocol.
+const (
+	WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocolN33 WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerDesktopThreadStateParamsXTyrsWorkerProtocol.
+const (
+	WorkerDesktopThreadStateParamsXTyrsWorkerProtocolN33 WorkerDesktopThreadStateParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocol.
+const (
+	WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocolN33 WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerFailDesktopThreadParamsXTyrsWorkerProtocol.
+const (
+	WorkerFailDesktopThreadParamsXTyrsWorkerProtocolN33 WorkerFailDesktopThreadParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocol.
+const (
+	WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocolN33 WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocol.
+const (
+	WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocolN33 WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerDesktopImageTargetParamsXTyrsWorkerProtocol.
+const (
+	WorkerDesktopImageTargetParamsXTyrsWorkerProtocolN33 WorkerDesktopImageTargetParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerFailDesktopImageParamsXTyrsWorkerProtocol.
+const (
+	WorkerFailDesktopImageParamsXTyrsWorkerProtocolN33 WorkerFailDesktopImageParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerHeartbeatParamsXTyrsWorkerProtocol.
+const (
+	WorkerHeartbeatParamsXTyrsWorkerProtocolN33 WorkerHeartbeatParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for GetWorkerIdentityParamsXTyrsWorkerProtocol.
+const (
+	GetWorkerIdentityParamsXTyrsWorkerProtocolN33 GetWorkerIdentityParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerDecideInputParamsXTyrsWorkerProtocol.
+const (
+	WorkerDecideInputParamsXTyrsWorkerProtocolN33 WorkerDecideInputParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerAnswerInteractiveParamsXTyrsWorkerProtocol.
+const (
+	WorkerAnswerInteractiveParamsXTyrsWorkerProtocolN33 WorkerAnswerInteractiveParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerInteractiveStateParamsXTyrsWorkerProtocol.
+const (
+	WorkerInteractiveStateParamsXTyrsWorkerProtocolN33 WorkerInteractiveStateParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocol.
+const (
+	WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocolN33 WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerCommandAckParamsXTyrsWorkerProtocol.
+const (
+	WorkerCommandAckParamsXTyrsWorkerProtocolN33 WorkerCommandAckParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRunCompleteParamsXTyrsWorkerProtocol.
+const (
+	WorkerRunCompleteParamsXTyrsWorkerProtocolN33 WorkerRunCompleteParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerConfirmTurnParamsXTyrsWorkerProtocol.
+const (
+	WorkerConfirmTurnParamsXTyrsWorkerProtocolN33 WorkerConfirmTurnParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRunEventsParamsXTyrsWorkerProtocol.
+const (
+	WorkerRunEventsParamsXTyrsWorkerProtocolN33 WorkerRunEventsParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRunFailParamsXTyrsWorkerProtocol.
+const (
+	WorkerRunFailParamsXTyrsWorkerProtocolN33 WorkerRunFailParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerGitCredentialParamsXTyrsWorkerProtocol.
+const (
+	WorkerGitCredentialParamsXTyrsWorkerProtocolN33 WorkerGitCredentialParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRunHeartbeatParamsXTyrsWorkerProtocol.
+const (
+	WorkerRunHeartbeatParamsXTyrsWorkerProtocolN33 WorkerRunHeartbeatParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRegisterInteractiveParamsXTyrsWorkerProtocol.
+const (
+	WorkerRegisterInteractiveParamsXTyrsWorkerProtocolN33 WorkerRegisterInteractiveParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRecordSubmissionParamsXTyrsWorkerProtocol.
+const (
+	WorkerRecordSubmissionParamsXTyrsWorkerProtocolN33 WorkerRecordSubmissionParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerSetThreadParamsXTyrsWorkerProtocol.
+const (
+	WorkerSetThreadParamsXTyrsWorkerProtocolN33 WorkerSetThreadParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerToolCallParamsXTyrsWorkerProtocol.
+const (
+	WorkerToolCallParamsXTyrsWorkerProtocolN33 WorkerToolCallParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocol.
+const (
+	WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocolN33 WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerWorkspaceStateParamsXTyrsWorkerProtocol.
+const (
+	WorkerWorkspaceStateParamsXTyrsWorkerProtocolN33 WorkerWorkspaceStateParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerClaimSessionTitleParamsXTyrsWorkerProtocol.
+const (
+	WorkerClaimSessionTitleParamsXTyrsWorkerProtocolN33 WorkerClaimSessionTitleParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerCompleteSessionTitleParamsXTyrsWorkerProtocol.
+const (
+	WorkerCompleteSessionTitleParamsXTyrsWorkerProtocolN33 WorkerCompleteSessionTitleParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerFailSessionTitleParamsXTyrsWorkerProtocol.
+const (
+	WorkerFailSessionTitleParamsXTyrsWorkerProtocolN33 WorkerFailSessionTitleParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerSSHConfigurationParamsXTyrsWorkerProtocol.
+const (
+	WorkerSSHConfigurationParamsXTyrsWorkerProtocolN33 WorkerSSHConfigurationParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocol.
+const (
+	WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocolN33 WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocol.
+const (
+	WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocolN33 WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerThreadLifecycleStateParamsXTyrsWorkerProtocol.
+const (
+	WorkerThreadLifecycleStateParamsXTyrsWorkerProtocolN33 WorkerThreadLifecycleStateParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocol.
+const (
+	WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocolN33 WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerRecordThreadMetadataParamsXTyrsWorkerProtocol.
+const (
+	WorkerRecordThreadMetadataParamsXTyrsWorkerProtocolN33 WorkerRecordThreadMetadataParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerPendingThreadNamesParamsXTyrsWorkerProtocol.
+const (
+	WorkerPendingThreadNamesParamsXTyrsWorkerProtocolN33 WorkerPendingThreadNamesParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerAckThreadNameParamsXTyrsWorkerProtocol.
+const (
+	WorkerAckThreadNameParamsXTyrsWorkerProtocolN33 WorkerAckThreadNameParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for WorkerWorkspaceParamsXTyrsWorkerProtocol.
+const (
+	N33 WorkerWorkspaceParamsXTyrsWorkerProtocol = "33"
+)
+
+// Defines values for GetWorkerRuntimeConfigParamsEngine.
+const (
+	GetWorkerRuntimeConfigParamsEngineClaudeCode GetWorkerRuntimeConfigParamsEngine = "claude-code"
+	GetWorkerRuntimeConfigParamsEngineCodex      GetWorkerRuntimeConfigParamsEngine = "codex"
+)
+
+// Defines values for UpdateWorkerRuntimeInstructionsParamsEngine.
+const (
+	UpdateWorkerRuntimeInstructionsParamsEngineClaudeCode UpdateWorkerRuntimeInstructionsParamsEngine = "claude-code"
+	UpdateWorkerRuntimeInstructionsParamsEngineCodex      UpdateWorkerRuntimeInstructionsParamsEngine = "codex"
+)
+
+// Defines values for UpdateWorkerRuntimeProviderParamsEngine.
+const (
+	UpdateWorkerRuntimeProviderParamsEngineClaudeCode UpdateWorkerRuntimeProviderParamsEngine = "claude-code"
+	UpdateWorkerRuntimeProviderParamsEngineCodex      UpdateWorkerRuntimeProviderParamsEngine = "codex"
+)
+
+// Defines values for RestartWorkerRuntimeParamsEngine.
+const (
+	ClaudeCode RestartWorkerRuntimeParamsEngine = "claude-code"
+	Codex      RestartWorkerRuntimeParamsEngine = "codex"
 )
 
 // Defines values for PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel.
@@ -968,10 +1275,38 @@ type WorkerFailRequest struct {
 
 // WorkerHeartbeat defines model for WorkerHeartbeat.
 type WorkerHeartbeat struct {
-	Metadata              *map[string]interface{} `json:"metadata,omitempty"`
-	ProtocolVersion       int                     `json:"protocolVersion"`
-	SshHostKeyFingerprint string                  `json:"sshHostKeyFingerprint"`
-	WorkerVersion         string                  `json:"workerVersion"`
+	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
+	ProtocolVersion int                     `json:"protocolVersion"`
+	Runtimes        []struct {
+		Build struct {
+			CliBuild    string  `json:"cliBuild"`
+			CliSha256   *string `json:"cliSha256,omitempty"`
+			NodeVersion *string `json:"nodeVersion,omitempty"`
+			SdkVersion  *string `json:"sdkVersion,omitempty"`
+		} `json:"build"`
+		Capabilities          []string                      `json:"capabilities"`
+		Engine                WorkerHeartbeatRuntimesEngine `json:"engine"`
+		ModelCatalog          *map[string]interface{}       `json:"modelCatalog"`
+		ProtocolVersion       string                        `json:"protocolVersion"`
+		ReleaseReady          bool                          `json:"releaseReady"`
+		SshHostKeyFingerprint string                        `json:"sshHostKeyFingerprint"`
+		SshListenAddress      string                        `json:"sshListenAddress"`
+		Status                WorkerHeartbeatRuntimesStatus `json:"status"`
+	} `json:"runtimes"`
+	SshHostKeyFingerprint string `json:"sshHostKeyFingerprint"`
+	WorkerVersion         string `json:"workerVersion"`
+}
+
+// WorkerHeartbeatRuntimesEngine defines model for WorkerHeartbeat.Runtimes.Engine.
+type WorkerHeartbeatRuntimesEngine string
+
+// WorkerHeartbeatRuntimesStatus defines model for WorkerHeartbeat.Runtimes.Status.
+type WorkerHeartbeatRuntimesStatus string
+
+// WorkerIdentity defines model for WorkerIdentity.
+type WorkerIdentity struct {
+	ProtocolVersion int                `json:"protocolVersion"`
+	WorkerId        openapi_types.UUID `json:"workerId"`
 }
 
 // WorkerInput defines model for WorkerInput.
@@ -994,6 +1329,62 @@ type WorkerInputDecision struct {
 
 // WorkerInputDecisionAction defines model for WorkerInputDecision.Action.
 type WorkerInputDecisionAction string
+
+// WorkerRuntime defines model for WorkerRuntime.
+type WorkerRuntime struct {
+	Build struct {
+		CliBuild    string  `json:"cliBuild"`
+		CliSha256   *string `json:"cliSha256,omitempty"`
+		NodeVersion *string `json:"nodeVersion,omitempty"`
+		SdkVersion  *string `json:"sdkVersion,omitempty"`
+	} `json:"build"`
+	Capabilities          []string                `json:"capabilities"`
+	Enabled               bool                    `json:"enabled"`
+	Engine                WorkerRuntimeEngine     `json:"engine"`
+	HeartbeatAt           *time.Time              `json:"heartbeatAt"`
+	ModelCatalog          *map[string]interface{} `json:"modelCatalog"`
+	ProtocolVersion       string                  `json:"protocolVersion"`
+	ReleaseReady          bool                    `json:"releaseReady"`
+	SshHostKeyFingerprint string                  `json:"sshHostKeyFingerprint"`
+	SshListenAddress      string                  `json:"sshListenAddress"`
+	Status                WorkerRuntimeStatus     `json:"status"`
+	WorkerId              openapi_types.UUID      `json:"workerId"`
+}
+
+// WorkerRuntimeEngine defines model for WorkerRuntime.Engine.
+type WorkerRuntimeEngine string
+
+// WorkerRuntimeStatus defines model for WorkerRuntime.Status.
+type WorkerRuntimeStatus string
+
+// WorkerRuntimeConfig defines model for WorkerRuntimeConfig.
+type WorkerRuntimeConfig struct {
+	Agents           string                        `json:"agents"`
+	ApiKeyConfigured bool                          `json:"apiKeyConfigured"`
+	AuthMethod       WorkerRuntimeConfigAuthMethod `json:"authMethod"`
+	BaseUrl          string                        `json:"baseUrl"`
+	EnvKey           string                        `json:"envKey"`
+	Model            string                        `json:"model"`
+	Revision         string                        `json:"revision"`
+}
+
+// WorkerRuntimeConfigAuthMethod defines model for WorkerRuntimeConfig.AuthMethod.
+type WorkerRuntimeConfigAuthMethod string
+
+// WorkerRuntimeProviderInput defines model for WorkerRuntimeProviderInput.
+type WorkerRuntimeProviderInput struct {
+	ApiKey *string `json:"apiKey,omitempty"`
+
+	// AuthMethod Claude 必填
+	AuthMethod  *WorkerRuntimeProviderInputAuthMethod `json:"authMethod,omitempty"`
+	BaseUrl     string                                `json:"baseUrl"`
+	ClearApiKey *bool                                 `json:"clearApiKey,omitempty"`
+	Model       *string                               `json:"model,omitempty"`
+	Revision    string                                `json:"revision"`
+}
+
+// WorkerRuntimeProviderInputAuthMethod Claude 必填
+type WorkerRuntimeProviderInputAuthMethod string
 
 // WorkerSSHConfiguration defines model for WorkerSSHConfiguration.
 type WorkerSSHConfiguration struct {
@@ -1163,6 +1554,12 @@ type Cursor = string
 
 // Limit defines model for Limit.
 type Limit = int
+
+// RuntimeEngine defines model for RuntimeEngine.
+type RuntimeEngine string
+
+// WorkerProtocolVersion defines model for WorkerProtocolVersion.
+type WorkerProtocolVersion string
 
 // WorkerResourceID defines model for WorkerResourceID.
 type WorkerResourceID = openapi_types.UUID
@@ -1378,8 +1775,12 @@ type ReceiveGitHubWebhookParams struct {
 
 // DownloadWorkerBlobParams defines parameters for DownloadWorkerBlob.
 type DownloadWorkerBlobParams struct {
-	RunId openapi_types.UUID `form:"runId" json:"runId"`
+	RunId               openapi_types.UUID                          `form:"runId" json:"runId"`
+	XTyrsWorkerProtocol DownloadWorkerBlobParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
 }
+
+// DownloadWorkerBlobParamsXTyrsWorkerProtocol defines parameters for DownloadWorkerBlob.
+type DownloadWorkerBlobParamsXTyrsWorkerProtocol string
 
 // UploadWorkerBlobMultipartBody defines parameters for UploadWorkerBlob.
 type UploadWorkerBlobMultipartBody struct {
@@ -1389,38 +1790,186 @@ type UploadWorkerBlobMultipartBody struct {
 
 // UploadWorkerBlobParams defines parameters for UploadWorkerBlob.
 type UploadWorkerBlobParams struct {
-	Ordinal int `form:"ordinal" json:"ordinal"`
+	Ordinal             int                                       `form:"ordinal" json:"ordinal"`
+	XTyrsWorkerProtocol UploadWorkerBlobParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
 }
+
+// UploadWorkerBlobParamsXTyrsWorkerProtocol defines parameters for UploadWorkerBlob.
+type UploadWorkerBlobParamsXTyrsWorkerProtocol string
+
+// WorkerClaimParams defines parameters for WorkerClaim.
+type WorkerClaimParams struct {
+	XTyrsWorkerProtocol WorkerClaimParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerClaimParamsXTyrsWorkerProtocol defines parameters for WorkerClaim.
+type WorkerClaimParamsXTyrsWorkerProtocol string
+
+// WorkerConfigChannelParams defines parameters for WorkerConfigChannel.
+type WorkerConfigChannelParams struct {
+	XTyrsWorkerProtocol WorkerConfigChannelParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerConfigChannelParamsXTyrsWorkerProtocol defines parameters for WorkerConfigChannel.
+type WorkerConfigChannelParamsXTyrsWorkerProtocol string
 
 // WorkerPrepareDesktopRollbackJSONBody defines parameters for WorkerPrepareDesktopRollback.
 type WorkerPrepareDesktopRollbackJSONBody map[string]interface{}
 
+// WorkerPrepareDesktopRollbackParams defines parameters for WorkerPrepareDesktopRollback.
+type WorkerPrepareDesktopRollbackParams struct {
+	XTyrsWorkerProtocol WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocol defines parameters for WorkerPrepareDesktopRollback.
+type WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocol string
+
 // WorkerCompleteDesktopRollbackJSONBody defines parameters for WorkerCompleteDesktopRollback.
 type WorkerCompleteDesktopRollbackJSONBody map[string]interface{}
+
+// WorkerCompleteDesktopRollbackParams defines parameters for WorkerCompleteDesktopRollback.
+type WorkerCompleteDesktopRollbackParams struct {
+	XTyrsWorkerProtocol WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocol defines parameters for WorkerCompleteDesktopRollback.
+type WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocol string
 
 // WorkerRecordDesktopSteerJSONBody defines parameters for WorkerRecordDesktopSteer.
 type WorkerRecordDesktopSteerJSONBody map[string]interface{}
 
+// WorkerRecordDesktopSteerParams defines parameters for WorkerRecordDesktopSteer.
+type WorkerRecordDesktopSteerParams struct {
+	XTyrsWorkerProtocol WorkerRecordDesktopSteerParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRecordDesktopSteerParamsXTyrsWorkerProtocol defines parameters for WorkerRecordDesktopSteer.
+type WorkerRecordDesktopSteerParamsXTyrsWorkerProtocol string
+
 // WorkerPrepareDesktopThreadJSONBody defines parameters for WorkerPrepareDesktopThread.
 type WorkerPrepareDesktopThreadJSONBody map[string]interface{}
+
+// WorkerPrepareDesktopThreadParams defines parameters for WorkerPrepareDesktopThread.
+type WorkerPrepareDesktopThreadParams struct {
+	XTyrsWorkerProtocol WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocol defines parameters for WorkerPrepareDesktopThread.
+type WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocol string
+
+// WorkerDesktopThreadStateParams defines parameters for WorkerDesktopThreadState.
+type WorkerDesktopThreadStateParams struct {
+	XTyrsWorkerProtocol WorkerDesktopThreadStateParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerDesktopThreadStateParamsXTyrsWorkerProtocol defines parameters for WorkerDesktopThreadState.
+type WorkerDesktopThreadStateParamsXTyrsWorkerProtocol string
 
 // WorkerCompleteDesktopThreadJSONBody defines parameters for WorkerCompleteDesktopThread.
 type WorkerCompleteDesktopThreadJSONBody map[string]interface{}
 
+// WorkerCompleteDesktopThreadParams defines parameters for WorkerCompleteDesktopThread.
+type WorkerCompleteDesktopThreadParams struct {
+	XTyrsWorkerProtocol WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocol defines parameters for WorkerCompleteDesktopThread.
+type WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocol string
+
 // WorkerFailDesktopThreadJSONBody defines parameters for WorkerFailDesktopThread.
 type WorkerFailDesktopThreadJSONBody map[string]interface{}
+
+// WorkerFailDesktopThreadParams defines parameters for WorkerFailDesktopThread.
+type WorkerFailDesktopThreadParams struct {
+	XTyrsWorkerProtocol WorkerFailDesktopThreadParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerFailDesktopThreadParamsXTyrsWorkerProtocol defines parameters for WorkerFailDesktopThread.
+type WorkerFailDesktopThreadParamsXTyrsWorkerProtocol string
 
 // WorkerPrepareDesktopTurnJSONBody defines parameters for WorkerPrepareDesktopTurn.
 type WorkerPrepareDesktopTurnJSONBody map[string]interface{}
 
+// WorkerPrepareDesktopTurnParams defines parameters for WorkerPrepareDesktopTurn.
+type WorkerPrepareDesktopTurnParams struct {
+	XTyrsWorkerProtocol WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocol defines parameters for WorkerPrepareDesktopTurn.
+type WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocol string
+
 // WorkerPreflightDesktopTurnJSONBody defines parameters for WorkerPreflightDesktopTurn.
 type WorkerPreflightDesktopTurnJSONBody map[string]interface{}
+
+// WorkerPreflightDesktopTurnParams defines parameters for WorkerPreflightDesktopTurn.
+type WorkerPreflightDesktopTurnParams struct {
+	XTyrsWorkerProtocol WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocol defines parameters for WorkerPreflightDesktopTurn.
+type WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocol string
+
+// WorkerDesktopImageTargetParams defines parameters for WorkerDesktopImageTarget.
+type WorkerDesktopImageTargetParams struct {
+	XTyrsWorkerProtocol WorkerDesktopImageTargetParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerDesktopImageTargetParamsXTyrsWorkerProtocol defines parameters for WorkerDesktopImageTarget.
+type WorkerDesktopImageTargetParamsXTyrsWorkerProtocol string
 
 // WorkerFailDesktopImageJSONBody defines parameters for WorkerFailDesktopImage.
 type WorkerFailDesktopImageJSONBody map[string]interface{}
 
+// WorkerFailDesktopImageParams defines parameters for WorkerFailDesktopImage.
+type WorkerFailDesktopImageParams struct {
+	XTyrsWorkerProtocol WorkerFailDesktopImageParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerFailDesktopImageParamsXTyrsWorkerProtocol defines parameters for WorkerFailDesktopImage.
+type WorkerFailDesktopImageParamsXTyrsWorkerProtocol string
+
+// WorkerHeartbeatParams defines parameters for WorkerHeartbeat.
+type WorkerHeartbeatParams struct {
+	XTyrsWorkerProtocol WorkerHeartbeatParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerHeartbeatParamsXTyrsWorkerProtocol defines parameters for WorkerHeartbeat.
+type WorkerHeartbeatParamsXTyrsWorkerProtocol string
+
+// GetWorkerIdentityParams defines parameters for GetWorkerIdentity.
+type GetWorkerIdentityParams struct {
+	XTyrsWorkerProtocol GetWorkerIdentityParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// GetWorkerIdentityParamsXTyrsWorkerProtocol defines parameters for GetWorkerIdentity.
+type GetWorkerIdentityParamsXTyrsWorkerProtocol string
+
+// WorkerDecideInputParams defines parameters for WorkerDecideInput.
+type WorkerDecideInputParams struct {
+	XTyrsWorkerProtocol WorkerDecideInputParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerDecideInputParamsXTyrsWorkerProtocol defines parameters for WorkerDecideInput.
+type WorkerDecideInputParamsXTyrsWorkerProtocol string
+
 // WorkerAnswerInteractiveJSONBody defines parameters for WorkerAnswerInteractive.
 type WorkerAnswerInteractiveJSONBody map[string]interface{}
+
+// WorkerAnswerInteractiveParams defines parameters for WorkerAnswerInteractive.
+type WorkerAnswerInteractiveParams struct {
+	XTyrsWorkerProtocol WorkerAnswerInteractiveParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerAnswerInteractiveParamsXTyrsWorkerProtocol defines parameters for WorkerAnswerInteractive.
+type WorkerAnswerInteractiveParamsXTyrsWorkerProtocol string
+
+// WorkerInteractiveStateParams defines parameters for WorkerInteractiveState.
+type WorkerInteractiveStateParams struct {
+	XTyrsWorkerProtocol WorkerInteractiveStateParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerInteractiveStateParamsXTyrsWorkerProtocol defines parameters for WorkerInteractiveState.
+type WorkerInteractiveStateParamsXTyrsWorkerProtocol string
 
 // WorkerUploadAgentAttachmentMultipartBody defines parameters for WorkerUploadAgentAttachment.
 type WorkerUploadAgentAttachmentMultipartBody struct {
@@ -1429,44 +1978,252 @@ type WorkerUploadAgentAttachmentMultipartBody struct {
 	Ordinal int                `json:"ordinal"`
 }
 
+// WorkerUploadAgentAttachmentParams defines parameters for WorkerUploadAgentAttachment.
+type WorkerUploadAgentAttachmentParams struct {
+	XTyrsWorkerProtocol WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocol defines parameters for WorkerUploadAgentAttachment.
+type WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocol string
+
+// WorkerCommandAckParams defines parameters for WorkerCommandAck.
+type WorkerCommandAckParams struct {
+	XTyrsWorkerProtocol WorkerCommandAckParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerCommandAckParamsXTyrsWorkerProtocol defines parameters for WorkerCommandAck.
+type WorkerCommandAckParamsXTyrsWorkerProtocol string
+
+// WorkerRunCompleteParams defines parameters for WorkerRunComplete.
+type WorkerRunCompleteParams struct {
+	XTyrsWorkerProtocol WorkerRunCompleteParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRunCompleteParamsXTyrsWorkerProtocol defines parameters for WorkerRunComplete.
+type WorkerRunCompleteParamsXTyrsWorkerProtocol string
+
 // WorkerConfirmTurnJSONBody defines parameters for WorkerConfirmTurn.
 type WorkerConfirmTurnJSONBody map[string]interface{}
+
+// WorkerConfirmTurnParams defines parameters for WorkerConfirmTurn.
+type WorkerConfirmTurnParams struct {
+	XTyrsWorkerProtocol WorkerConfirmTurnParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerConfirmTurnParamsXTyrsWorkerProtocol defines parameters for WorkerConfirmTurn.
+type WorkerConfirmTurnParamsXTyrsWorkerProtocol string
+
+// WorkerRunEventsParams defines parameters for WorkerRunEvents.
+type WorkerRunEventsParams struct {
+	XTyrsWorkerProtocol WorkerRunEventsParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRunEventsParamsXTyrsWorkerProtocol defines parameters for WorkerRunEvents.
+type WorkerRunEventsParamsXTyrsWorkerProtocol string
+
+// WorkerRunFailParams defines parameters for WorkerRunFail.
+type WorkerRunFailParams struct {
+	XTyrsWorkerProtocol WorkerRunFailParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRunFailParamsXTyrsWorkerProtocol defines parameters for WorkerRunFail.
+type WorkerRunFailParamsXTyrsWorkerProtocol string
 
 // WorkerGitCredentialJSONBody defines parameters for WorkerGitCredential.
 type WorkerGitCredentialJSONBody map[string]interface{}
 
+// WorkerGitCredentialParams defines parameters for WorkerGitCredential.
+type WorkerGitCredentialParams struct {
+	XTyrsWorkerProtocol WorkerGitCredentialParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerGitCredentialParamsXTyrsWorkerProtocol defines parameters for WorkerGitCredential.
+type WorkerGitCredentialParamsXTyrsWorkerProtocol string
+
 // WorkerRunHeartbeatJSONBody defines parameters for WorkerRunHeartbeat.
 type WorkerRunHeartbeatJSONBody map[string]interface{}
+
+// WorkerRunHeartbeatParams defines parameters for WorkerRunHeartbeat.
+type WorkerRunHeartbeatParams struct {
+	XTyrsWorkerProtocol WorkerRunHeartbeatParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRunHeartbeatParamsXTyrsWorkerProtocol defines parameters for WorkerRunHeartbeat.
+type WorkerRunHeartbeatParamsXTyrsWorkerProtocol string
 
 // WorkerRegisterInteractiveJSONBody defines parameters for WorkerRegisterInteractive.
 type WorkerRegisterInteractiveJSONBody map[string]interface{}
 
+// WorkerRegisterInteractiveParams defines parameters for WorkerRegisterInteractive.
+type WorkerRegisterInteractiveParams struct {
+	XTyrsWorkerProtocol WorkerRegisterInteractiveParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRegisterInteractiveParamsXTyrsWorkerProtocol defines parameters for WorkerRegisterInteractive.
+type WorkerRegisterInteractiveParamsXTyrsWorkerProtocol string
+
 // WorkerRecordSubmissionJSONBody defines parameters for WorkerRecordSubmission.
 type WorkerRecordSubmissionJSONBody map[string]interface{}
+
+// WorkerRecordSubmissionParams defines parameters for WorkerRecordSubmission.
+type WorkerRecordSubmissionParams struct {
+	XTyrsWorkerProtocol WorkerRecordSubmissionParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRecordSubmissionParamsXTyrsWorkerProtocol defines parameters for WorkerRecordSubmission.
+type WorkerRecordSubmissionParamsXTyrsWorkerProtocol string
 
 // WorkerSetThreadJSONBody defines parameters for WorkerSetThread.
 type WorkerSetThreadJSONBody map[string]interface{}
 
+// WorkerSetThreadParams defines parameters for WorkerSetThread.
+type WorkerSetThreadParams struct {
+	XTyrsWorkerProtocol WorkerSetThreadParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerSetThreadParamsXTyrsWorkerProtocol defines parameters for WorkerSetThread.
+type WorkerSetThreadParamsXTyrsWorkerProtocol string
+
 // WorkerToolCallJSONBody defines parameters for WorkerToolCall.
 type WorkerToolCallJSONBody map[string]interface{}
+
+// WorkerToolCallParams defines parameters for WorkerToolCall.
+type WorkerToolCallParams struct {
+	XTyrsWorkerProtocol WorkerToolCallParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerToolCallParamsXTyrsWorkerProtocol defines parameters for WorkerToolCall.
+type WorkerToolCallParamsXTyrsWorkerProtocol string
 
 // WorkerWorkspaceProjectStateJSONBody defines parameters for WorkerWorkspaceProjectState.
 type WorkerWorkspaceProjectStateJSONBody map[string]interface{}
 
+// WorkerWorkspaceProjectStateParams defines parameters for WorkerWorkspaceProjectState.
+type WorkerWorkspaceProjectStateParams struct {
+	XTyrsWorkerProtocol WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocol defines parameters for WorkerWorkspaceProjectState.
+type WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocol string
+
 // WorkerWorkspaceStateJSONBody defines parameters for WorkerWorkspaceState.
 type WorkerWorkspaceStateJSONBody map[string]interface{}
+
+// WorkerWorkspaceStateParams defines parameters for WorkerWorkspaceState.
+type WorkerWorkspaceStateParams struct {
+	XTyrsWorkerProtocol WorkerWorkspaceStateParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerWorkspaceStateParamsXTyrsWorkerProtocol defines parameters for WorkerWorkspaceState.
+type WorkerWorkspaceStateParamsXTyrsWorkerProtocol string
+
+// WorkerClaimSessionTitleParams defines parameters for WorkerClaimSessionTitle.
+type WorkerClaimSessionTitleParams struct {
+	XTyrsWorkerProtocol WorkerClaimSessionTitleParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerClaimSessionTitleParamsXTyrsWorkerProtocol defines parameters for WorkerClaimSessionTitle.
+type WorkerClaimSessionTitleParamsXTyrsWorkerProtocol string
+
+// WorkerCompleteSessionTitleParams defines parameters for WorkerCompleteSessionTitle.
+type WorkerCompleteSessionTitleParams struct {
+	XTyrsWorkerProtocol WorkerCompleteSessionTitleParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerCompleteSessionTitleParamsXTyrsWorkerProtocol defines parameters for WorkerCompleteSessionTitle.
+type WorkerCompleteSessionTitleParamsXTyrsWorkerProtocol string
+
+// WorkerFailSessionTitleParams defines parameters for WorkerFailSessionTitle.
+type WorkerFailSessionTitleParams struct {
+	XTyrsWorkerProtocol WorkerFailSessionTitleParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerFailSessionTitleParamsXTyrsWorkerProtocol defines parameters for WorkerFailSessionTitle.
+type WorkerFailSessionTitleParamsXTyrsWorkerProtocol string
+
+// WorkerSSHConfigurationParams defines parameters for WorkerSSHConfiguration.
+type WorkerSSHConfigurationParams struct {
+	XTyrsWorkerProtocol WorkerSSHConfigurationParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerSSHConfigurationParamsXTyrsWorkerProtocol defines parameters for WorkerSSHConfiguration.
+type WorkerSSHConfigurationParamsXTyrsWorkerProtocol string
+
+// WorkerPendingThreadLifecyclesParams defines parameters for WorkerPendingThreadLifecycles.
+type WorkerPendingThreadLifecyclesParams struct {
+	XTyrsWorkerProtocol WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocol defines parameters for WorkerPendingThreadLifecycles.
+type WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocol string
 
 // WorkerPrepareDesktopThreadLifecycleJSONBody defines parameters for WorkerPrepareDesktopThreadLifecycle.
 type WorkerPrepareDesktopThreadLifecycleJSONBody map[string]interface{}
 
+// WorkerPrepareDesktopThreadLifecycleParams defines parameters for WorkerPrepareDesktopThreadLifecycle.
+type WorkerPrepareDesktopThreadLifecycleParams struct {
+	XTyrsWorkerProtocol WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocol defines parameters for WorkerPrepareDesktopThreadLifecycle.
+type WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocol string
+
+// WorkerThreadLifecycleStateParams defines parameters for WorkerThreadLifecycleState.
+type WorkerThreadLifecycleStateParams struct {
+	XTyrsWorkerProtocol WorkerThreadLifecycleStateParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerThreadLifecycleStateParamsXTyrsWorkerProtocol defines parameters for WorkerThreadLifecycleState.
+type WorkerThreadLifecycleStateParamsXTyrsWorkerProtocol string
+
 // WorkerCompleteThreadLifecycleJSONBody defines parameters for WorkerCompleteThreadLifecycle.
 type WorkerCompleteThreadLifecycleJSONBody map[string]interface{}
+
+// WorkerCompleteThreadLifecycleParams defines parameters for WorkerCompleteThreadLifecycle.
+type WorkerCompleteThreadLifecycleParams struct {
+	XTyrsWorkerProtocol WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocol defines parameters for WorkerCompleteThreadLifecycle.
+type WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocol string
 
 // WorkerRecordThreadMetadataJSONBody defines parameters for WorkerRecordThreadMetadata.
 type WorkerRecordThreadMetadataJSONBody map[string]interface{}
 
+// WorkerRecordThreadMetadataParams defines parameters for WorkerRecordThreadMetadata.
+type WorkerRecordThreadMetadataParams struct {
+	XTyrsWorkerProtocol WorkerRecordThreadMetadataParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerRecordThreadMetadataParamsXTyrsWorkerProtocol defines parameters for WorkerRecordThreadMetadata.
+type WorkerRecordThreadMetadataParamsXTyrsWorkerProtocol string
+
+// WorkerPendingThreadNamesParams defines parameters for WorkerPendingThreadNames.
+type WorkerPendingThreadNamesParams struct {
+	XTyrsWorkerProtocol WorkerPendingThreadNamesParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerPendingThreadNamesParamsXTyrsWorkerProtocol defines parameters for WorkerPendingThreadNames.
+type WorkerPendingThreadNamesParamsXTyrsWorkerProtocol string
+
 // WorkerAckThreadNameJSONBody defines parameters for WorkerAckThreadName.
 type WorkerAckThreadNameJSONBody map[string]interface{}
+
+// WorkerAckThreadNameParams defines parameters for WorkerAckThreadName.
+type WorkerAckThreadNameParams struct {
+	XTyrsWorkerProtocol WorkerAckThreadNameParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerAckThreadNameParamsXTyrsWorkerProtocol defines parameters for WorkerAckThreadName.
+type WorkerAckThreadNameParamsXTyrsWorkerProtocol string
+
+// WorkerWorkspaceParams defines parameters for WorkerWorkspace.
+type WorkerWorkspaceParams struct {
+	XTyrsWorkerProtocol WorkerWorkspaceParamsXTyrsWorkerProtocol `json:"X-Tyrs-Worker-Protocol"`
+}
+
+// WorkerWorkspaceParamsXTyrsWorkerProtocol defines parameters for WorkerWorkspace.
+type WorkerWorkspaceParamsXTyrsWorkerProtocol string
 
 // CreateWorkerParams defines parameters for CreateWorker.
 type CreateWorkerParams struct {
@@ -1492,6 +2249,39 @@ type SetWorkerEnabledParams struct {
 type CreateWorkerEnrollmentParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
+
+// GetWorkerRuntimeConfigParamsEngine defines parameters for GetWorkerRuntimeConfig.
+type GetWorkerRuntimeConfigParamsEngine string
+
+// UpdateWorkerRuntimeInstructionsJSONBody defines parameters for UpdateWorkerRuntimeInstructions.
+type UpdateWorkerRuntimeInstructionsJSONBody struct {
+	Content  string `json:"content"`
+	Revision string `json:"revision"`
+}
+
+// UpdateWorkerRuntimeInstructionsParams defines parameters for UpdateWorkerRuntimeInstructions.
+type UpdateWorkerRuntimeInstructionsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// UpdateWorkerRuntimeInstructionsParamsEngine defines parameters for UpdateWorkerRuntimeInstructions.
+type UpdateWorkerRuntimeInstructionsParamsEngine string
+
+// UpdateWorkerRuntimeProviderParams defines parameters for UpdateWorkerRuntimeProvider.
+type UpdateWorkerRuntimeProviderParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// UpdateWorkerRuntimeProviderParamsEngine defines parameters for UpdateWorkerRuntimeProvider.
+type UpdateWorkerRuntimeProviderParamsEngine string
+
+// RestartWorkerRuntimeParams defines parameters for RestartWorkerRuntime.
+type RestartWorkerRuntimeParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// RestartWorkerRuntimeParamsEngine defines parameters for RestartWorkerRuntime.
+type RestartWorkerRuntimeParamsEngine string
 
 // ScanWorkerWorkspaceParams defines parameters for ScanWorkerWorkspace.
 type ScanWorkerWorkspaceParams struct {
@@ -1733,6 +2523,12 @@ type CreateWorkerJSONRequestBody = WorkerInput
 
 // SetWorkerEnabledJSONRequestBody defines body for SetWorkerEnabled for application/json ContentType.
 type SetWorkerEnabledJSONRequestBody SetWorkerEnabledJSONBody
+
+// UpdateWorkerRuntimeInstructionsJSONRequestBody defines body for UpdateWorkerRuntimeInstructions for application/json ContentType.
+type UpdateWorkerRuntimeInstructionsJSONRequestBody UpdateWorkerRuntimeInstructionsJSONBody
+
+// UpdateWorkerRuntimeProviderJSONRequestBody defines body for UpdateWorkerRuntimeProvider for application/json ContentType.
+type UpdateWorkerRuntimeProviderJSONRequestBody = WorkerRuntimeProviderInput
 
 // CreateWorkspaceProjectForumJSONRequestBody defines body for CreateWorkspaceProjectForum for application/json ContentType.
 type CreateWorkspaceProjectForumJSONRequestBody = WorkspaceProjectForumInput
@@ -1978,133 +2774,139 @@ type ServerInterface interface {
 	UploadWorkerBlob(c *gin.Context, id openapi_types.UUID, params UploadWorkerBlobParams)
 
 	// (POST /worker/v1/claims)
-	WorkerClaim(c *gin.Context)
+	WorkerClaim(c *gin.Context, params WorkerClaimParams)
+
+	// (GET /worker/v1/config/ws)
+	WorkerConfigChannel(c *gin.Context, params WorkerConfigChannelParams)
 
 	// (POST /worker/v1/desktop-rollbacks)
-	WorkerPrepareDesktopRollback(c *gin.Context)
+	WorkerPrepareDesktopRollback(c *gin.Context, params WorkerPrepareDesktopRollbackParams)
 
 	// (POST /worker/v1/desktop-rollbacks/{id}/complete)
-	WorkerCompleteDesktopRollback(c *gin.Context, id WorkerResourceID)
+	WorkerCompleteDesktopRollback(c *gin.Context, id WorkerResourceID, params WorkerCompleteDesktopRollbackParams)
 
 	// (POST /worker/v1/desktop-steers)
-	WorkerRecordDesktopSteer(c *gin.Context)
+	WorkerRecordDesktopSteer(c *gin.Context, params WorkerRecordDesktopSteerParams)
 
 	// (POST /worker/v1/desktop-thread-requests)
-	WorkerPrepareDesktopThread(c *gin.Context)
+	WorkerPrepareDesktopThread(c *gin.Context, params WorkerPrepareDesktopThreadParams)
 
 	// (GET /worker/v1/desktop-thread-requests/{id})
-	WorkerDesktopThreadState(c *gin.Context, id WorkerResourceID)
+	WorkerDesktopThreadState(c *gin.Context, id WorkerResourceID, params WorkerDesktopThreadStateParams)
 
 	// (POST /worker/v1/desktop-thread-requests/{id}/complete)
-	WorkerCompleteDesktopThread(c *gin.Context, id WorkerResourceID)
+	WorkerCompleteDesktopThread(c *gin.Context, id WorkerResourceID, params WorkerCompleteDesktopThreadParams)
 
 	// (POST /worker/v1/desktop-thread-requests/{id}/fail)
-	WorkerFailDesktopThread(c *gin.Context, id WorkerResourceID)
+	WorkerFailDesktopThread(c *gin.Context, id WorkerResourceID, params WorkerFailDesktopThreadParams)
 
 	// (POST /worker/v1/desktop-turns)
-	WorkerPrepareDesktopTurn(c *gin.Context)
+	WorkerPrepareDesktopTurn(c *gin.Context, params WorkerPrepareDesktopTurnParams)
 
 	// (POST /worker/v1/desktop-turns/preflight)
-	WorkerPreflightDesktopTurn(c *gin.Context)
+	WorkerPreflightDesktopTurn(c *gin.Context, params WorkerPreflightDesktopTurnParams)
 
 	// (GET /worker/v1/desktop-turns/{id}/images/target)
-	WorkerDesktopImageTarget(c *gin.Context, id WorkerResourceID)
+	WorkerDesktopImageTarget(c *gin.Context, id WorkerResourceID, params WorkerDesktopImageTargetParams)
 
 	// (POST /worker/v1/desktop-turns/{id}/images/{ordinal}/fail)
-	WorkerFailDesktopImage(c *gin.Context, id WorkerResourceID, ordinal int)
+	WorkerFailDesktopImage(c *gin.Context, id WorkerResourceID, ordinal int, params WorkerFailDesktopImageParams)
 
 	// (POST /worker/v1/enroll)
 	EnrollWorker(c *gin.Context)
 
 	// (POST /worker/v1/heartbeat)
-	WorkerHeartbeat(c *gin.Context)
+	WorkerHeartbeat(c *gin.Context, params WorkerHeartbeatParams)
+
+	// (GET /worker/v1/identity)
+	GetWorkerIdentity(c *gin.Context, params GetWorkerIdentityParams)
 
 	// (POST /worker/v1/inputs/decide)
-	WorkerDecideInput(c *gin.Context)
+	WorkerDecideInput(c *gin.Context, params WorkerDecideInputParams)
 
 	// (POST /worker/v1/interactive/answer)
-	WorkerAnswerInteractive(c *gin.Context)
+	WorkerAnswerInteractive(c *gin.Context, params WorkerAnswerInteractiveParams)
 
 	// (GET /worker/v1/interactive/{id})
-	WorkerInteractiveState(c *gin.Context, id WorkerResourceID)
+	WorkerInteractiveState(c *gin.Context, id WorkerResourceID, params WorkerInteractiveStateParams)
 
 	// (POST /worker/v1/runs/{id}/attachments)
-	WorkerUploadAgentAttachment(c *gin.Context, id WorkerResourceID)
+	WorkerUploadAgentAttachment(c *gin.Context, id WorkerResourceID, params WorkerUploadAgentAttachmentParams)
 
 	// (POST /worker/v1/runs/{id}/commands/ack)
-	WorkerCommandAck(c *gin.Context, id WorkerResourceID)
+	WorkerCommandAck(c *gin.Context, id WorkerResourceID, params WorkerCommandAckParams)
 
 	// (POST /worker/v1/runs/{id}/complete)
-	WorkerRunComplete(c *gin.Context, id WorkerResourceID)
+	WorkerRunComplete(c *gin.Context, id WorkerResourceID, params WorkerRunCompleteParams)
 
 	// (POST /worker/v1/runs/{id}/confirm)
-	WorkerConfirmTurn(c *gin.Context, id WorkerResourceID)
+	WorkerConfirmTurn(c *gin.Context, id WorkerResourceID, params WorkerConfirmTurnParams)
 
 	// (POST /worker/v1/runs/{id}/events)
-	WorkerRunEvents(c *gin.Context, id WorkerResourceID)
+	WorkerRunEvents(c *gin.Context, id WorkerResourceID, params WorkerRunEventsParams)
 
 	// (POST /worker/v1/runs/{id}/fail)
-	WorkerRunFail(c *gin.Context, id WorkerResourceID)
+	WorkerRunFail(c *gin.Context, id WorkerResourceID, params WorkerRunFailParams)
 
 	// (POST /worker/v1/runs/{id}/git-credential)
-	WorkerGitCredential(c *gin.Context, id WorkerResourceID)
+	WorkerGitCredential(c *gin.Context, id WorkerResourceID, params WorkerGitCredentialParams)
 
 	// (POST /worker/v1/runs/{id}/heartbeat)
-	WorkerRunHeartbeat(c *gin.Context, id WorkerResourceID)
+	WorkerRunHeartbeat(c *gin.Context, id WorkerResourceID, params WorkerRunHeartbeatParams)
 
 	// (POST /worker/v1/runs/{id}/interactive)
-	WorkerRegisterInteractive(c *gin.Context, id WorkerResourceID)
+	WorkerRegisterInteractive(c *gin.Context, id WorkerResourceID, params WorkerRegisterInteractiveParams)
 
 	// (POST /worker/v1/runs/{id}/submission)
-	WorkerRecordSubmission(c *gin.Context, id WorkerResourceID)
+	WorkerRecordSubmission(c *gin.Context, id WorkerResourceID, params WorkerRecordSubmissionParams)
 
 	// (POST /worker/v1/runs/{id}/thread)
-	WorkerSetThread(c *gin.Context, id WorkerResourceID)
+	WorkerSetThread(c *gin.Context, id WorkerResourceID, params WorkerSetThreadParams)
 
 	// (POST /worker/v1/runs/{id}/tools/call)
-	WorkerToolCall(c *gin.Context, id WorkerResourceID)
+	WorkerToolCall(c *gin.Context, id WorkerResourceID, params WorkerToolCallParams)
 
 	// (POST /worker/v1/runs/{id}/workspace-project-state)
-	WorkerWorkspaceProjectState(c *gin.Context, id WorkerResourceID)
+	WorkerWorkspaceProjectState(c *gin.Context, id WorkerResourceID, params WorkerWorkspaceProjectStateParams)
 
 	// (POST /worker/v1/runs/{id}/workspace-state)
-	WorkerWorkspaceState(c *gin.Context, id WorkerResourceID)
+	WorkerWorkspaceState(c *gin.Context, id WorkerResourceID, params WorkerWorkspaceStateParams)
 
 	// (POST /worker/v1/session-title-tasks/claim)
-	WorkerClaimSessionTitle(c *gin.Context)
+	WorkerClaimSessionTitle(c *gin.Context, params WorkerClaimSessionTitleParams)
 
 	// (POST /worker/v1/session-title-tasks/{id}/complete)
-	WorkerCompleteSessionTitle(c *gin.Context, id openapi_types.UUID)
+	WorkerCompleteSessionTitle(c *gin.Context, id openapi_types.UUID, params WorkerCompleteSessionTitleParams)
 
 	// (POST /worker/v1/session-title-tasks/{id}/fail)
-	WorkerFailSessionTitle(c *gin.Context, id openapi_types.UUID)
+	WorkerFailSessionTitle(c *gin.Context, id openapi_types.UUID, params WorkerFailSessionTitleParams)
 
 	// (GET /worker/v1/ssh-configuration)
-	WorkerSSHConfiguration(c *gin.Context)
+	WorkerSSHConfiguration(c *gin.Context, params WorkerSSHConfigurationParams)
 
 	// (GET /worker/v1/thread-lifecycle-requests)
-	WorkerPendingThreadLifecycles(c *gin.Context)
+	WorkerPendingThreadLifecycles(c *gin.Context, params WorkerPendingThreadLifecyclesParams)
 
 	// (POST /worker/v1/thread-lifecycle-requests/desktop)
-	WorkerPrepareDesktopThreadLifecycle(c *gin.Context)
+	WorkerPrepareDesktopThreadLifecycle(c *gin.Context, params WorkerPrepareDesktopThreadLifecycleParams)
 
 	// (GET /worker/v1/thread-lifecycle-requests/{id})
-	WorkerThreadLifecycleState(c *gin.Context, id WorkerResourceID)
+	WorkerThreadLifecycleState(c *gin.Context, id WorkerResourceID, params WorkerThreadLifecycleStateParams)
 
 	// (POST /worker/v1/thread-lifecycle-requests/{id}/complete)
-	WorkerCompleteThreadLifecycle(c *gin.Context, id WorkerResourceID)
+	WorkerCompleteThreadLifecycle(c *gin.Context, id WorkerResourceID, params WorkerCompleteThreadLifecycleParams)
 
 	// (POST /worker/v1/thread-metadata-events)
-	WorkerRecordThreadMetadata(c *gin.Context)
+	WorkerRecordThreadMetadata(c *gin.Context, params WorkerRecordThreadMetadataParams)
 
 	// (GET /worker/v1/thread-name-updates)
-	WorkerPendingThreadNames(c *gin.Context)
+	WorkerPendingThreadNames(c *gin.Context, params WorkerPendingThreadNamesParams)
 
 	// (POST /worker/v1/thread-name-updates/{id}/ack)
-	WorkerAckThreadName(c *gin.Context, id WorkerResourceID)
+	WorkerAckThreadName(c *gin.Context, id WorkerResourceID, params WorkerAckThreadNameParams)
 
 	// (GET /worker/v1/workspace)
-	WorkerWorkspace(c *gin.Context)
+	WorkerWorkspace(c *gin.Context, params WorkerWorkspaceParams)
 
 	// (GET /workers)
 	ListWorkers(c *gin.Context)
@@ -2123,6 +2925,21 @@ type ServerInterface interface {
 
 	// (POST /workers/{id}/enrollments)
 	CreateWorkerEnrollment(c *gin.Context, id openapi_types.UUID, params CreateWorkerEnrollmentParams)
+
+	// (GET /workers/{id}/runtimes)
+	GetWorkerRuntimes(c *gin.Context, id WorkerResourceID)
+
+	// (GET /workers/{id}/runtimes/{engine}/config)
+	GetWorkerRuntimeConfig(c *gin.Context, id WorkerResourceID, engine GetWorkerRuntimeConfigParamsEngine)
+
+	// (PUT /workers/{id}/runtimes/{engine}/config/agents)
+	UpdateWorkerRuntimeInstructions(c *gin.Context, id WorkerResourceID, engine UpdateWorkerRuntimeInstructionsParamsEngine, params UpdateWorkerRuntimeInstructionsParams)
+
+	// (PUT /workers/{id}/runtimes/{engine}/config/provider)
+	UpdateWorkerRuntimeProvider(c *gin.Context, id WorkerResourceID, engine UpdateWorkerRuntimeProviderParamsEngine, params UpdateWorkerRuntimeProviderParams)
+
+	// (POST /workers/{id}/runtimes/{engine}/restart)
+	RestartWorkerRuntime(c *gin.Context, id WorkerResourceID, engine RestartWorkerRuntimeParamsEngine, params RestartWorkerRuntimeParams)
 
 	// (GET /workers/{id}/workspace)
 	GetWorkerWorkspace(c *gin.Context, id openapi_types.UUID)
@@ -4584,6 +5401,30 @@ func (siw *ServerInterfaceWrapper) DownloadWorkerBlob(c *gin.Context) {
 		return
 	}
 
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol DownloadWorkerBlobParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4628,6 +5469,30 @@ func (siw *ServerInterfaceWrapper) UploadWorkerBlob(c *gin.Context) {
 		return
 	}
 
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol UploadWorkerBlobParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4641,7 +5506,36 @@ func (siw *ServerInterfaceWrapper) UploadWorkerBlob(c *gin.Context) {
 // WorkerClaim operation middleware
 func (siw *ServerInterfaceWrapper) WorkerClaim(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerClaimParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerClaimParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4650,13 +5544,86 @@ func (siw *ServerInterfaceWrapper) WorkerClaim(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerClaim(c)
+	siw.Handler.WorkerClaim(c, params)
+}
+
+// WorkerConfigChannel operation middleware
+func (siw *ServerInterfaceWrapper) WorkerConfigChannel(c *gin.Context) {
+
+	var err error
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerConfigChannelParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerConfigChannelParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerConfigChannel(c, params)
 }
 
 // WorkerPrepareDesktopRollback operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopRollback(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPrepareDesktopRollbackParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPrepareDesktopRollbackParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4665,7 +5632,7 @@ func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopRollback(c *gin.Context) 
 		}
 	}
 
-	siw.Handler.WorkerPrepareDesktopRollback(c)
+	siw.Handler.WorkerPrepareDesktopRollback(c, params)
 }
 
 // WorkerCompleteDesktopRollback operation middleware
@@ -4684,6 +5651,33 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopRollback(c *gin.Context)
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerCompleteDesktopRollbackParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerCompleteDesktopRollbackParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4691,13 +5685,42 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopRollback(c *gin.Context)
 		}
 	}
 
-	siw.Handler.WorkerCompleteDesktopRollback(c, id)
+	siw.Handler.WorkerCompleteDesktopRollback(c, id, params)
 }
 
 // WorkerRecordDesktopSteer operation middleware
 func (siw *ServerInterfaceWrapper) WorkerRecordDesktopSteer(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRecordDesktopSteerParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRecordDesktopSteerParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4706,13 +5729,42 @@ func (siw *ServerInterfaceWrapper) WorkerRecordDesktopSteer(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRecordDesktopSteer(c)
+	siw.Handler.WorkerRecordDesktopSteer(c, params)
 }
 
 // WorkerPrepareDesktopThread operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThread(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPrepareDesktopThreadParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPrepareDesktopThreadParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4721,7 +5773,7 @@ func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThread(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerPrepareDesktopThread(c)
+	siw.Handler.WorkerPrepareDesktopThread(c, params)
 }
 
 // WorkerDesktopThreadState operation middleware
@@ -4740,6 +5792,33 @@ func (siw *ServerInterfaceWrapper) WorkerDesktopThreadState(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerDesktopThreadStateParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerDesktopThreadStateParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4747,7 +5826,7 @@ func (siw *ServerInterfaceWrapper) WorkerDesktopThreadState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerDesktopThreadState(c, id)
+	siw.Handler.WorkerDesktopThreadState(c, id, params)
 }
 
 // WorkerCompleteDesktopThread operation middleware
@@ -4766,6 +5845,33 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopThread(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerCompleteDesktopThreadParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerCompleteDesktopThreadParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4773,7 +5879,7 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopThread(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerCompleteDesktopThread(c, id)
+	siw.Handler.WorkerCompleteDesktopThread(c, id, params)
 }
 
 // WorkerFailDesktopThread operation middleware
@@ -4792,6 +5898,33 @@ func (siw *ServerInterfaceWrapper) WorkerFailDesktopThread(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerFailDesktopThreadParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerFailDesktopThreadParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4799,13 +5932,42 @@ func (siw *ServerInterfaceWrapper) WorkerFailDesktopThread(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerFailDesktopThread(c, id)
+	siw.Handler.WorkerFailDesktopThread(c, id, params)
 }
 
 // WorkerPrepareDesktopTurn operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopTurn(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPrepareDesktopTurnParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPrepareDesktopTurnParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4814,13 +5976,42 @@ func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopTurn(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerPrepareDesktopTurn(c)
+	siw.Handler.WorkerPrepareDesktopTurn(c, params)
 }
 
 // WorkerPreflightDesktopTurn operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPreflightDesktopTurn(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPreflightDesktopTurnParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPreflightDesktopTurnParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4829,7 +6020,7 @@ func (siw *ServerInterfaceWrapper) WorkerPreflightDesktopTurn(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerPreflightDesktopTurn(c)
+	siw.Handler.WorkerPreflightDesktopTurn(c, params)
 }
 
 // WorkerDesktopImageTarget operation middleware
@@ -4848,6 +6039,33 @@ func (siw *ServerInterfaceWrapper) WorkerDesktopImageTarget(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerDesktopImageTargetParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerDesktopImageTargetParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4855,7 +6073,7 @@ func (siw *ServerInterfaceWrapper) WorkerDesktopImageTarget(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerDesktopImageTarget(c, id)
+	siw.Handler.WorkerDesktopImageTarget(c, id, params)
 }
 
 // WorkerFailDesktopImage operation middleware
@@ -4883,6 +6101,33 @@ func (siw *ServerInterfaceWrapper) WorkerFailDesktopImage(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerFailDesktopImageParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerFailDesktopImageParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4890,7 +6135,7 @@ func (siw *ServerInterfaceWrapper) WorkerFailDesktopImage(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerFailDesktopImage(c, id, ordinal)
+	siw.Handler.WorkerFailDesktopImage(c, id, ordinal, params)
 }
 
 // EnrollWorker operation middleware
@@ -4909,7 +6154,36 @@ func (siw *ServerInterfaceWrapper) EnrollWorker(c *gin.Context) {
 // WorkerHeartbeat operation middleware
 func (siw *ServerInterfaceWrapper) WorkerHeartbeat(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerHeartbeatParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerHeartbeatParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4918,13 +6192,86 @@ func (siw *ServerInterfaceWrapper) WorkerHeartbeat(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerHeartbeat(c)
+	siw.Handler.WorkerHeartbeat(c, params)
+}
+
+// GetWorkerIdentity operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerIdentity(c *gin.Context) {
+
+	var err error
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorkerIdentityParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol GetWorkerIdentityParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerIdentity(c, params)
 }
 
 // WorkerDecideInput operation middleware
 func (siw *ServerInterfaceWrapper) WorkerDecideInput(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerDecideInputParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerDecideInputParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4933,13 +6280,42 @@ func (siw *ServerInterfaceWrapper) WorkerDecideInput(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerDecideInput(c)
+	siw.Handler.WorkerDecideInput(c, params)
 }
 
 // WorkerAnswerInteractive operation middleware
 func (siw *ServerInterfaceWrapper) WorkerAnswerInteractive(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerAnswerInteractiveParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerAnswerInteractiveParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4948,7 +6324,7 @@ func (siw *ServerInterfaceWrapper) WorkerAnswerInteractive(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerAnswerInteractive(c)
+	siw.Handler.WorkerAnswerInteractive(c, params)
 }
 
 // WorkerInteractiveState operation middleware
@@ -4967,6 +6343,33 @@ func (siw *ServerInterfaceWrapper) WorkerInteractiveState(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerInteractiveStateParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerInteractiveStateParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4974,7 +6377,7 @@ func (siw *ServerInterfaceWrapper) WorkerInteractiveState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerInteractiveState(c, id)
+	siw.Handler.WorkerInteractiveState(c, id, params)
 }
 
 // WorkerUploadAgentAttachment operation middleware
@@ -4993,6 +6396,33 @@ func (siw *ServerInterfaceWrapper) WorkerUploadAgentAttachment(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerUploadAgentAttachmentParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerUploadAgentAttachmentParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5000,7 +6430,7 @@ func (siw *ServerInterfaceWrapper) WorkerUploadAgentAttachment(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerUploadAgentAttachment(c, id)
+	siw.Handler.WorkerUploadAgentAttachment(c, id, params)
 }
 
 // WorkerCommandAck operation middleware
@@ -5019,6 +6449,33 @@ func (siw *ServerInterfaceWrapper) WorkerCommandAck(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerCommandAckParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerCommandAckParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5026,7 +6483,7 @@ func (siw *ServerInterfaceWrapper) WorkerCommandAck(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerCommandAck(c, id)
+	siw.Handler.WorkerCommandAck(c, id, params)
 }
 
 // WorkerRunComplete operation middleware
@@ -5045,6 +6502,33 @@ func (siw *ServerInterfaceWrapper) WorkerRunComplete(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRunCompleteParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRunCompleteParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5052,7 +6536,7 @@ func (siw *ServerInterfaceWrapper) WorkerRunComplete(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRunComplete(c, id)
+	siw.Handler.WorkerRunComplete(c, id, params)
 }
 
 // WorkerConfirmTurn operation middleware
@@ -5071,6 +6555,33 @@ func (siw *ServerInterfaceWrapper) WorkerConfirmTurn(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerConfirmTurnParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerConfirmTurnParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5078,7 +6589,7 @@ func (siw *ServerInterfaceWrapper) WorkerConfirmTurn(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerConfirmTurn(c, id)
+	siw.Handler.WorkerConfirmTurn(c, id, params)
 }
 
 // WorkerRunEvents operation middleware
@@ -5097,6 +6608,33 @@ func (siw *ServerInterfaceWrapper) WorkerRunEvents(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRunEventsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRunEventsParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5104,7 +6642,7 @@ func (siw *ServerInterfaceWrapper) WorkerRunEvents(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRunEvents(c, id)
+	siw.Handler.WorkerRunEvents(c, id, params)
 }
 
 // WorkerRunFail operation middleware
@@ -5123,6 +6661,33 @@ func (siw *ServerInterfaceWrapper) WorkerRunFail(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRunFailParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRunFailParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5130,7 +6695,7 @@ func (siw *ServerInterfaceWrapper) WorkerRunFail(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRunFail(c, id)
+	siw.Handler.WorkerRunFail(c, id, params)
 }
 
 // WorkerGitCredential operation middleware
@@ -5149,6 +6714,33 @@ func (siw *ServerInterfaceWrapper) WorkerGitCredential(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerGitCredentialParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerGitCredentialParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5156,7 +6748,7 @@ func (siw *ServerInterfaceWrapper) WorkerGitCredential(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerGitCredential(c, id)
+	siw.Handler.WorkerGitCredential(c, id, params)
 }
 
 // WorkerRunHeartbeat operation middleware
@@ -5175,6 +6767,33 @@ func (siw *ServerInterfaceWrapper) WorkerRunHeartbeat(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRunHeartbeatParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRunHeartbeatParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5182,7 +6801,7 @@ func (siw *ServerInterfaceWrapper) WorkerRunHeartbeat(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRunHeartbeat(c, id)
+	siw.Handler.WorkerRunHeartbeat(c, id, params)
 }
 
 // WorkerRegisterInteractive operation middleware
@@ -5201,6 +6820,33 @@ func (siw *ServerInterfaceWrapper) WorkerRegisterInteractive(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRegisterInteractiveParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRegisterInteractiveParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5208,7 +6854,7 @@ func (siw *ServerInterfaceWrapper) WorkerRegisterInteractive(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRegisterInteractive(c, id)
+	siw.Handler.WorkerRegisterInteractive(c, id, params)
 }
 
 // WorkerRecordSubmission operation middleware
@@ -5227,6 +6873,33 @@ func (siw *ServerInterfaceWrapper) WorkerRecordSubmission(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRecordSubmissionParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRecordSubmissionParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5234,7 +6907,7 @@ func (siw *ServerInterfaceWrapper) WorkerRecordSubmission(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRecordSubmission(c, id)
+	siw.Handler.WorkerRecordSubmission(c, id, params)
 }
 
 // WorkerSetThread operation middleware
@@ -5253,6 +6926,33 @@ func (siw *ServerInterfaceWrapper) WorkerSetThread(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerSetThreadParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerSetThreadParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5260,7 +6960,7 @@ func (siw *ServerInterfaceWrapper) WorkerSetThread(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerSetThread(c, id)
+	siw.Handler.WorkerSetThread(c, id, params)
 }
 
 // WorkerToolCall operation middleware
@@ -5279,6 +6979,33 @@ func (siw *ServerInterfaceWrapper) WorkerToolCall(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerToolCallParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerToolCallParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5286,7 +7013,7 @@ func (siw *ServerInterfaceWrapper) WorkerToolCall(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerToolCall(c, id)
+	siw.Handler.WorkerToolCall(c, id, params)
 }
 
 // WorkerWorkspaceProjectState operation middleware
@@ -5305,6 +7032,33 @@ func (siw *ServerInterfaceWrapper) WorkerWorkspaceProjectState(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerWorkspaceProjectStateParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerWorkspaceProjectStateParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5312,7 +7066,7 @@ func (siw *ServerInterfaceWrapper) WorkerWorkspaceProjectState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerWorkspaceProjectState(c, id)
+	siw.Handler.WorkerWorkspaceProjectState(c, id, params)
 }
 
 // WorkerWorkspaceState operation middleware
@@ -5331,6 +7085,33 @@ func (siw *ServerInterfaceWrapper) WorkerWorkspaceState(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerWorkspaceStateParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerWorkspaceStateParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5338,13 +7119,42 @@ func (siw *ServerInterfaceWrapper) WorkerWorkspaceState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerWorkspaceState(c, id)
+	siw.Handler.WorkerWorkspaceState(c, id, params)
 }
 
 // WorkerClaimSessionTitle operation middleware
 func (siw *ServerInterfaceWrapper) WorkerClaimSessionTitle(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerClaimSessionTitleParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerClaimSessionTitleParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5353,7 +7163,7 @@ func (siw *ServerInterfaceWrapper) WorkerClaimSessionTitle(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerClaimSessionTitle(c)
+	siw.Handler.WorkerClaimSessionTitle(c, params)
 }
 
 // WorkerCompleteSessionTitle operation middleware
@@ -5372,6 +7182,33 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteSessionTitle(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerCompleteSessionTitleParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerCompleteSessionTitleParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5379,7 +7216,7 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteSessionTitle(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerCompleteSessionTitle(c, id)
+	siw.Handler.WorkerCompleteSessionTitle(c, id, params)
 }
 
 // WorkerFailSessionTitle operation middleware
@@ -5398,6 +7235,33 @@ func (siw *ServerInterfaceWrapper) WorkerFailSessionTitle(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerFailSessionTitleParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerFailSessionTitleParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5405,13 +7269,42 @@ func (siw *ServerInterfaceWrapper) WorkerFailSessionTitle(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerFailSessionTitle(c, id)
+	siw.Handler.WorkerFailSessionTitle(c, id, params)
 }
 
 // WorkerSSHConfiguration operation middleware
 func (siw *ServerInterfaceWrapper) WorkerSSHConfiguration(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerSSHConfigurationParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerSSHConfigurationParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5420,13 +7313,42 @@ func (siw *ServerInterfaceWrapper) WorkerSSHConfiguration(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerSSHConfiguration(c)
+	siw.Handler.WorkerSSHConfiguration(c, params)
 }
 
 // WorkerPendingThreadLifecycles operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPendingThreadLifecycles(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPendingThreadLifecyclesParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPendingThreadLifecyclesParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5435,13 +7357,42 @@ func (siw *ServerInterfaceWrapper) WorkerPendingThreadLifecycles(c *gin.Context)
 		}
 	}
 
-	siw.Handler.WorkerPendingThreadLifecycles(c)
+	siw.Handler.WorkerPendingThreadLifecycles(c, params)
 }
 
 // WorkerPrepareDesktopThreadLifecycle operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThreadLifecycle(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPrepareDesktopThreadLifecycleParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPrepareDesktopThreadLifecycleParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5450,7 +7401,7 @@ func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThreadLifecycle(c *gin.Co
 		}
 	}
 
-	siw.Handler.WorkerPrepareDesktopThreadLifecycle(c)
+	siw.Handler.WorkerPrepareDesktopThreadLifecycle(c, params)
 }
 
 // WorkerThreadLifecycleState operation middleware
@@ -5469,6 +7420,33 @@ func (siw *ServerInterfaceWrapper) WorkerThreadLifecycleState(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerThreadLifecycleStateParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerThreadLifecycleStateParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5476,7 +7454,7 @@ func (siw *ServerInterfaceWrapper) WorkerThreadLifecycleState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerThreadLifecycleState(c, id)
+	siw.Handler.WorkerThreadLifecycleState(c, id, params)
 }
 
 // WorkerCompleteThreadLifecycle operation middleware
@@ -5495,6 +7473,33 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteThreadLifecycle(c *gin.Context)
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerCompleteThreadLifecycleParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerCompleteThreadLifecycleParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5502,13 +7507,42 @@ func (siw *ServerInterfaceWrapper) WorkerCompleteThreadLifecycle(c *gin.Context)
 		}
 	}
 
-	siw.Handler.WorkerCompleteThreadLifecycle(c, id)
+	siw.Handler.WorkerCompleteThreadLifecycle(c, id, params)
 }
 
 // WorkerRecordThreadMetadata operation middleware
 func (siw *ServerInterfaceWrapper) WorkerRecordThreadMetadata(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerRecordThreadMetadataParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerRecordThreadMetadataParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5517,13 +7551,42 @@ func (siw *ServerInterfaceWrapper) WorkerRecordThreadMetadata(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerRecordThreadMetadata(c)
+	siw.Handler.WorkerRecordThreadMetadata(c, params)
 }
 
 // WorkerPendingThreadNames operation middleware
 func (siw *ServerInterfaceWrapper) WorkerPendingThreadNames(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerPendingThreadNamesParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerPendingThreadNamesParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5532,7 +7595,7 @@ func (siw *ServerInterfaceWrapper) WorkerPendingThreadNames(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerPendingThreadNames(c)
+	siw.Handler.WorkerPendingThreadNames(c, params)
 }
 
 // WorkerAckThreadName operation middleware
@@ -5551,6 +7614,33 @@ func (siw *ServerInterfaceWrapper) WorkerAckThreadName(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerAckThreadNameParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerAckThreadNameParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5558,13 +7648,42 @@ func (siw *ServerInterfaceWrapper) WorkerAckThreadName(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerAckThreadName(c, id)
+	siw.Handler.WorkerAckThreadName(c, id, params)
 }
 
 // WorkerWorkspace operation middleware
 func (siw *ServerInterfaceWrapper) WorkerWorkspace(c *gin.Context) {
 
+	var err error
+
 	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerWorkspaceParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Tyrs-Worker-Protocol" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Tyrs-Worker-Protocol")]; found {
+		var XTyrsWorkerProtocol WorkerWorkspaceParamsXTyrsWorkerProtocol
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Tyrs-Worker-Protocol, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Tyrs-Worker-Protocol", valueList[0], &XTyrsWorkerProtocol, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Tyrs-Worker-Protocol: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XTyrsWorkerProtocol = XTyrsWorkerProtocol
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Tyrs-Worker-Protocol is required, but not found"), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -5573,7 +7692,7 @@ func (siw *ServerInterfaceWrapper) WorkerWorkspace(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerWorkspace(c)
+	siw.Handler.WorkerWorkspace(c, params)
 }
 
 // ListWorkers operation middleware
@@ -5818,6 +7937,253 @@ func (siw *ServerInterfaceWrapper) CreateWorkerEnrollment(c *gin.Context) {
 	}
 
 	siw.Handler.CreateWorkerEnrollment(c, id, params)
+}
+
+// GetWorkerRuntimes operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerRuntimes(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerRuntimes(c, id)
+}
+
+// GetWorkerRuntimeConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerRuntimeConfig(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "engine" -------------
+	var engine GetWorkerRuntimeConfigParamsEngine
+
+	err = runtime.BindStyledParameterWithOptions("simple", "engine", c.Param("engine"), &engine, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter engine: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerRuntimeConfig(c, id, engine)
+}
+
+// UpdateWorkerRuntimeInstructions operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkerRuntimeInstructions(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "engine" -------------
+	var engine UpdateWorkerRuntimeInstructionsParamsEngine
+
+	err = runtime.BindStyledParameterWithOptions("simple", "engine", c.Param("engine"), &engine, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter engine: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateWorkerRuntimeInstructionsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWorkerRuntimeInstructions(c, id, engine, params)
+}
+
+// UpdateWorkerRuntimeProvider operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkerRuntimeProvider(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "engine" -------------
+	var engine UpdateWorkerRuntimeProviderParamsEngine
+
+	err = runtime.BindStyledParameterWithOptions("simple", "engine", c.Param("engine"), &engine, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter engine: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateWorkerRuntimeProviderParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWorkerRuntimeProvider(c, id, engine, params)
+}
+
+// RestartWorkerRuntime operation middleware
+func (siw *ServerInterfaceWrapper) RestartWorkerRuntime(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "engine" -------------
+	var engine RestartWorkerRuntimeParamsEngine
+
+	err = runtime.BindStyledParameterWithOptions("simple", "engine", c.Param("engine"), &engine, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter engine: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RestartWorkerRuntimeParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RestartWorkerRuntime(c, id, engine, params)
 }
 
 // GetWorkerWorkspace operation middleware
@@ -6379,6 +8745,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/worker/v1/blobs/:id", wrapper.DownloadWorkerBlob)
 	router.POST(options.BaseURL+"/worker/v1/blobs/:id", wrapper.UploadWorkerBlob)
 	router.POST(options.BaseURL+"/worker/v1/claims", wrapper.WorkerClaim)
+	router.GET(options.BaseURL+"/worker/v1/config/ws", wrapper.WorkerConfigChannel)
 	router.POST(options.BaseURL+"/worker/v1/desktop-rollbacks", wrapper.WorkerPrepareDesktopRollback)
 	router.POST(options.BaseURL+"/worker/v1/desktop-rollbacks/:id/complete", wrapper.WorkerCompleteDesktopRollback)
 	router.POST(options.BaseURL+"/worker/v1/desktop-steers", wrapper.WorkerRecordDesktopSteer)
@@ -6392,6 +8759,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/worker/v1/desktop-turns/:id/images/:ordinal/fail", wrapper.WorkerFailDesktopImage)
 	router.POST(options.BaseURL+"/worker/v1/enroll", wrapper.EnrollWorker)
 	router.POST(options.BaseURL+"/worker/v1/heartbeat", wrapper.WorkerHeartbeat)
+	router.GET(options.BaseURL+"/worker/v1/identity", wrapper.GetWorkerIdentity)
 	router.POST(options.BaseURL+"/worker/v1/inputs/decide", wrapper.WorkerDecideInput)
 	router.POST(options.BaseURL+"/worker/v1/interactive/answer", wrapper.WorkerAnswerInteractive)
 	router.GET(options.BaseURL+"/worker/v1/interactive/:id", wrapper.WorkerInteractiveState)
@@ -6427,6 +8795,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/workers/:id", wrapper.GetWorker)
 	router.PUT(options.BaseURL+"/workers/:id/enabled", wrapper.SetWorkerEnabled)
 	router.POST(options.BaseURL+"/workers/:id/enrollments", wrapper.CreateWorkerEnrollment)
+	router.GET(options.BaseURL+"/workers/:id/runtimes", wrapper.GetWorkerRuntimes)
+	router.GET(options.BaseURL+"/workers/:id/runtimes/:engine/config", wrapper.GetWorkerRuntimeConfig)
+	router.PUT(options.BaseURL+"/workers/:id/runtimes/:engine/config/agents", wrapper.UpdateWorkerRuntimeInstructions)
+	router.PUT(options.BaseURL+"/workers/:id/runtimes/:engine/config/provider", wrapper.UpdateWorkerRuntimeProvider)
+	router.POST(options.BaseURL+"/workers/:id/runtimes/:engine/restart", wrapper.RestartWorkerRuntime)
 	router.GET(options.BaseURL+"/workers/:id/workspace", wrapper.GetWorkerWorkspace)
 	router.POST(options.BaseURL+"/workers/:id/workspace/scan", wrapper.ScanWorkerWorkspace)
 	router.POST(options.BaseURL+"/workspace-forums/:id/disable", wrapper.DisableWorkspaceForum)
@@ -6442,180 +8815,198 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"toUBAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

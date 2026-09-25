@@ -1,15 +1,18 @@
 import { requireNativeModule } from "expo-modules-core";
 
-import { getSSHCredentials, type SSHConnection } from "@/db/connections";
+import { bindRuntimeIdentity, getSSHCredentials, type SSHConnection } from "@/db/connections";
+import { runtimeInfoSchema, type RuntimeInfo } from "@/types/runtime";
 import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import { normalizeNativeTransportError } from "./nativeError";
 
 export type SSHAppServerEndpoint = {
   url: string;
   token: string;
+  runtime: RuntimeInfo;
 };
 
 type NativeSSHTransport = {
+  inspectRuntime(options: Record<string, unknown>): Promise<unknown>;
   openAppServer(options: {
     profileId: string;
     host: string;
@@ -55,7 +58,7 @@ async function nativeCall<T>(call: () => Promise<T>): Promise<T> {
 
 export async function openSSHAppServer(connection: SSHConnection): Promise<SSHAppServerEndpoint> {
   const credentials = await getSSHCredentials(connection);
-  return nativeCall(() => nativeModule().openAppServer({
+  const endpoint = await nativeCall(() => nativeModule().openAppServer({
     profileId: connection.profileId,
     host: connection.host,
     port: connection.port,
@@ -64,6 +67,25 @@ export async function openSSHAppServer(connection: SSHConnection): Promise<SSHAp
     passphrase: credentials.passphrase,
     expectedHostFingerprint: connection.hostFingerprint,
   }));
+  try {
+    const runtime = runtimeInfoSchema.parse(endpoint.runtime);
+    if (runtime.engine !== connection.engine || (connection.workerId && runtime.workerId !== connection.workerId)) {
+      throw new Error("SSH 入口的 Worker 或引擎与保存的连接不一致");
+    }
+    if (runtime.status !== "running") throw new Error("此引擎暂不可用，请稍后重连");
+    await bindRuntimeIdentity(connection.profileId, runtime);
+    return { ...endpoint, runtime };
+  } catch (error) {
+    await nativeCall(() => nativeModule().close(connection.profileId));
+    throw error;
+  }
+}
+
+export async function inspectSSHRuntime(options: {
+  host: string; port: number; user: string; privateKey: string;
+  passphrase: string | null; expectedHostFingerprint: string;
+}): Promise<RuntimeInfo> {
+  return runtimeInfoSchema.parse(await nativeCall(() => nativeModule().inspectRuntime(options)));
 }
 
 async function connectionOptions(connection: SSHConnection): Promise<Record<string, unknown>> {

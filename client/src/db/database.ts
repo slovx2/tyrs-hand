@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 12;
+export const DATABASE_VERSION = 13;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < 7;
@@ -194,11 +194,53 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     if (current < 11) await migrateMachineProfiles(database);
     if (current < 12) await migratePendingMessagePreviews(database);
     await database.execAsync(machineSchema);
+    if (current < 13) await migrateRuntimeIdentity(database);
     if (current < DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
   }
   return database;
+}
+
+// 保留 profile ID，因此草稿、未确认提交、历史和模型偏好仍归原 Codex 入口。
+export async function migrateRuntimeIdentity(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.withExclusiveTransactionAsync(async (transaction) => {
+    await transaction.execAsync(`
+      ALTER TABLE connection_profiles ADD COLUMN engine TEXT NOT NULL DEFAULT 'codex'
+        CHECK(engine IN ('codex','claude-code'));
+      ALTER TABLE connection_profiles ADD COLUMN worker_id TEXT;
+      DROP INDEX connection_profiles_machine_fingerprint;
+      CREATE UNIQUE INDEX connection_profiles_machine_fingerprint
+        ON connection_profiles(machine_fingerprint,engine);
+      CREATE UNIQUE INDEX connection_profiles_runtime ON connection_profiles(profile_id,engine);
+      CREATE TRIGGER connection_profiles_engine_immutable BEFORE UPDATE OF engine ON connection_profiles
+        WHEN NEW.engine <> OLD.engine BEGIN SELECT RAISE(ABORT,'运行时引擎不可变'); END;
+      ALTER TABLE control_machine_links RENAME TO control_machine_links_v12;
+      CREATE TABLE control_machine_links (
+        profile_id TEXT NOT NULL,
+        server_id TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        worker_id TEXT NOT NULL,
+        engine TEXT NOT NULL CHECK(engine IN ('codex','claude-code')),
+        worker_name TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(server_id,worker_id,engine),
+        UNIQUE(profile_id,server_id),
+        FOREIGN KEY(profile_id,engine) REFERENCES connection_profiles(profile_id,engine) ON DELETE CASCADE
+      );
+      INSERT INTO control_machine_links
+        SELECT profile_id,server_id,base_url,worker_id,'codex',worker_name,device_id,
+          created_at,updated_at FROM control_machine_links_v12;
+      UPDATE connection_profiles SET worker_id=(
+        SELECT worker_id FROM control_machine_links WHERE profile_id=connection_profiles.profile_id LIMIT 1
+      ) WHERE profile_id IN (SELECT profile_id FROM control_machine_links
+        GROUP BY profile_id HAVING count(DISTINCT worker_id)=1);
+      DROP TABLE control_machine_links_v12;
+      PRAGMA user_version = 13;
+    `);
+  });
 }
 
 async function migratePendingMessagePreviews(database: SQLite.SQLiteDatabase): Promise<void> {
@@ -238,6 +280,7 @@ async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promi
   `);
   await database.execAsync(schema);
   await database.execAsync(machineSchema);
+  await migrateRuntimeIdentity(database);
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -298,7 +341,7 @@ async function migrateThreadHistoryCache(database: SQLite.SQLiteDatabase): Promi
   await database.withExclusiveTransactionAsync(async (transaction) => {
     // Thread 历史可以从官方 App Server 重建；v7 清除仍可能包含工具输出的旧缓存。
     await transaction.runAsync("DELETE FROM threads");
-    await transaction.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+    await transaction.execAsync("PRAGMA user_version = 7");
   });
 }
 

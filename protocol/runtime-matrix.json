@@ -1,0 +1,2697 @@
+{
+  "protocolVersion": "0.147.0",
+  "releaseReady": false,
+  "methods": [
+    {
+      "method": "account/login/cancel",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/CancelLoginAccountParams",
+        "response": "v2/CancelLoginAccountResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "account/login/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/LoginAccountParams",
+        "response": "v2/LoginAccountResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "account/logout",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "account/rateLimitResetCredit/consume",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ConsumeAccountRateLimitResetCreditParams",
+        "response": "v2/ConsumeAccountRateLimitResetCreditResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "account/rateLimits/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      }
+    },
+    {
+      "method": "account/rateLimits/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/AccountRateLimitsUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "account/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/GetAccountParams",
+        "response": "v2/GetAccountResponse.json"
+      }
+    },
+    {
+      "method": "account/sendAddCreditsNudgeEmail",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/SendAddCreditsNudgeEmailParams",
+        "response": "v2/SendAddCreditsNudgeEmailResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "account/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/AccountUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code"
+      ]
+    },
+    {
+      "method": "account/usage/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "account/workspaceMessages/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      }
+    },
+    {
+      "method": "app/installed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/AppsInstalledParams",
+        "response": "v2/AppsInstalledResponse.json"
+      }
+    },
+    {
+      "method": "app/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/AppsListParams",
+        "response": "v2/AppsListResponse.json"
+      }
+    },
+    {
+      "method": "app/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/AppsReadParams",
+        "response": "v2/AppsReadResponse.json"
+      }
+    },
+    {
+      "method": "applyPatchApproval",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerRequest.json#/definitions/ApplyPatchApprovalParams",
+        "response": "ApplyPatchApprovalResponse.json"
+      },
+      "callers": [
+        "client/src/app-server/officialClient.ts"
+      ]
+    },
+    {
+      "method": "command/exec",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/CommandExecParams",
+        "response": "v2/CommandExecResponse.json"
+      }
+    },
+    {
+      "method": "command/exec/resize",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/CommandExecResizeParams",
+        "response": "v2/CommandExecResizeResponse.json"
+      }
+    },
+    {
+      "method": "command/exec/terminate",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/CommandExecTerminateParams",
+        "response": "v2/CommandExecTerminateResponse.json"
+      }
+    },
+    {
+      "method": "command/exec/write",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/CommandExecWriteParams",
+        "response": "v2/CommandExecWriteResponse.json"
+      }
+    },
+    {
+      "method": "config/batchWrite",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ConfigBatchWriteParams",
+        "response": null
+      }
+    },
+    {
+      "method": "config/mcpServer/reload",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      }
+    },
+    {
+      "method": "config/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ConfigReadParams",
+        "response": "v2/ConfigReadResponse.json"
+      }
+    },
+    {
+      "method": "config/value/write",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ConfigValueWriteParams",
+        "response": null
+      }
+    },
+    {
+      "method": "configRequirements/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      }
+    },
+    {
+      "method": "error",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/codexcontrol/repository.go",
+        "internal/discordintegration/conversation_progress.go",
+        "internal/httpapi/live_manager.go",
+        "internal/httpapi/resources.go",
+        "internal/openapi/openapi.gen.go",
+        "internal/testutil/mockcodex/server.go",
+        "internal/testutil/mockcodexapp/main.go",
+        "internal/worker/codex_error.go",
+        "internal/worker/ssh_agent.go",
+        "client/src/app-server/outbox.ts",
+        "client/src/app-server/submissions.ts",
+        "client/src/features/live/LiveVoicePicker.tsx",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "client/src/types/openapi.ts",
+        "web/src/api/schema.ts",
+        "web/src/components/ToastViewport.tsx",
+        "web/src/features/live/LiveVoicePicker.tsx",
+        "web/src/main.tsx",
+        "web/src/pages/DevicesPage.tsx",
+        "web/src/pages/LivePage.tsx",
+        "web/src/pages/ResourcePage.tsx",
+        "web/src/pages/UsersPage.tsx",
+        "web/src/pages/WorkerConfigPage.tsx",
+        "web/src/pages/WorkspacesPage.tsx",
+        "web/src/state.ts",
+        "web/src/test/setup.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ErrorNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "execCommandApproval",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerRequest.json#/definitions/ExecCommandApprovalParams",
+        "response": "ExecCommandApprovalResponse.json"
+      },
+      "callers": [
+        "client/src/app-server/officialClient.ts"
+      ]
+    },
+    {
+      "method": "experimentalFeature/enablement/set",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ExperimentalFeatureEnablementSetParams",
+        "response": "v2/ExperimentalFeatureEnablementSetResponse.json"
+      }
+    },
+    {
+      "method": "experimentalFeature/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ExperimentalFeatureListParams",
+        "response": "v2/ExperimentalFeatureListResponse.json"
+      }
+    },
+    {
+      "method": "externalAgentConfig/detect",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ExternalAgentConfigDetectParams",
+        "response": "v2/ExternalAgentConfigDetectResponse.json"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ExternalAgentConfigImportParams",
+        "response": "v2/ExternalAgentConfigImportResponse.json"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/readHistories",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/recordHistory",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ExternalAgentConfigImportHistoryRecordParams",
+        "response": "v2/ExternalAgentConfigImportHistoryRecordResponse.json"
+      }
+    },
+    {
+      "method": "feedback/upload",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FeedbackUploadParams",
+        "response": "v2/FeedbackUploadResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "fs/copy",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsCopyParams",
+        "response": "v2/FsCopyResponse.json"
+      }
+    },
+    {
+      "method": "fs/createDirectory",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsCreateDirectoryParams",
+        "response": "v2/FsCreateDirectoryResponse.json"
+      }
+    },
+    {
+      "method": "fs/getMetadata",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsGetMetadataParams",
+        "response": "v2/FsGetMetadataResponse.json"
+      }
+    },
+    {
+      "method": "fs/readDirectory",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsReadDirectoryParams",
+        "response": "v2/FsReadDirectoryResponse.json"
+      }
+    },
+    {
+      "method": "fs/readFile",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsReadFileParams",
+        "response": "v2/FsReadFileResponse.json"
+      }
+    },
+    {
+      "method": "fs/remove",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsRemoveParams",
+        "response": "v2/FsRemoveResponse.json"
+      }
+    },
+    {
+      "method": "fs/unwatch",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsUnwatchParams",
+        "response": "v2/FsUnwatchResponse.json"
+      }
+    },
+    {
+      "method": "fs/watch",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsWatchParams",
+        "response": "v2/FsWatchResponse.json"
+      }
+    },
+    {
+      "method": "fs/writeFile",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FsWriteFileParams",
+        "response": "v2/FsWriteFileResponse.json"
+      }
+    },
+    {
+      "method": "fuzzyFileSearch",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/FuzzyFileSearchParams",
+        "response": "FuzzyFileSearchResponse.json"
+      }
+    },
+    {
+      "method": "hooks/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/HooksListParams",
+        "response": "v2/HooksListResponse.json"
+      }
+    },
+    {
+      "method": "initialize",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/socket_client.go",
+        "client/src/app-server/jsonRpc.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/InitializeParams",
+        "response": "v1/InitializeResponse.json"
+      }
+    },
+    {
+      "method": "initialized",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/codex/client.go",
+        "internal/codex/socket_client.go",
+        "internal/testutil/mockcodex/server.go",
+        "client/src/app-server/jsonRpc.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ClientNotification.json",
+        "response": null
+      }
+    },
+    {
+      "method": "item/agentMessage/delta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/discordintegration/conversation_progress.go",
+        "internal/httpapi/client_run_projection.go",
+        "internal/httpapi/worker_runs.go",
+        "internal/worker/runtime_support.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/AgentMessageDeltaNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "item/commandExecution/requestApproval",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerRequest.json#/definitions/CommandExecutionRequestApprovalParams",
+        "response": "CommandExecutionRequestApprovalResponse.json"
+      },
+      "callers": [
+        "client/src/app-server/officialClient.ts",
+        "client/src/features/chat/ServerRequestCard.tsx"
+      ]
+    },
+    {
+      "method": "item/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "TOOLS-001"
+        ]
+      },
+      "callers": [
+        "internal/discordintegration/conversation_progress.go",
+        "internal/discordintegration/conversation_status_segments.go",
+        "internal/httpapi/client_run_projection.go",
+        "internal/httpapi/live_voice.go",
+        "internal/httpapi/worker_runs.go",
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/runtime_support.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ItemCompletedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "item/fileChange/patchUpdated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/FileChangePatchUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code"
+      ]
+    },
+    {
+      "method": "item/fileChange/requestApproval",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerRequest.json#/definitions/FileChangeRequestApprovalParams",
+        "response": "FileChangeRequestApprovalResponse.json"
+      },
+      "callers": [
+        "client/src/app-server/officialClient.ts",
+        "client/src/features/chat/ServerRequestCard.tsx"
+      ]
+    },
+    {
+      "method": "item/permissions/requestApproval",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerRequest.json#/definitions/PermissionsRequestApprovalParams",
+        "response": "PermissionsRequestApprovalResponse.json"
+      },
+      "callers": [
+        "client/src/app-server/officialClient.ts",
+        "client/src/features/chat/ServerRequestCard.tsx"
+      ]
+    },
+    {
+      "method": "item/plan/delta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/PlanDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code"
+      ]
+    },
+    {
+      "method": "item/reasoning/summaryPartAdded",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ReasoningSummaryPartAddedNotification",
+        "response": null
+      },
+      "callers": [
+        "client/src/store/threadNotificationReducer.ts"
+      ]
+    },
+    {
+      "method": "item/reasoning/summaryTextDelta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ReasoningSummaryTextDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts"
+      ]
+    },
+    {
+      "method": "item/reasoning/textDelta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ReasoningTextDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts"
+      ]
+    },
+    {
+      "method": "item/started",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "TOOLS-001"
+        ]
+      },
+      "callers": [
+        "internal/discordintegration/conversation_progress.go",
+        "internal/httpapi/client_run_projection.go",
+        "internal/httpapi/worker_runs.go",
+        "internal/testutil/mockcodex/server.go",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ItemStartedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "item/tool/call",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "TOOLS-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/codex/client_io.go",
+        "internal/hostworker/runtime.go",
+        "internal/testutil/mockcodex/server.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerRequest.json#/definitions/DynamicToolCallParams",
+        "response": "DynamicToolCallResponse.json"
+      }
+    },
+    {
+      "method": "item/tool/requestUserInput",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "APPROVAL-003"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/hostworker/runtime.go",
+        "internal/testutil/mockcodex/server.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/features/chat/ServerRequestCard.tsx",
+        "client/src/preview/fixtures.ts",
+        "client/src/store/appStore.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerRequest.json#/definitions/ToolRequestUserInputParams",
+        "response": "ToolRequestUserInputResponse.json"
+      }
+    },
+    {
+      "method": "marketplace/add",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/MarketplaceAddParams",
+        "response": "v2/MarketplaceAddResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "marketplace/remove",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/MarketplaceRemoveParams",
+        "response": "v2/MarketplaceRemoveResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "marketplace/upgrade",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/MarketplaceUpgradeParams",
+        "response": "v2/MarketplaceUpgradeResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "mcpServer/elicitation/request",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerRequest.json#/definitions/McpServerElicitationRequestParams",
+        "response": "McpServerElicitationRequestResponse.json"
+      },
+      "callers": [
+        "client/src/app-server/officialClient.ts",
+        "client/src/store/appStore.ts"
+      ]
+    },
+    {
+      "method": "mcpServer/oauth/login",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/McpServerOauthLoginParams",
+        "response": "v2/McpServerOauthLoginResponse.json"
+      }
+    },
+    {
+      "method": "mcpServer/resource/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/McpResourceReadParams",
+        "response": "v2/McpResourceReadResponse.json"
+      }
+    },
+    {
+      "method": "mcpServer/tool/call",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/McpServerToolCallParams",
+        "response": "v2/McpServerToolCallResponse.json"
+      }
+    },
+    {
+      "method": "mcpServerStatus/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ListMcpServerStatusParams",
+        "response": "v2/ListMcpServerStatusResponse.json"
+      }
+    },
+    {
+      "method": "model/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codexcatalog/catalog.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ModelListParams",
+        "response": "v2/ModelListResponse.json"
+      }
+    },
+    {
+      "method": "modelProvider/capabilities/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ModelProviderCapabilitiesReadParams",
+        "response": "v2/ModelProviderCapabilitiesReadResponse.json"
+      }
+    },
+    {
+      "method": "permissionProfile/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PermissionProfileListParams",
+        "response": "v2/PermissionProfileListResponse.json"
+      }
+    },
+    {
+      "method": "plugin/install",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginInstallParams",
+        "response": "v2/PluginInstallResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/installed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginInstalledParams",
+        "response": "v2/PluginInstalledResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginListParams",
+        "response": "v2/PluginListResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginReadParams",
+        "response": "v2/PluginReadResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/share/checkout",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginShareCheckoutParams",
+        "response": "v2/PluginShareCheckoutResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/share/delete",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginShareDeleteParams",
+        "response": "v2/PluginShareDeleteResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/share/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginShareListParams",
+        "response": "v2/PluginShareListResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/share/save",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginShareSaveParams",
+        "response": "v2/PluginShareSaveResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/share/updateTargets",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginShareUpdateTargetsParams",
+        "response": "v2/PluginShareUpdateTargetsResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/skill/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginSkillReadParams",
+        "response": "v2/PluginSkillReadResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "plugin/uninstall",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CAPABILITY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginUninstallParams",
+        "response": "v2/PluginUninstallResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+      }
+    },
+    {
+      "method": "review/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ReviewStartParams",
+        "response": "v2/ReviewStartResponse.json"
+      }
+    },
+    {
+      "method": "runtime/info",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/hostworker/runtime.go"
+      ],
+      "schema": null
+    },
+    {
+      "method": "serverRequest/resolved",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "APPROVAL-003"
+        ]
+      },
+      "callers": [
+        "internal/testutil/mockcodex/server.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ServerRequestResolvedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "skills/config/write",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/SkillsConfigWriteParams",
+        "response": "v2/SkillsConfigWriteResponse.json"
+      }
+    },
+    {
+      "method": "skills/extraRoots/set",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/SkillsExtraRootsSetParams",
+        "response": "v2/SkillsExtraRootsSetResponse.json"
+      }
+    },
+    {
+      "method": "skills/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/SkillsListParams",
+        "response": "v2/SkillsListResponse.json"
+      }
+    },
+    {
+      "method": "thread/approveGuardianDeniedAction",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadApproveGuardianDeniedActionParams",
+        "response": "v2/ThreadApproveGuardianDeniedActionResponse.json"
+      }
+    },
+    {
+      "method": "thread/archive",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/appserverhub/routing.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadArchiveParams",
+        "response": "v2/ThreadArchiveResponse.json"
+      }
+    },
+    {
+      "method": "thread/archived",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/appserverhub/tool_routing.go",
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/workspace_codex.go",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadArchivedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "thread/compact/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-002"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadCompactStartParams",
+        "response": "v2/ThreadCompactStartResponse.json"
+      }
+    },
+    {
+      "method": "thread/compacted",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ContextCompactedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code"
+      ]
+    },
+    {
+      "method": "thread/delete",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadDeleteParams",
+        "response": "v2/ThreadDeleteResponse.json"
+      }
+    },
+    {
+      "method": "thread/fork",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadForkParams",
+        "response": "v2/ThreadForkResponse.json"
+      }
+    },
+    {
+      "method": "thread/goal/clear",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadGoalClearParams",
+        "response": "v2/ThreadGoalClearResponse.json"
+      }
+    },
+    {
+      "method": "thread/goal/get",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadGoalGetParams",
+        "response": "v2/ThreadGoalGetResponse.json"
+      }
+    },
+    {
+      "method": "thread/goal/set",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadGoalSetParams",
+        "response": "v2/ThreadGoalSetResponse.json"
+      }
+    },
+    {
+      "method": "thread/inject_items",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadInjectItemsParams",
+        "response": "v2/ThreadInjectItemsResponse.json"
+      }
+    },
+    {
+      "method": "thread/items/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "HISTORY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadItemsListParams",
+        "response": "v2/ThreadItemsListResponse.json"
+      }
+    },
+    {
+      "method": "thread/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadListParams",
+        "response": "v2/ThreadListResponse.json"
+      }
+    },
+    {
+      "method": "thread/loaded/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadLoadedListParams",
+        "response": "v2/ThreadLoadedListResponse.json"
+      }
+    },
+    {
+      "method": "thread/metadata/update",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadMetadataUpdateParams",
+        "response": "v2/ThreadMetadataUpdateResponse.json"
+      }
+    },
+    {
+      "method": "thread/name/set",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go",
+        "internal/worker/workspace_sync.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSetNameParams",
+        "response": "v2/ThreadSetNameResponse.json"
+      }
+    },
+    {
+      "method": "thread/name/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/workspace_codex.go",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadNameUpdatedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "thread/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/appserverhub/routing.go",
+        "internal/codex/runtime.go",
+        "internal/worker/host_desktop_calls.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadReadParams",
+        "response": "v2/ThreadReadResponse.json"
+      }
+    },
+    {
+      "method": "thread/resume",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "HISTORY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadResumeParams",
+        "response": "v2/ThreadResumeResponse.json"
+      }
+    },
+    {
+      "method": "thread/rollback",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadRollbackParams",
+        "response": "v2/ThreadRollbackResponse.json"
+      }
+    },
+    {
+      "method": "thread/section/move",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSectionMoveParams",
+        "response": "v2/ThreadSectionMoveResponse.json"
+      }
+    },
+    {
+      "method": "thread/settings/update",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSettingsUpdateParams",
+        "response": "v2/ThreadSettingsUpdateResponse.json"
+      }
+    },
+    {
+      "method": "thread/settings/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/workspace_codex.go"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadSettingsUpdatedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "thread/shellCommand",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadShellCommandParams",
+        "response": "v2/ThreadShellCommandResponse.json"
+      }
+    },
+    {
+      "method": "thread/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/appserverhub/client.go",
+        "internal/codex/runtime.go",
+        "internal/worker/session_titles.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadStartParams",
+        "response": "v2/ThreadStartResponse.json"
+      }
+    },
+    {
+      "method": "thread/started",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/testutil/mockcodex/server.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadStartedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "thread/status/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadStatusChangedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "thread/tokenUsage/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadTokenUsageUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "thread/turns/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "HISTORY-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadTurnsListParams",
+        "response": "v2/ThreadTurnsListResponse.json"
+      }
+    },
+    {
+      "method": "thread/unarchive",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadUnarchiveParams",
+        "response": "v2/ThreadUnarchiveResponse.json"
+      }
+    },
+    {
+      "method": "thread/unarchived",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/workspace_codex.go",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadUnarchivedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "thread/unsubscribe",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/appserverhub/hub.go",
+        "internal/appserverhub/routing.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadUnsubscribeParams",
+        "response": "v2/ThreadUnsubscribeResponse.json"
+      }
+    },
+    {
+      "method": "threadSection/create",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSectionCreateParams",
+        "response": "v2/ThreadSectionCreateResponse.json"
+      }
+    },
+    {
+      "method": "threadSection/delete",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSectionDeleteParams",
+        "response": "v2/ThreadSectionDeleteResponse.json"
+      }
+    },
+    {
+      "method": "threadSection/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSectionListParams",
+        "response": "v2/ThreadSectionListResponse.json"
+      }
+    },
+    {
+      "method": "threadSection/update",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadSectionUpdateParams",
+        "response": "v2/ThreadSectionUpdateResponse.json"
+      }
+    },
+    {
+      "method": "turn/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/appserverhub/tool_routing.go",
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/host_desktop_calls.go",
+        "internal/worker/remote_turn.go",
+        "internal/worker/session_titles.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/TurnCompletedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "turn/interrupt",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/TurnInterruptParams",
+        "response": "v2/TurnInterruptResponse.json"
+      }
+    },
+    {
+      "method": "turn/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "SUBMIT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go",
+        "internal/worker/session_titles.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/TurnStartParams",
+        "response": "v2/TurnStartResponse.json"
+      }
+    },
+    {
+      "method": "turn/started",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "CONTEXT-001"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/routing.go",
+        "internal/testutil/mockcodex/server.go",
+        "internal/worker/remote_turn.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts",
+        "client/src/store/appStore.ts",
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:claude-code",
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/TurnStartedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "turn/steer",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "internal/codex/runtime.go",
+        "client/src/app-server/officialClient.ts",
+        "client/src/preview/runtime.ts"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/TurnSteerParams",
+        "response": "v2/TurnSteerResponse.json"
+      }
+    },
+    {
+      "method": "warning",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/WarningNotification",
+        "response": null
+      },
+      "callers": [
+        "client/src/components/ui.tsx",
+        "web/src/pages/DiscordPage.tsx",
+        "web/src/state.ts",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "windowsSandbox/readiness",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": null
+      }
+    },
+    {
+      "method": "windowsSandbox/setupStart",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ],
+      "schema": {
+        "params": "ClientRequest.json#/definitions/WindowsSandboxSetupStartParams",
+        "response": "v2/WindowsSandboxSetupStartResponse.json"
+      }
+    }
+  ]
+}

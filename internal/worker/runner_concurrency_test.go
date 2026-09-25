@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -38,10 +39,18 @@ func TestRunnerHeartbeatIncludesSSHHostKeyFingerprint(t *testing.T) {
 		WorkerSSHListenAddr: "127.0.0.1:2222"},
 		client: workerprotocol.NewClient(server.URL, "credential", time.Second)}
 	runner.SetSSHHostKeyFingerprint("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	runner.SetRuntimeReports(func() []workerprotocol.RuntimeReport {
+		return []workerprotocol.RuntimeReport{
+			{Engine: runtimeidentity.Codex, Status: "running", SSHListenAddress: ":2222"},
+			{Engine: runtimeidentity.Claude, Status: "unavailable", SSHListenAddress: ":3333"},
+		}
+	})
 
 	require.NoError(t, runner.sendHeartbeat(t.Context()))
-	require.Equal(t, "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-		(<-requests).SSHHostKeyFingerprint)
+	report := <-requests
+	require.Equal(t, "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", report.SSHHostKeyFingerprint)
+	require.Len(t, report.Runtimes, 2)
+	require.Equal(t, "unavailable", report.Runtimes[1].Status)
 }
 
 func TestRunnerSkipsControlWhenSyncDisabled(t *testing.T) {

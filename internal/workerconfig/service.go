@@ -29,6 +29,7 @@ type Service struct {
 	workspaceRoot string
 	restart       func() error
 	mu            sync.Mutex
+	configMu      sync.Mutex
 	oauth         *oauthProcess
 }
 
@@ -72,6 +73,12 @@ func (s *Service) Restart() error {
 }
 
 func (s *Service) Read() (workerprotocol.WorkerConfig, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	return s.read()
+}
+
+func (s *Service) read() (workerprotocol.WorkerConfig, error) {
 	configPath := filepath.Join(s.home, "config.toml")
 	data, err := os.ReadFile(configPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -152,7 +159,9 @@ func isChatGPTProvider(value string) bool {
 }
 
 func (s *Service) UpdateAgents(expected, content string) (workerprotocol.WorkerConfig, error) {
-	current, err := s.Read()
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	current, err := s.read()
 	if err != nil {
 		return workerprotocol.WorkerConfig{}, err
 	}
@@ -163,11 +172,13 @@ func (s *Service) UpdateAgents(expected, content string) (workerprotocol.WorkerC
 	if err := atomicWrite(path, []byte(content), 0o600); err != nil {
 		return workerprotocol.WorkerConfig{}, err
 	}
-	return s.Read()
+	return s.read()
 }
 
 func (s *Service) UpdateProvider(expected, baseURL, apiKey string, clearAPIKey bool) (workerprotocol.WorkerConfig, error) {
-	current, err := s.Read()
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	current, err := s.read()
 	if err != nil {
 		return workerprotocol.WorkerConfig{}, err
 	}
@@ -235,7 +246,7 @@ func (s *Service) UpdateProvider(expected, baseURL, apiKey string, clearAPIKey b
 	if err := s.updateGlobalEnv(baseURL, apiKey, clearAPIKey); err != nil {
 		return workerprotocol.WorkerConfig{}, err
 	}
-	return s.Read()
+	return s.read()
 }
 
 func (s *Service) updateGlobalEnv(baseURL, apiKey string, clear bool) error {
