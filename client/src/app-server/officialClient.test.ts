@@ -64,6 +64,37 @@ const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: n
   collaborationMode: "default" as const, permissions: ":danger-full-access" as const };
 
 describe("OfficialAppServerClient", () => {
+  it.each(["codex", "claude-code"] as const)("%s 模型分页按固定协议补齐服务等级默认值", async (engine) => {
+    const base = { id: "fixture", model: "fixture", displayName: "测试模型",
+      description: "模型目录", hidden: false, isDefault: true,
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "平衡" }] };
+    const rpc = new FakeRpc((method, params) => {
+      expect(method).toBe("model/list");
+      if (!(params as { cursor: string | null }).cursor) {
+        return { data: [base], nextCursor: "page-2" };
+      }
+      return { data: [{ ...base, id: "premium", modelSpecialty: "coding",
+        serviceTiers: [{ id: "priority", name: "优先", description: "快速执行" }],
+        defaultServiceTier: "priority" }], nextCursor: null };
+    });
+    const client = new OfficialAppServerClient("profile-1", engine, rpc, new MemoryJournal());
+    const models = await client.listModels();
+    expect(models).toHaveLength(2);
+    expect(models[0]).toMatchObject({ serviceTiers: [], defaultServiceTier: null, modelSpecialty: null });
+    expect(models[1]).toMatchObject({ modelSpecialty: "coding", defaultServiceTier: "priority",
+      serviceTiers: [{ id: "priority", name: "优先", description: "快速执行" }] });
+    expect(rpc.calls.map((call) => call.params)).toEqual([
+      { cursor: null, limit: 100 }, { cursor: "page-2", limit: 100 },
+    ]);
+  });
+
+  it.each([null, "priority", [{}]])("模型服务等级格式错误 %j 必须拒绝，不能变成空成功", async (serviceTiers) => {
+    const rpc = new FakeRpc(() => ({ data: [{ serviceTiers }], nextCursor: null }));
+    const client = new OfficialAppServerClient("profile-1", "claude-code", rpc, new MemoryJournal());
+    await expect(client.listModels()).rejects.toThrow();
+  });
+
   it("App Server 断线时清理旧交互请求，并允许新连接重新登记请求", () => {
     const rpc = new FakeRpc(() => undefined);
     const client = new OfficialAppServerClient("profile-1", "codex", rpc, new MemoryJournal());

@@ -20,6 +20,7 @@ import type { TurnSteerResponse } from "@codex-app-server/v2/TurnSteerResponse";
 import type { UserInput } from "@codex-app-server/v2/UserInput";
 
 import { JsonRpcRequestError } from "./jsonRpc";
+import { decodeModelCatalogEntry } from "./modelCatalog";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import { DEFAULT_PERMISSION_PROFILE, normalizePermissionProfile,
   runtimePermissionPreferences, turnPermissionParams, profileApprovalPolicy, type PermissionProfile,
@@ -324,7 +325,7 @@ export class OfficialAppServerClient {
     let cursor: string | null = null;
     do {
       const page: ModelListResponse = await this.rpc.request("model/list", { cursor, limit: 100 });
-      models.push(...page.data);
+      models.push(...page.data.map(decodeModelCatalogEntry));
       cursor = page.nextCursor;
     } while (cursor);
     return models;

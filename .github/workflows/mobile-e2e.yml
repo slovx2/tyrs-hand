@@ -62,11 +62,23 @@ jobs:
           path: .local/mobile-adapter
       - name: 安装SDK并验证网络隔离预检
         run: |
+          mkdir -p .artifacts/mobile-runtime
+          exec > >(tee .artifacts/mobile-runtime/preflight.log) 2>&1
           npm ci --prefix .local/mobile-adapter
           npm ci --prefix tools/protocol-inventory
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          command -v unshare ip ssh ssh-keygen docker
-          unshare --user --map-root-user --net sh -ec 'ip link set lo up; test "$(ls /sys/class/net)" = lo'
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends bubblewrap=0.9.0-1ubuntu0.3 socat=1.8.0.0-4ubuntu0.1
+          command -v unshare ip ssh ssh-keygen docker bwrap socat
+          # sysfs 可能仍挂载在宿主网络命名空间，使用 netlink 查询当前命名空间。
+          # 内层 sh 负责展开命令替换，不能在宿主 shell 提前展开。
+          # shellcheck disable=SC2016
+          unshare --user --map-root-user --net sh -ec '
+            ip link set lo up
+            ip -j link | jq -e "length == 1 and .[0].ifname == \"lo\""
+            test -z "$(ip route show)"
+            test -z "$(ip -6 route show default)"
+          '
           make test-mobile-runtime-e2e > mobile-runtime-junit.xml
       - name: 创建 Android 35 手机模拟器
         run: |
@@ -126,6 +138,8 @@ jobs:
       - name: 安装并验证精确工具链
         run: |
           npm install --global pnpm@11.14.0 @openai/codex@0.147.0
+          gem install cocoapods --version 1.16.2 --no-document
+          test "$(pod _1.16.2_ --version)" = 1.16.2
           echo "TYRS_HAND_TEST_CODEX_BIN=$(command -v codex)" >> "${GITHUB_ENV}"
           ./tools/mobile-e2e/install-maestro.sh
           bash ./tools/mobile-e2e/install-native-services.sh

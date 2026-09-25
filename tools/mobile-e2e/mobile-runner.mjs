@@ -137,6 +137,11 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
   const result = await childExit
   clearInterval(heartbeat)
   await writeFile(`${runDir}/logs/maestro-${label}.log`, Buffer.concat(log))
+  if (platform === 'android') {
+    // 保留真实 JS/原生崩溃栈，不能只留下启动器画面和“找不到按钮”。
+    await writeFile(`${runDir}/logs/android-crash-${label}.log`,
+      output('adb', ['-s', deviceID, 'logcat', '-b', 'crash', '-d']))
+  }
   await redactEvidenceSecrets(runDir, Object.entries(environment)
     .filter(([key]) => key.includes('PAIRING') || key.includes('PRIVATE_KEY'))
     .flatMap(([, value]) => [value, ...value.split('\n').filter((line) => line.length > 40)]))
@@ -147,6 +152,7 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
 async function main() {
   checkVersions()
   await mkdir(`${runDir}/logs`, { recursive: true })
+  if (platform === 'android') run('adb', ['-s', deviceID, 'logcat', '-b', 'crash', '-c'])
   const primary = new ControlHarness({
     repoRoot, runDir: `${runDir}/primary`, label: 'primary',
   })
