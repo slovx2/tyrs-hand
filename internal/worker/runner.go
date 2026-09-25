@@ -77,7 +77,7 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 	logger *zap.Logger,
 ) (*Runner, error) {
 	if client == nil || client.Engine() != runtimeidentity.Codex {
-		return nil, errors.New("Worker 调度器需要 Codex 主客户端管理共享身份")
+		return nil, errors.New("需要 Codex 主客户端为 Worker 调度器管理共享身份")
 	}
 	if cfg.NodeHeartbeatInterval <= 0 {
 		cfg.NodeHeartbeatInterval = time.Minute

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -9,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"go.uber.org/zap"
 )
 
 func (s *Server) getDiscordSettings(c *gin.Context) {
@@ -200,58 +198,5 @@ func (s *Server) deleteDiscordForumAccess(c *gin.Context) {
 		return
 	}
 	s.audit(c, "discord.forum_access.delete", "discord_forum", forumID.String(), map[string]any{"memberId": c.Param("memberId")})
-	c.Status(http.StatusNoContent)
-}
-
-func (s *Server) startDiscordGitHubBind(c *gin.Context) {
-	var input struct {
-		GuildID string `json:"guildId" binding:"required"`
-		UserID  string `json:"discordUserId" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		badRequest(c, err)
-		return
-	}
-	link, err := s.bindings.Start(c, input.GuildID, input.UserID)
-	if err != nil {
-		badRequest(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"url": link})
-}
-
-func (s *Server) discordGitHubBindCallback(c *gin.Context) {
-	binding, err := s.bindings.Callback(c, c.Query("state"), c.Query("code"))
-	if err != nil {
-		problem(c, http.StatusForbidden, "GitHub 身份绑定失败", err)
-		return
-	}
-	if s.redis != nil {
-		message, marshalErr := json.Marshal(map[string]string{"discordUserId": binding.DiscordUserID})
-		if marshalErr != nil {
-			s.logger.Warn("编码 Discord 用户仓库权限同步事件失败", zap.Error(marshalErr))
-		} else if publishErr := s.redis.Publish(c.Request.Context(), discordintegration.RepositoryPermissionSyncChannel, message).Err(); publishErr != nil {
-			// 定时全量同步会在 Redis 暂时不可用时兜底。
-			s.logger.Warn("发布 Discord 用户仓库权限同步事件失败", zap.Error(publishErr))
-		}
-	}
-	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte("GitHub 身份绑定成功："+binding.GitHubLogin+"。可以关闭此页面。"))
-}
-
-func (s *Server) unbindDiscordGitHub(c *gin.Context) {
-	var input struct {
-		GuildID   string `json:"guildId" binding:"required"`
-		UserID    string `json:"discordUserId" binding:"required"`
-		Confirmed bool   `json:"confirmed"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		badRequest(c, err)
-		return
-	}
-	if err := s.bindings.Unbind(c, input.GuildID, input.UserID, input.Confirmed); err != nil {
-		badRequest(c, err)
-		return
-	}
-	s.audit(c, "discord.github.unbind", "discord_member", input.UserID, nil)
 	c.Status(http.StatusNoContent)
 }

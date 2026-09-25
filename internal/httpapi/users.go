@@ -39,7 +39,7 @@ func (s *Server) listUsers(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取用户失败", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var id uuid.UUID
@@ -96,7 +96,7 @@ func (s *Server) listWorkerUsers(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Worker 用户失败", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var id uuid.UUID

@@ -17,7 +17,7 @@ func (c *desktopController) startThreadRegistration(request workerprotocol.Deskt
 	threadID, _ := callScope(result)
 	key := request.WorkspaceID.String() + ":" + threadID
 	if c.processor.journals == nil {
-		return errors.New("Thread 登记缺少持久化目录")
+		return errors.New("缺少 Thread 登记持久化目录")
 	}
 	entry := threadRegistrationJournal{Engine: c.processor.client.Engine(), Request: request, Response: append(json.RawMessage(nil), result...)}
 	registration := &desktopThreadRegistration{done: make(chan struct{})}
@@ -91,7 +91,7 @@ func (c *desktopController) waitThreadRegistration(ctx context.Context, params j
 
 func (c *desktopController) recoverThreadRegistrations() error {
 	if c.processor.journals == nil {
-		return errors.New("Thread 登记恢复缺少持久化目录")
+		return errors.New("缺少 Thread 登记恢复的持久化目录")
 	}
 	entries, err := c.processor.journals.loadThreads()
 	if err != nil {
@@ -142,14 +142,14 @@ func (r *desktopEventReporter) waitControlRegistration(ctx context.Context) erro
 	done := r.registrationDone
 	r.journal.mu.Unlock()
 	if done == nil {
-		return errors.New("Control 登记尚未启动")
+		return errors.New("尚未启动 Control 登记")
 	}
 	select {
 	case <-done:
 		r.journal.mu.Lock()
 		defer r.journal.mu.Unlock()
 		if !r.registrationConfirmed || r.journal.ControlAbandoned {
-			return errors.New("Control 登记未确认，不能执行依赖会话的工具或交互")
+			return errors.New("尚未确认 Control 登记，不能执行依赖会话的工具或交互")
 		}
 		return nil
 	case <-ctx.Done():

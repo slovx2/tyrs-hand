@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
+
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -78,50 +78,6 @@ type triggerRuleRequest struct {
 	AllowedTools       []string       `json:"allowedTools"`
 	DangerousActions   []string       `json:"dangerousActions"`
 	Filters            map[string]any `json:"filters"`
-}
-
-func (s *Server) createTriggerRule(c *gin.Context) {
-	var request triggerRuleRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		badRequest(c, err)
-		return
-	}
-	if request.ActorMinPermission == "" {
-		request.ActorMinPermission = "triage"
-	}
-	request.TriggerKind = strings.TrimSpace(request.TriggerKind)
-	request.TriggerValue = strings.TrimSpace(request.TriggerValue)
-	if request.Priority == 0 {
-		request.Priority = 100
-	}
-	enabled := triggerRuleEnabled(request)
-	if err := validateTriggerRule(&request); err != nil {
-		badRequest(c, err)
-		return
-	}
-	var id uuid.UUID
-	err := s.db.QueryRowContext(c, `
-		INSERT INTO trigger_rules(repository_id, agent_profile_id, name, event_name, action,
-			enabled, priority, actor_min_permission, trigger_kind, trigger_value,
-			instruction_template, skills, allowed_tools, dangerous_actions, filters)
-		VALUES ($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13,$14,$15)
-		RETURNING id`, request.RepositoryID, request.AgentProfileID, request.Name, request.EventName,
-		request.Action, enabled, request.Priority, request.ActorMinPermission, request.TriggerKind, request.TriggerValue,
-		request.Instruction, encodeJSON(request.Skills), encodeJSON(request.AllowedTools),
-		encodeJSON(request.DangerousActions), encodeJSON(request.Filters)).Scan(&id)
-	if err != nil {
-		problem(c, http.StatusConflict, "创建 Trigger Rule 失败", err)
-		return
-	}
-	s.audit(c, "trigger_rule.create", "trigger_rule", id.String(), map[string]any{
-		"name": request.Name, "triggerKind": request.TriggerKind, "triggerValue": request.TriggerValue,
-	})
-	c.JSON(http.StatusCreated, gin.H{"id": id})
-}
-
-func (s *Server) listTriggerRules(c *gin.Context) {
-	s.listRows(c, `SELECT id, repository_id, agent_profile_id, name, trigger_kind, trigger_value, event_name, action, enabled, priority, actor_min_permission, skills, allowed_tools, dangerous_actions, version, updated_at FROM trigger_rules ORDER BY repository_id, priority, name`,
-		[]string{"id", "repositoryId", "agentProfileId", "name", "triggerKind", "triggerValue", "eventName", "action", "enabled", "priority", "actorMinPermission", "skills", "allowedTools", "dangerousActions", "version", "updatedAt"})
 }
 
 var slashCommandName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -214,11 +170,6 @@ func (s *Server) listJobs(c *gin.Context) {
 		LEFT JOIN workers n ON n.id = c.worker_id
 		ORDER BY i.created_at DESC LIMIT 200`,
 		[]string{"id", "workItemId", "triggerRuleId", "triggerEvidence", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt", "worker"})
-}
-
-func (s *Server) listInstallations(c *gin.Context) {
-	s.listRows(c, `SELECT id, provider, external_id, account_login, account_type, suspended_at, updated_at FROM scm_installations ORDER BY account_login`,
-		[]string{"id", "provider", "externalId", "accountLogin", "accountType", "suspendedAt", "updatedAt"})
 }
 
 func (s *Server) listThreads(c *gin.Context) {

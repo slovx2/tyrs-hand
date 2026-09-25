@@ -45,7 +45,7 @@ func TestRuntimeConfigOverRealControlChannel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("控制通道未连接")
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	require.NoError(t, connection.SetReadDeadline(time.Now().Add(5*time.Second)))
 	var hello workerprotocol.WorkerRPCRequest
 	require.NoError(t, connection.ReadJSON(&hello))

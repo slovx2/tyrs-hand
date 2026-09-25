@@ -76,7 +76,7 @@ func (c *HostDesktopController) PrepareCall(ctx context.Context, call appserverh
 			default:
 				c.mu.Unlock()
 				state.subscription.Close()
-				return appserverhub.CallPlan{}, errors.New("Worker 已达到两个引擎共享的并发上限")
+				return appserverhub.CallPlan{}, errors.New("已达到 Worker 两个引擎共享的并发上限")
 			}
 		}
 		c.active[threadID] = state

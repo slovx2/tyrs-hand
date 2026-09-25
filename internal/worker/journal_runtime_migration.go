@@ -17,7 +17,7 @@ func MigrateCodexJournalRuntime(workerRoot string) error {
 	marker := filepath.Join(workerRoot, "control-state", "codex-runtime-scope-v1")
 	if data, err := os.ReadFile(marker); err == nil {
 		if string(data) != "1\n" {
-			return errors.New("Codex Journal 迁移标记无效")
+			return errors.New("无效的 Codex Journal 迁移标记")
 		}
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -48,7 +48,7 @@ func MigrateCodexJournalRuntime(workerRoot string) error {
 		if raw, exists := runtime["engine"]; exists {
 			var engine runtimeidentity.Engine
 			if json.Unmarshal(raw, &engine) != nil || engine != runtimeidentity.Codex {
-				return fmt.Errorf("Codex Journal %s 包含错误引擎", entry.Name())
+				return fmt.Errorf("发现 Codex Journal %s 包含错误引擎", entry.Name())
 			}
 			continue
 		}

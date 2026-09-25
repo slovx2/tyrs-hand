@@ -209,7 +209,7 @@ func (c Config) ValidateWorker() error {
 		return c.Validate()
 	}
 	if c.CodexBin == "" || c.WorkerID == "" {
-		return errors.New("配置中的 Codex 可执行文件和 Worker ID 不能为空")
+		return errors.New("配置中的 Codex 可执行文件和 必须提供 Worker ID")
 	}
 	if c.WorkerMaxConcurrentJobs <= 0 {
 		return errors.New("worker_max_concurrent_jobs 必须大于零")

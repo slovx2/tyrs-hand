@@ -25,7 +25,7 @@ func LoadCachedWorkspaceManifest(root string) (*workerprotocol.WorkspaceManifest
 		return nil, err
 	}
 	if manifest.WorkspaceID == uuid.Nil {
-		return nil, errors.New("本地 Workspace 快照无效")
+		return nil, errors.New("本地 无效的 Workspace 快照")
 	}
 	return &manifest, nil
 }
@@ -43,7 +43,7 @@ func SaveWorkspaceManifest(root string, manifest *workerprotocol.WorkspaceManife
 		return syncDirectory(filepath.Dir(workspaceManifestPath(root)))
 	}
 	if manifest.WorkspaceID == uuid.Nil {
-		return errors.New("Workspace 快照无效")
+		return errors.New("无效的 Workspace 快照")
 	}
 	path := workspaceManifestPath(root)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

@@ -49,7 +49,7 @@ func handleRuntimeRequest(options ChannelOptions, method string, params json.Raw
 	if request.Engine == runtimeidentity.Claude {
 		service := options.Claude
 		if service == nil {
-			return nil, errors.New("Claude 配置服务未启用")
+			return nil, errors.New("尚未启用 Claude 配置服务")
 		}
 		switch method {
 		case "config.read":
@@ -64,7 +64,7 @@ func handleRuntimeRequest(options ChannelOptions, method string, params json.Raw
 	} else {
 		service := options.Service
 		if service == nil {
-			return nil, errors.New("Codex 配置服务未启用")
+			return nil, errors.New("尚未启用 Codex 配置服务")
 		}
 		switch method {
 		case "config.read":

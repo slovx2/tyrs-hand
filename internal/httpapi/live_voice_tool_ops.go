@@ -217,7 +217,7 @@ func (s *Server) ensureSessionOnWorker(ctx context.Context, sessionID, workerID 
 		return errors.New("不能操作其他 Worker 的 session")
 	}
 	if engine != runtimeidentity.Codex {
-		return errors.New("Claude 会话不支持 Live 语音")
+		return errors.New("不支持在 Claude 会话中使用 Live 语音")
 	}
 	return nil
 }

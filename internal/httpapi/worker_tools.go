@@ -61,16 +61,3 @@ func (s *Server) workerToolCall(c *gin.Context) {
 	}
 	problem(c, http.StatusGone, "GitHub 功能已停用", nil)
 }
-
-func (s *Server) workerGitCredential(c *gin.Context) {
-	var request workerprotocol.GitCredentialRequest
-	runID, worker, ok := requireWorkerRun(c, &request)
-	if !ok {
-		return
-	}
-	if _, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, currentWorkerEngine(c)); err != nil {
-		remoteRunError(c, "校验 Git 凭据 Run 失败", err)
-		return
-	}
-	problem(c, http.StatusGone, "GitHub 功能已停用", nil)
-}

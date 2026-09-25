@@ -24,7 +24,7 @@ func NewClaudeService(home string) *ClaudeService   { return &ClaudeService{home
 func (s *ClaudeService) SetRestart(fn func() error) { s.restart = fn }
 func (s *ClaudeService) Restart() error {
 	if s.restart == nil {
-		return errors.New("Claude 运行时尚未启用")
+		return errors.New("尚未启用 Claude 运行时")
 	}
 	return s.restart()
 }
@@ -54,7 +54,7 @@ func (s *ClaudeService) read() (workerprotocol.WorkerConfig, map[string]json.Raw
 	settings := map[string]json.RawMessage{}
 	if len(data) > 0 {
 		if json.Unmarshal(data, &settings) != nil || settings == nil {
-			return result, nil, errors.New("Claude settings.json 必须是有效 JSON 对象")
+			return result, nil, errors.New("必须为 Claude settings.json 提供有效 JSON 对象")
 		}
 	}
 	env, err := claudeSettingsEnv(settings)
@@ -74,7 +74,7 @@ func (s *ClaudeService) read() (workerprotocol.WorkerConfig, map[string]json.Raw
 	result.APIKeyConfigured = env[result.EnvKey] != ""
 	if raw, ok := settings["model"]; ok {
 		if json.Unmarshal(raw, &result.Model) != nil {
-			return result, nil, errors.New("Claude model 必须是字符串")
+			return result, nil, errors.New("必须为 Claude model 提供字符串")
 		}
 	}
 	if env["ANTHROPIC_MODEL"] != "" {
@@ -87,7 +87,7 @@ func claudeSettingsEnv(settings map[string]json.RawMessage) (map[string]string, 
 	env := map[string]string{}
 	if raw, ok := settings["env"]; ok {
 		if json.Unmarshal(raw, &env) != nil || env == nil {
-			return nil, errors.New("Claude settings.env 必须是字符串字典")
+			return nil, errors.New("必须为 Claude settings.env 提供字符串字典")
 		}
 	}
 	return env, nil
@@ -126,10 +126,10 @@ func (s *ClaudeService) UpdateProvider(input ClaudeProviderInput) (workerprotoco
 	input.BaseURL = strings.TrimSpace(input.BaseURL)
 	u, err := url.Parse(input.BaseURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return current, errors.New("Base URL 必须是无凭据、查询参数和片段的 HTTP/HTTPS URL")
+		return current, errors.New("必须为 Base URL 提供无凭据、查询参数和片段的 HTTP/HTTPS URL")
 	}
 	if len(input.BaseURL) > 2048 || len(input.APIKey) > 4096 || len(input.Model) > 256 {
-		return current, errors.New("Provider 配置长度超限")
+		return current, errors.New("超过 Provider 配置长度限制")
 	}
 	if strings.ContainsAny(input.APIKey+input.Model, "\r\n\x00") {
 		return current, errors.New("API Key 或 Model 包含非法字符")
@@ -140,7 +140,7 @@ func (s *ClaudeService) UpdateProvider(input ClaudeProviderInput) (workerprotoco
 	case "auth-token":
 		key = "ANTHROPIC_AUTH_TOKEN"
 	default:
-		return current, errors.New("Model Provider 认证方式无效")
+		return current, errors.New("无效的 Model Provider 认证方式")
 	}
 	if input.ClearAPIKey && input.APIKey != "" {
 		return current, errors.New("API Key 不能同时设置与清除")

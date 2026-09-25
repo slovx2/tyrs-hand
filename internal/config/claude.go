@@ -21,10 +21,10 @@ func (c Config) validateClaudeRuntime() error {
 		return nil
 	}
 	if !filepath.IsAbs(c.WorkerClaudeBin) {
-		return errors.New("Claude 适配器必须配置绝对路径")
+		return errors.New("必须为 Claude 适配器配置绝对路径")
 	}
 	if c.WorkerClaudeSSHListenAddr == "" {
-		return errors.New("Claude SSH 监听地址不能为空")
+		return errors.New("必须配置 Claude SSH 监听地址")
 	}
 	claude, err := net.ResolveTCPAddr("tcp", c.WorkerClaudeSSHListenAddr)
 	if err != nil {
@@ -35,10 +35,10 @@ func (c Config) validateClaudeRuntime() error {
 		return err
 	}
 	if claude.Port <= 0 || codex.Port <= 0 {
-		return errors.New("Worker SSH 端口必须固定，禁止自动分配")
+		return errors.New("必须固定 Worker SSH 端口，禁止自动分配")
 	}
 	if claude.Port == codex.Port && (len(claude.IP) == 0 || len(codex.IP) == 0 || claude.IP.IsUnspecified() || codex.IP.IsUnspecified() || claude.IP.Equal(codex.IP)) {
-		return errors.New("Claude 与 Codex SSH 端口冲突")
+		return errors.New("两个运行时的 Claude 与 Codex SSH 端口冲突")
 	}
 	return nil
 }

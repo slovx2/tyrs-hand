@@ -32,8 +32,8 @@ func TestLiveCannotBindOrDispatchToClaudeRuntime(t *testing.T) {
 			require.NoError(t, bindingErr)
 			require.NoError(t, accessErr)
 		} else {
-			require.ErrorContains(t, bindingErr, "不支持 Live")
-			require.ErrorContains(t, accessErr, "不支持 Live")
+			require.EqualError(t, bindingErr, "不支持在 Claude 会话中使用 Live 语音")
+			require.EqualError(t, accessErr, "不支持在 Claude 会话中使用 Live 语音")
 		}
 	}
 	result, err := server.liveVoiceListSessions(ctx, workerID)

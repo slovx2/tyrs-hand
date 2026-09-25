@@ -17,10 +17,10 @@ func TestResumeOnlyResubscribesRequestingDesktop(t *testing.T) {
 	hub := startHub(t, mock.SocketPath)
 	first, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop})
 	require.NoError(t, err)
-	defer first.Close()
+	defer func() { _ = first.Close() }()
 	second, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop})
 	require.NoError(t, err)
-	defer second.Close()
+	defer func() { _ = second.Close() }()
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	var response struct {

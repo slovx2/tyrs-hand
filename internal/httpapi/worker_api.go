@@ -295,12 +295,13 @@ func (s *Server) workerDecideInput(c *gin.Context) {
 		return
 	}
 	var err error
-	if request.Action == "start" {
+	switch request.Action {
+	case "start":
 		repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 			s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 		err = repository.StartWorkerInput(c.Request.Context(), currentWorker(c).ID,
 			request.InputID, request.RunID, currentWorkerEngine(c))
-	} else if request.Action == "steer" || request.Action == "interrupt" {
+	case "steer", "interrupt":
 		var claimed *codexcontrol.ClaimedControl
 		claimed, err = s.claimedRemoteRun(c.Request.Context(), currentWorker(c).ID,
 			request.RunID, currentWorkerEngine(c))
@@ -308,7 +309,7 @@ func (s *Server) workerDecideInput(c *gin.Context) {
 			err = s.ackWorkerInput(c.Request.Context(), claimed, request.InputID,
 				request.Action, request.TurnID)
 		}
-	} else {
+	default:
 		badRequest(c, errors.New("输入决议 action 必须是 start、steer 或 interrupt"))
 		return
 	}

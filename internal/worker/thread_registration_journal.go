@@ -24,7 +24,7 @@ type threadRegistrationJournal struct {
 	Response json.RawMessage                            `json:"response"`
 }
 
-var errInvalidThreadRegistration = errors.New("Thread 登记 Journal 身份无效，禁止自动重放")
+var errInvalidThreadRegistration = errors.New("无效的 Thread 登记 Journal 身份，禁止自动重放")
 
 func (s *journalStore) threadDirectory() string {
 	return filepath.Join(filepath.Dir(s.directory), "threads")

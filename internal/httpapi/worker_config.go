@@ -203,7 +203,7 @@ func (s *Server) callWorkerRPC(ctx context.Context, workerID uuid.UUID, method s
 	state := s.workerRPCConns[workerID]
 	s.workerRPCMu.RUnlock()
 	if state == nil {
-		return nil, errors.New("Worker RPC 通道未连接")
+		return nil, errors.New("尚未连接 Worker RPC 通道")
 	}
 	id := uuid.NewString()
 	wait := make(chan workerprotocol.WorkerRPCResponse, 1)
@@ -227,7 +227,7 @@ func (s *Server) callWorkerRPC(ctx context.Context, workerID uuid.UUID, method s
 	select {
 	case response, ok := <-wait:
 		if !ok {
-			return nil, errors.New("Worker RPC 通道已断开")
+			return nil, errors.New("已断开 Worker RPC 通道")
 		}
 		if response.Error != "" {
 			return nil, errors.New(response.Error)
@@ -242,7 +242,7 @@ func (s *Server) callWorkerRPC(ctx context.Context, workerID uuid.UUID, method s
 		state.mu.Lock()
 		delete(state.pending, id)
 		state.mu.Unlock()
-		return nil, errors.New("Worker RPC 请求超时")
+		return nil, errors.New("等待 Worker RPC 响应超时")
 	}
 }
 

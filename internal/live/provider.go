@@ -15,10 +15,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var ErrNotConfigured = errors.New("Live API 未配置")
-var ErrSessionExpired = errors.New("Live session 已失效")
-var ErrSidebandBinary = errors.New("Live sideband 不允许二进制帧")
-var ErrSidebandInvalidJSON = errors.New("Live sideband 返回了无效 JSON")
+var ErrNotConfigured = errors.New("尚未配置 Live API")
+var ErrSessionExpired = errors.New("已失效的 Live session")
+var ErrSidebandBinary = errors.New("不允许 Live sideband 二进制帧")
+var ErrSidebandInvalidJSON = errors.New("收到 Live sideband 无效 JSON")
 
 type SidebandBinaryError struct {
 	Size int
@@ -81,7 +81,7 @@ func (p *HTTPProvider) validate() error {
 	}
 	u, err := url.ParseRequestURI(p.BaseURL)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return errors.New("Live API Base URL 无效")
+		return errors.New("无效的 Live API Base URL")
 	}
 	return nil
 }
@@ -134,10 +134,10 @@ func (p *HTTPProvider) CreateSession(ctx context.Context, offer string, config S
 		return SessionResult{}, fmt.Errorf("解析 Live session 响应: %w", err)
 	}
 	if strings.TrimSpace(result.Session.ID) == "" {
-		return SessionResult{}, errors.New("Live session 响应缺少 session.id")
+		return SessionResult{}, errors.New("缺少 Live session 响应字段 session.id")
 	}
 	if strings.TrimSpace(result.Transport.SDP) == "" {
-		return SessionResult{}, errors.New("Live session 响应缺少 transport.sdp")
+		return SessionResult{}, errors.New("缺少 Live session 响应字段 transport.sdp")
 	}
 	return SessionResult{ProviderSessionID: result.Session.ID, AnswerSDP: result.Transport.SDP}, nil
 }
@@ -158,7 +158,7 @@ func (p *HTTPProvider) AttachSideband(ctx context.Context, sessionID string) (Si
 	case "https":
 		u.Scheme = "wss"
 	default:
-		return nil, errors.New("Live API Base URL 必须使用 HTTP 或 HTTPS")
+		return nil, errors.New("必须为 Live API Base URL 使用 HTTP 或 HTTPS")
 	}
 	basePath := strings.TrimRight(u.Path, "/")
 	baseEscapedPath := strings.TrimRight(u.EscapedPath(), "/")

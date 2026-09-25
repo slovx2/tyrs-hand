@@ -55,7 +55,7 @@ func (m *liveManager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	if m.rootCtx != nil {
 		m.mu.Unlock()
-		return errors.New("Live manager 已启动")
+		return errors.New("已启动 Live manager")
 	}
 	m.rootCtx = ctx
 	close(m.ready)
@@ -110,7 +110,7 @@ func (m *liveManager) rootContext() (context.Context, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.rootCtx == nil {
-		return nil, errors.New("Live manager 尚未启动")
+		return nil, errors.New("尚未启动 Live manager")
 	}
 	return m.rootCtx, nil
 }
@@ -125,7 +125,7 @@ func (m *liveManager) waitRootContext(ctx context.Context) (context.Context, err
 			return root, nil
 		}
 		if ready == nil {
-			return nil, errors.New("Live manager 尚未初始化")
+			return nil, errors.New("尚未初始化 Live manager")
 		}
 		select {
 		case <-ready:
@@ -342,7 +342,7 @@ func (m *liveManager) waitSideband(ctx context.Context, sessionID uuid.UUID) err
 		}
 		switch status {
 		case "expired", "failed", "replaced":
-			return fmt.Errorf("Live session 进入终态 %q", status)
+			return fmt.Errorf("已结束的 Live session，状态为 %q", status)
 		}
 		select {
 		case <-ctx.Done():
@@ -355,13 +355,13 @@ func (m *liveManager) waitSideband(ctx context.Context, sessionID uuid.UUID) err
 func (m *liveManager) sendClose(ctx context.Context, sessionID uuid.UUID) error {
 	runtime, ok := m.runtime(sessionID)
 	if !ok {
-		return errors.New("Live sideband 尚未连接")
+		return errors.New("尚未连接 Live sideband")
 	}
 	runtime.mu.Lock()
 	sideband := runtime.sideband
 	runtime.mu.Unlock()
 	if sideband == nil {
-		return errors.New("Live sideband 尚未连接")
+		return errors.New("尚未连接 Live sideband")
 	}
 	runtime.writeMu.Lock()
 	defer runtime.writeMu.Unlock()
@@ -426,9 +426,10 @@ func (m *liveManager) updateSessionStatus(ctx context.Context, id uuid.UUID, sta
 
 func (m *liveManager) eventProjectUpdate(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID, status string) error {
 	where := `WHERE id=$1`
-	if status == "active" {
+	switch status {
+	case "active":
 		where += ` AND status NOT IN ('closing','close_timeout','failed','expired','replaced')`
-	} else if status == "closed" {
+	case "closed":
 		where += ` AND status NOT IN ('closed','failed','expired','replaced')`
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE live_sessions SET status=$2,
@@ -508,12 +509,12 @@ func pickLiveUserTranscript(pending []string) string {
 func (m *liveManager) writeSidebandJSON(ctx context.Context, sessionID uuid.UUID, payload map[string]any) error {
 	runtime, ok := m.runtime(sessionID)
 	if !ok || runtime == nil {
-		return errors.New("Live sideband 尚未连接")
+		return errors.New("尚未连接 Live sideband")
 	}
 	runtime.writeMu.Lock()
 	defer runtime.writeMu.Unlock()
 	if runtime.sideband == nil {
-		return errors.New("Live sideband 尚未连接")
+		return errors.New("尚未连接 Live sideband")
 	}
 	return runtime.sideband.WriteJSON(ctx, payload)
 }
@@ -521,7 +522,7 @@ func (m *liveManager) writeSidebandJSON(ctx context.Context, sessionID uuid.UUID
 func (m *liveManager) persistEvent(ctx context.Context, sessionID uuid.UUID, direction string, event map[string]any) error {
 	typ := eventType(event)
 	if typ == "" {
-		return errors.New("Live 事件缺少 type")
+		return errors.New("缺少 Live 事件 type")
 	}
 	dedupe := eventDedupeKey(event)
 	payload, err := json.Marshal(sanitizeLivePayload(event, isAudioEvent(typ)))
@@ -785,11 +786,12 @@ func (m *liveManager) restoreTranscripts(ctx context.Context, sessionID uuid.UUI
 		}
 		if role, phase, ok := transcriptEvent(typ); ok {
 			key := transcriptKey(sessionID, role, typ, event)
-			if phase == "delta" || phase == "added" {
+			switch phase {
+			case "delta", "added":
 				m.mu.Lock()
 				m.transcripts[key] += transcriptFragmentText(phase, event)
 				m.mu.Unlock()
-			} else if phase == "done" {
+			case "done":
 				m.mu.Lock()
 				delete(m.transcripts, key)
 				m.mu.Unlock()

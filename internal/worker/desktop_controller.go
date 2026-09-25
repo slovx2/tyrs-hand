@@ -672,7 +672,7 @@ func (c *desktopController) localDesktopTask(params json.RawMessage) (
 		return workerprotocol.Task{}, hostWorkspaceRuntime{}, err
 	}
 	if strings.TrimSpace(input.ThreadID) == "" {
-		return workerprotocol.Task{}, hostWorkspaceRuntime{}, errors.New("Desktop Turn 缺少 Thread ID")
+		return workerprotocol.Task{}, hostWorkspaceRuntime{}, errors.New("缺少 Desktop Turn 的 Thread ID")
 	}
 	parts := make([]string, 0, len(input.Input))
 	for _, item := range input.Input {
@@ -687,7 +687,7 @@ func (c *desktopController) localDesktopTask(params json.RawMessage) (
 	}
 	if !filepath.IsAbs(workspace) {
 		return workerprotocol.Task{}, hostWorkspaceRuntime{},
-			errors.New("Desktop Turn 工作目录必须是绝对路径")
+			errors.New("必须为 Desktop Turn 工作目录提供绝对路径")
 	}
 	projectKind := "directory"
 	if info, statErr := os.Stat(filepath.Join(workspace, ".git")); statErr == nil && info.IsDir() {
@@ -729,7 +729,7 @@ func (c *desktopController) localDesktopTask(params json.RawMessage) (
 	}, Snapshot: workerprotocol.TaskSnapshot{
 		Session: &workerprotocol.SessionSnapshot{MessageID: intentID.String(),
 			Body: instruction, InputSurface: "desktop", Project: project},
-		Runtime: workerprotocol.RuntimeSnapshot{Engine: c.workspace.hostRuntime.Info().Identity.Engine, Model: input.Model,
+		Runtime: workerprotocol.RuntimeSnapshot{Engine: c.workspace.hostRuntime.Info().Engine, Model: input.Model,
 			ReasoningEffort: input.ReasoningEffort, ServiceTier: input.ServiceTier,
 			CollaborationMode: mode},
 	}}
@@ -767,14 +767,19 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	}
 	task := state.task
 	reporter := state.reporter
+	task.Claimed.SubmissionID = turnID
+	task.Claimed.ConfirmedTurnID = turnID
 	reporter.journal.mu.Lock()
+	reporter.journal.Task = *task
 	reporter.journal.DesktopRequest = &workerprotocol.DesktopTurnPrepareRequest{
 		WorkspaceID: c.workspace.runtime.WorkspaceID, RunID: task.Claimed.RunID,
 		IntentID: task.Claimed.ID, TurnID: turnID, RequestKey: requestKey,
 		Params: append(json.RawMessage(nil), call.Params...), Images: images,
 		ImageError: imageNotice,
 	}
-	reporter.saveLocked()
+	if err := reporter.saveLocked(); err != nil {
+		c.processor.logger.Warn("Desktop Run 尚未落盘，继续观察并等待持久化后补登记", zap.Error(err))
+	}
 	reporter.journal.mu.Unlock()
 	imagesHandedOff = true
 	go c.registerDesktopTurn(ctx, call.Params, requestKey, turnID, images,
@@ -782,15 +787,9 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	reporter.Report("discord.progress", remoteEventPayload(map[string]string{
 		"state": "running", "detail": "Codex Desktop 正在处理请求。",
 	}))
-	task.Claimed.SubmissionID = turnID
-	task.Claimed.ConfirmedTurnID = turnID
 	if c.processor.coordinator != nil {
 		c.processor.coordinator.setTurnID(task.Claimed.RunID, turnID)
 	}
-	reporter.journal.mu.Lock()
-	reporter.journal.Task = *task
-	reporter.saveLocked()
-	reporter.journal.mu.Unlock()
 	client := c.workspace.currentClient()
 	if client == nil {
 		c.finishDesktopTurn(ctx, task, reporter, codexcontrol.TurnResult{},
@@ -831,7 +830,6 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 		return
 	}
 	for ctx.Err() == nil && c.controlEnabled() {
-		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		request := workerprotocol.DesktopTurnPrepareRequest{
 			WorkspaceID: c.workspace.runtime.WorkspaceID,
 			RunID:       state.task.Claimed.RunID,
@@ -840,11 +838,20 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 			RequestKey:  requestKey,
 			Params:      params, Images: images, ImageError: imageNotice,
 		}
-		if state.reporter != nil && state.reporter.journal != nil &&
-			state.reporter.journal.DesktopRequest == nil {
+		state.reporter.journal.mu.Lock()
+		if state.reporter.journal.DesktopRequest == nil {
 			copyRequest := request
 			state.reporter.journal.DesktopRequest = &copyRequest
 		}
+		persistErr := state.reporter.saveLocked()
+		state.reporter.journal.mu.Unlock()
+		if persistErr != nil {
+			if !waitContext(ctx, desktopEventFlushInterval) {
+				return
+			}
+			continue
+		}
+		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		_, err := c.processor.client.PrepareDesktopTurn(requestCtx, request)
 		cancel()
 		if err == nil {
@@ -1235,26 +1242,6 @@ func (c *desktopController) finishDesktopTurn(ctx context.Context, task *workerp
 	reporter.Finish(result, cause)
 }
 
-func (c *desktopController) desktopTurnHeartbeat(ctx context.Context,
-	task *workerprotocol.Task, commands chan<- workerprotocol.RunCommand,
-) {
-	ticker := time.NewTicker(c.processor.cfg.HeartbeatInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-			response, err := c.processor.client.RunHeartbeat(requestCtx, task)
-			cancel()
-			if err == nil {
-				deliverCommands(commands, response.Commands)
-			}
-		}
-	}
-}
-
 func (c *desktopController) cleanupDesktopCall(plan appserverhub.CallPlan, cause error) {
 	switch state := plan.State.(type) {
 	case *desktopCallState:
@@ -1268,7 +1255,11 @@ func (c *desktopController) cleanupDesktopCall(plan appserverhub.CallPlan, cause
 		state.unbind()
 		state.unbindInput()
 	case *desktopThreadCallState:
-		go c.syncDesktopThread(state.request, nil, cause)
+		go func() {
+			if err := c.syncDesktopThread(state.request, nil, cause); err != nil {
+				c.processor.logger.Warn("同步 Desktop 会话失败结果未完成", zap.Error(err))
+			}
+		}()
 	}
 }
 
@@ -1377,7 +1368,9 @@ func (r *desktopEventReporter) Report(eventType string, payload json.RawMessage)
 		Sequence: r.journal.NextSequence,
 		Type:     eventType, Payload: append(json.RawMessage(nil), payload...)})
 	r.journal.NextSequence++
-	_ = r.saveLocked()
+	if err := r.saveLocked(); err != nil {
+		return
+	}
 	if time.Since(r.lastFlush) >= desktopEventFlushInterval {
 		r.flushLocked()
 	}
@@ -1414,6 +1407,9 @@ func (r *desktopEventReporter) Flush() {
 
 func (r *desktopEventReporter) flushLocked() {
 	if r.journal.ControlAbandoned || r.registrationPendingLocked() || len(r.journal.PendingEvents) == 0 {
+		return
+	}
+	if err := r.saveLocked(); err != nil {
 		return
 	}
 	r.lastFlush = time.Now()
@@ -1461,6 +1457,15 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 	for r.ctx.Err() == nil {
 		if r.journal.ControlAbandoned {
 			return
+		}
+		r.journal.mu.Lock()
+		persistErr := r.saveLocked()
+		r.journal.mu.Unlock()
+		if persistErr != nil {
+			if !waitContext(r.ctx, desktopEventFlushInterval) {
+				return
+			}
+			continue
 		}
 		r.Flush()
 		requestCtx, cancel := context.WithTimeout(r.ctx, r.processor.cfg.ControlTimeout)

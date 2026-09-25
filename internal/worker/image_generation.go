@@ -236,7 +236,7 @@ func imageGenerationFailure(message string) codex.ToolCallResult {
 func imageGenerationEndpoint(baseURL string, queryParams map[string]string) (string, error) {
 	value, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || value.Scheme == "" || value.Host == "" {
-		return "", errors.New("Provider base_url 无效")
+		return "", errors.New("无效的 Provider base_url")
 	}
 	value.Path = strings.TrimRight(value.Path, "/") + "/images/generations"
 	query := value.Query()
@@ -313,7 +313,7 @@ func (p *Processor) generatedImageRoot() (string, error) {
 		return filepath.Clean(p.imageRoot), nil
 	}
 	if p.hostRuntime == nil || strings.TrimSpace(p.hostRuntime.StateDir()) == "" {
-		return "", errors.New("Worker 私有状态目录不可用")
+		return "", errors.New("无法使用 Worker 私有状态目录")
 	}
 	return filepath.Join(p.hostRuntime.StateDir(), generatedImagesDirectory), nil
 }

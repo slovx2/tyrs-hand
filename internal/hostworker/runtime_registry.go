@@ -64,12 +64,12 @@ func StartRuntimeRegistry(ctx context.Context, options []RuntimeEntryOptions) (*
 
 func validateEntries(options []RuntimeEntryOptions) error {
 	if len(options) < 1 || len(options) > 2 {
-		return errors.New("Worker 只能配置一个或两个固定引擎")
+		return errors.New("只能为 Worker 配置一个或两个固定引擎")
 	}
 	seen := map[runtimeidentity.Engine]bool{}
 	workerID := options[0].Runtime.WorkerID
 	if workerID == "" {
-		return errors.New("Worker ID 不能为空")
+		return errors.New("必须提供 Worker ID")
 	}
 	for i, entry := range options {
 		if err := entry.Runtime.Engine.Validate(); err != nil {

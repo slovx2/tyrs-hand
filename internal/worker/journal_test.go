@@ -93,14 +93,14 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1
 	require.NoError(t, store.save(journal))
-	runner.flushEvents(context.Background(), journal, zap.NewNop())
+	require.Error(t, runner.flushEvents(context.Background(), journal, zap.NewNop()))
 	require.Len(t, journal.PendingEvents, 1)
 	loaded, err := store.loadAll()
 	require.NoError(t, err)
 	require.Len(t, loaded[0].PendingEvents, 1)
 
 	available.Store(true)
-	runner.flushEvents(context.Background(), journal, zap.NewNop())
+	require.NoError(t, runner.flushEvents(context.Background(), journal, zap.NewNop()))
 	require.Empty(t, journal.PendingEvents)
 	require.EqualValues(t, 1, accepted.Load())
 	loaded, err = store.loadAll()

@@ -240,7 +240,7 @@ func (s *Server) liveSessionBinding(ctx context.Context, tx *sql.Tx, sessionID u
 		WHERE session.id=$1 AND session.lifecycle_state='active' FOR SHARE`, sessionID).
 		Scan(&projectID, &workerID, &engine)
 	if err == nil && engine != runtimeidentity.Codex {
-		err = errors.New("Claude 会话不支持 Live 语音")
+		err = errors.New("不支持在 Claude 会话中使用 Live 语音")
 	}
 	return projectID, workerID, err
 }

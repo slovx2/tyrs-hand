@@ -99,7 +99,7 @@ func (r *Repository) StartWorkerInput(ctx context.Context, workerID, inputID, ru
 		return err
 	}
 	if workerID == uuid.Nil || inputID == uuid.Nil || runID == uuid.Nil {
-		return errors.New("Worker 输入决议缺少 ID")
+		return errors.New("输入决议缺少 Worker ID、输入 ID 或 Run ID")
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

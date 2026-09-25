@@ -67,7 +67,7 @@ func (s *Service) SetWorkspaceRoot(root string) {
 
 func (s *Service) Restart() error {
 	if s.restart == nil {
-		return errors.New("Worker 尚未绑定 Codex 重启处理器")
+		return errors.New("尚未为 Worker 绑定 Codex 重启处理器")
 	}
 	return s.restart()
 }
@@ -92,7 +92,7 @@ func (s *Service) read() (workerprotocol.WorkerConfig, error) {
 	}
 	provider, _ := parsed["model_provider"].(string)
 	if isChatGPTProvider(provider) {
-		return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+		return workerprotocol.WorkerConfig{}, errors.New("禁止 Model Provider 使用 ChatGPT OAuth")
 	}
 	providers := map[string]any{}
 	if value, ok := parsed["model_providers"].(map[string]any); ok {
@@ -105,7 +105,7 @@ func (s *Service) read() (workerprotocol.WorkerConfig, error) {
 					}
 				}
 				if baseURL, ok := copy["base_url"].(string); ok && isChatGPTProvider(baseURL) {
-					return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+					return workerprotocol.WorkerConfig{}, errors.New("禁止 Model Provider 使用 ChatGPT OAuth")
 				}
 				providers[id] = copy
 			}
@@ -187,20 +187,20 @@ func (s *Service) UpdateProvider(expected, baseURL, apiKey string, clearAPIKey b
 	}
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
-		return workerprotocol.WorkerConfig{}, errors.New("Base URL 不能为空")
+		return workerprotocol.WorkerConfig{}, errors.New("必须提供 Base URL")
 	}
 	u, err := url.Parse(baseURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return workerprotocol.WorkerConfig{}, errors.New("Base URL 必须是合法的 HTTP/HTTPS URL")
+		return workerprotocol.WorkerConfig{}, errors.New("必须为 Base URL 提供合法的 HTTP/HTTPS URL")
 	}
 	if len(baseURL) > 2048 || len(apiKey) > 4096 {
-		return workerprotocol.WorkerConfig{}, errors.New("Provider 配置长度超限")
+		return workerprotocol.WorkerConfig{}, errors.New("超过 Provider 配置长度限制")
 	}
 	if strings.ContainsAny(apiKey, "\r\n'") {
 		return workerprotocol.WorkerConfig{}, errors.New("API Key 包含非法换行符")
 	}
 	if isChatGPTProvider(baseURL) {
-		return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+		return workerprotocol.WorkerConfig{}, errors.New("禁止 Model Provider 使用 ChatGPT OAuth")
 	}
 	if current.ModelProvider == "" && !current.APIKeyConfigured && (strings.TrimSpace(apiKey) == "" || clearAPIKey) {
 		return workerprotocol.WorkerConfig{}, errors.New("首次配置必须填写 API Key")
@@ -292,12 +292,12 @@ func (s *Service) updateGlobalEnv(baseURL, apiKey string, clear bool) error {
 
 // writeGlobalEnv 更新 /etc/environment 一类的机器级环境文件。该文件由安装器
 // 预先创建并授予 Worker 用户写权限，以便非 root Worker 也能保存 Provider。
-func writeGlobalEnv(path string, data []byte) error {
+func writeGlobalEnv(path string, data []byte) (resultErr error) {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o664)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
 	if _, err := file.Write(data); err != nil {
 		return err
 	}
@@ -359,7 +359,7 @@ func (s *Service) StartOAuth() (workerprotocol.OAuthDevice, error) {
 		select {
 		case line, ok := <-lines:
 			if !ok {
-				return workerprotocol.OAuthDevice{}, errors.New("Codex OAuth 未返回设备码")
+				return workerprotocol.OAuthDevice{}, errors.New("未收到 Codex OAuth 设备码")
 			}
 			if match := deviceCodePattern.FindStringSubmatch(strings.ToUpper(line)); len(match) == 2 {
 				device.UserCode = match[1]
@@ -367,7 +367,7 @@ func (s *Service) StartOAuth() (workerprotocol.OAuthDevice, error) {
 				return device, nil
 			}
 		case err := <-done:
-			return workerprotocol.OAuthDevice{}, fmt.Errorf("Codex OAuth 进程退出: %w", err)
+			return workerprotocol.OAuthDevice{}, fmt.Errorf("已退出 Codex OAuth 进程: %w", err)
 		case <-deadline.C:
 			_ = cmd.Process.Kill()
 			return workerprotocol.OAuthDevice{}, errors.New("等待 Codex OAuth 设备码超时")

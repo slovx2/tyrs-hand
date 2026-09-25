@@ -32,14 +32,14 @@ func readRuntimeInfo(client *ssh.Client) (runtimeInfo, error) {
 	if err := json.Unmarshal([]byte(data), &info); err != nil {
 		return info, fmt.Errorf("解析 Worker 运行时身份: %w", err)
 	}
-	if err := info.Identity.Validate(); err != nil {
+	if err := info.Validate(); err != nil {
 		return info, err
 	}
 	if info.ProtocolVersion != codex.RequiredVersion {
-		return info, errors.New("Worker 运行时协议版本不匹配")
+		return info, errors.New("不匹配的 Worker 运行时协议版本")
 	}
 	if info.Status != "running" && info.Status != "unavailable" && info.Status != "stopped" {
-		return info, errors.New("Worker 运行时状态无效")
+		return info, errors.New("无效的 Worker 运行时状态")
 	}
 	return info, nil
 }
@@ -51,7 +51,7 @@ func InspectRuntime(host string, port int, user, privateKey, passphrase, expecte
 	if err != nil {
 		return "", err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	info, err := readRuntimeInfo(client)
 	if err != nil {
 		return "", err

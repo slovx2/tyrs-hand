@@ -27,9 +27,9 @@ func TestCallWorkerRPCRenewsExpiredWriteDeadline(t *testing.T) {
 	workerConn, _, err := websocket.DefaultDialer.Dial(
 		"ws"+strings.TrimPrefix(httpServer.URL, "http"), nil)
 	require.NoError(t, err)
-	defer workerConn.Close()
+	defer func() { _ = workerConn.Close() }()
 	serverConn := <-connected
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	require.NoError(t, serverConn.SetWriteDeadline(time.Now().Add(-time.Second)))
 	workerID := uuid.New()

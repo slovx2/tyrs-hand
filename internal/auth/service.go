@@ -301,7 +301,7 @@ func (s *Service) ListInvitations(ctx context.Context) ([]InvitationSummary, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]InvitationSummary, 0)
 	for rows.Next() {
 		var item InvitationSummary

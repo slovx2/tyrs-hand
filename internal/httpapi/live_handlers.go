@@ -116,7 +116,7 @@ func (s *Server) createLiveConversation(c *gin.Context) {
 		request.Voice = defaultLiveVoice
 	}
 	if request.Model == "" || len(request.Model) > 128 || len(request.Voice) > 64 || len(request.Instructions) > 32768 {
-		badRequest(c, errors.New("Live conversation 配置无效"))
+		badRequest(c, errors.New("无效的 Live conversation 配置"))
 		return
 	}
 	if request.Instructions == "" {
@@ -217,7 +217,7 @@ func (s *Server) updateLiveConversation(c *gin.Context) {
 	}
 	request.Voice = strings.TrimSpace(request.Voice)
 	if request.Voice == "" || len(request.Voice) > 64 {
-		badRequest(c, errors.New("Live voice 配置无效"))
+		badRequest(c, errors.New("无效的 Live voice 配置"))
 		return
 	}
 	administratorID := c.MustGet("session").(auth.Session).AdministratorID
@@ -526,10 +526,6 @@ func (s *Server) failLiveSession(ctx context.Context, id uuid.UUID, cause error)
 	s.liveManager.stopSession(id)
 }
 
-func (s *Server) waitLiveSideband(ctx context.Context, id uuid.UUID) error {
-	return s.liveManager.waitSideband(ctx, id)
-}
-
 func (s *Server) closeLiveSession(c *gin.Context) {
 	id, ok := liveIDParam(c)
 	if !ok {
@@ -617,7 +613,7 @@ func (s *Server) listLiveMessages(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Live 消息失败", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]liveMessageResponse, 0, limit)
 	var next int64
 	for rows.Next() {
@@ -631,6 +627,10 @@ func (s *Server) listLiveMessages(c *gin.Context) {
 		} else {
 			next = item.Sequence
 		}
+	}
+	if err := rows.Err(); err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Live 消息失败", err)
+		return
 	}
 	result := gin.H{"items": items}
 	if next > 0 {
@@ -654,7 +654,7 @@ func (s *Server) listLiveEvents(c *gin.Context) {
 		problem(c, 500, "读取 Live 事件失败", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]liveEventResponse, 0, limit)
 	var next int64
 	for rows.Next() {
@@ -668,6 +668,10 @@ func (s *Server) listLiveEvents(c *gin.Context) {
 		} else {
 			next = item.ID
 		}
+	}
+	if err := rows.Err(); err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Live 事件失败", err)
+		return
 	}
 	result := gin.H{"items": items}
 	if next > 0 {
@@ -691,7 +695,7 @@ func (s *Server) liveConversationExists(c *gin.Context, id, administratorID uuid
 func liveIDParam(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		badRequest(c, errors.New("Live ID 无效"))
+		badRequest(c, errors.New("无效的 Live ID"))
 		return uuid.Nil, false
 	}
 	return id, true

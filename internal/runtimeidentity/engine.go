@@ -41,7 +41,7 @@ type Identity struct {
 
 func (i Identity) Validate() error {
 	if i.WorkerID == "" {
-		return fmt.Errorf("Worker ID 不能为空")
+		return fmt.Errorf("必须提供 Worker ID")
 	}
 	return i.Engine.Validate()
 }

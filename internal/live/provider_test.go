@@ -62,7 +62,7 @@ func TestHTTPProviderAttachSideband(t *testing.T) {
 		require.Equal(t, "Bearer secret", r.Header.Get("Authorization"))
 		connection, err := upgrader.Upgrade(w, r, nil)
 		require.NoError(t, err)
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		_ = connection.WriteJSON(map[string]string{"type": "session.started"})
 	}))
 	defer server.Close()
@@ -70,7 +70,7 @@ func TestHTTPProviderAttachSideband(t *testing.T) {
 	defer cancel()
 	sideband, err := NewProvider(server.URL, "secret").AttachSideband(ctx, "opaque/id")
 	require.NoError(t, err)
-	defer sideband.Close()
+	defer func() { _ = sideband.Close() }()
 	var event map[string]any
 	require.NoError(t, sideband.ReadJSON(ctx, &event))
 	require.Equal(t, "session.started", event["type"])
@@ -99,7 +99,7 @@ func TestWebsocketSidebandRejectsBinaryFrames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connection, err := upgrader.Upgrade(w, r, nil)
 		require.NoError(t, err)
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		require.NoError(t, connection.WriteMessage(websocket.BinaryMessage, []byte("audio")))
 	}))
 	defer server.Close()
@@ -108,7 +108,7 @@ func TestWebsocketSidebandRejectsBinaryFrames(t *testing.T) {
 	defer cancel()
 	sideband, err := NewProvider(server.URL, "secret").AttachSideband(ctx, "opaque-id")
 	require.NoError(t, err)
-	defer sideband.Close()
+	defer func() { _ = sideband.Close() }()
 
 	var event map[string]any
 	require.ErrorIs(t, sideband.ReadJSON(ctx, &event), ErrSidebandBinary)
@@ -145,7 +145,7 @@ func TestWebsocketSidebandRejectsInvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		connection, err := upgrader.Upgrade(w, r, nil)
 		require.NoError(t, err)
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		require.NoError(t, connection.WriteMessage(websocket.TextMessage, []byte("not-json")))
 	}))
 	defer server.Close()
@@ -154,7 +154,7 @@ func TestWebsocketSidebandRejectsInvalidJSON(t *testing.T) {
 	defer cancel()
 	sideband, err := NewProvider(server.URL, "secret").AttachSideband(ctx, "opaque-id")
 	require.NoError(t, err)
-	defer sideband.Close()
+	defer func() { _ = sideband.Close() }()
 
 	var event map[string]any
 	require.ErrorIs(t, sideband.ReadJSON(ctx, &event), ErrSidebandInvalidJSON)

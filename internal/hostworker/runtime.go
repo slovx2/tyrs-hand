@@ -250,7 +250,7 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 			live.Engine != runtimeidentity.Claude || live.SDKVersion != info.SDKVersion ||
 			live.CLISHA256 != info.CLISHA256 || live.ProtocolVersion != info.ProtocolVersion {
 			stopAppServerGeneration(generation)
-			return nil, fmt.Errorf("Claude 在线协议身份校验失败: %v", err)
+			return nil, fmt.Errorf("校验 Claude 在线协议身份失败: %v", err)
 		}
 	}
 	return generation, nil
@@ -446,7 +446,7 @@ func (r *Runtime) ServeDesktop(connection net.Conn) error {
 	}
 	// 当前 SSH WebSocket 已被旧 Hub 关闭，不能在同一字节流上重放握手。
 	// 返回错误让 Desktop 建立下一条 SSH 连接；新的 App Server 已经就绪。
-	return errors.Join(err, errors.New("Codex App Server 已恢复，请重新连接"))
+	return errors.Join(err, errors.New("已恢复 Codex App Server，请重新连接"))
 }
 
 func (r *Runtime) recoverAfterDesktopFailure(ctx context.Context,

@@ -38,50 +38,6 @@ func (s *Server) workerRunHeartbeat(c *gin.Context) {
 			ExternalThreadID: claimed.ExternalThreadID}})
 }
 
-func (s *Server) pendingRunCommands(ctx context.Context,
-	claimed *codexcontrol.ClaimedControl,
-) ([]workerprotocol.RunCommand, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, sequence_no, operation, instruction,
-		COALESCE(discord_message_id,'') FROM codex_turn_intents
-		WHERE control_id = $1 AND sequence_no > $2 AND status IN ('queued','retry_wait')
-		ORDER BY sequence_no LIMIT 5`, claimed.ControlID, claimed.Sequence)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var commands []workerprotocol.RunCommand
-	for rows.Next() {
-		var command workerprotocol.RunCommand
-		var messageID string
-		if err := rows.Scan(&command.ID, &command.Sequence, &command.Operation,
-			&command.Instruction, &messageID); err != nil {
-			return nil, err
-		}
-		if claimed.SourceType == codexcontrol.SourceWorkspace {
-			copyClaimed := *claimed
-			copyClaimed.ID, copyClaimed.Sequence = command.ID, command.Sequence
-			copyClaimed.InputSurface = "client"
-			if messageID != "" {
-				copyClaimed.InputSurface = "discord"
-			}
-			copyClaimed.DiscordMessageID = messageID
-			copyClaimed.Instruction = command.Instruction
-			command.Session, err = s.loadWorkspaceWorkerSnapshot(ctx, &copyClaimed)
-			if err != nil {
-				return nil, err
-			}
-			if messageID != "" && claimed.DiscordConversationID != uuid.Nil {
-				command.Discord, err = s.loadDiscordWorkerSnapshot(ctx, &copyClaimed)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-		commands = append(commands, command)
-	}
-	return commands, rows.Err()
-}
-
 func (s *Server) workerCommandAck(c *gin.Context) {
 	var request workerprotocol.CommandAckRequest
 	runID, worker, ok := requireWorkerRun(c, &request)

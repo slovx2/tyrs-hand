@@ -2126,19 +2126,20 @@ func TestWorkerAPISSHConfigurationAndGitHubAgentInstructions(t *testing.T) {
 	agents, err := server.settings.GitHubAgentInstructions(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "# GitHub Agent\n", agents.Content)
-	agentsRecorder := httptest.NewRecorder()
-	agentsContext, _ := gin.CreateTestContext(agentsRecorder)
-	agentsContext.Request = httptest.NewRequest("PUT", "/api/v1/settings/github-agent-instructions",
-		strings.NewReader(`{"content":"# Managed through API\n"}`))
-	agentsContext.Request.Header.Set("Content-Type", "application/json")
-	server.putGitHubAgentInstructions(agentsContext)
-	require.Equal(t, 204, agentsContext.Writer.Status())
+	// 旧全局 HTTP 入口已停用，保留现行配置服务的更新与持久化回归。
+	require.NoError(t, server.settings.SaveGitHubAgentInstructions(ctx,
+		platformsettings.GitHubAgentInstructions{Content: "# Managed through settings service\r\n"}))
+	agents, err = platformsettings.NewService(db).GitHubAgentInstructions(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "# Managed through settings service\n", agents.Content)
+	require.NotContains(t, routeSet(server.Router()),
+		"PUT /api/v1/settings/github-agent-instructions")
 	var globalAuditCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs
 		WHERE action='settings.github_agent_instructions.update'
 		AND resource_id='github.agent.instructions'`).
 		Scan(&globalAuditCount))
-	require.Equal(t, 1, globalAuditCount)
+	require.Zero(t, globalAuditCount, "停用的 HTTP 入口不应生成成功审计")
 }
 
 func testSSHPrivateKey(t *testing.T, passphrase string) string {

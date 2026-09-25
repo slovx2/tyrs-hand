@@ -73,7 +73,8 @@ func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 		}
 	}
 	if len(journal.PendingEvents) > 0 {
-		r.flushEvents(ctx, journal, logger)
+		// 此处上传失败已记录并保留事件，后续状态同步和终态提交会重试。
+		_ = r.flushEvents(ctx, journal, logger)
 	}
 
 	processCtx, cancel := context.WithCancel(ctx)
@@ -98,7 +99,7 @@ func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 		now := time.Now()
 		if shouldFlushRemoteEvents(lastEventFlushAttempt, now) {
 			lastEventFlushAttempt = now
-			r.flushEventsLocked(processCtx, journal, logger)
+			_ = r.flushEventsLocked(processCtx, journal, logger)
 		}
 		journal.mu.Unlock()
 	}
@@ -169,7 +170,7 @@ func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 	}
 	if desktopRequest != nil {
 		if desktopRequest.TurnID == "" || (task.Claimed.ConfirmedTurnID != "" && task.Claimed.ConfirmedTurnID != desktopRequest.TurnID) {
-			return errors.New("Desktop Journal 原生 Turn ID 缺失或冲突，禁止推断确认结果")
+			return errors.New("缺失或冲突的 Desktop Journal 原生 Turn ID，禁止推断确认结果")
 		}
 		requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
 		err = r.client.RecordSubmission(requestCtx, &task, desktopRequest.TurnID)
