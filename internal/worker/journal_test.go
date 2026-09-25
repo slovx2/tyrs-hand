@@ -84,7 +84,7 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(server.URL, "node-token", time.Second)
-	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second}, client: client,
+	runner := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second}, client: client,
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{NextSequence: 2,
 		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn.started"}}}
@@ -137,7 +137,7 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
-	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+	runner := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{NextSequence: 2,
@@ -253,7 +253,7 @@ func TestDeliverTerminalDropsUnboundDesktopJournal(t *testing.T) {
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
-	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+	runner := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
 	workspaceID := uuid.New()
@@ -291,7 +291,7 @@ func TestDeliverTerminalRetriesBadGateway(t *testing.T) {
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
-	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+	runner := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"}}
@@ -376,7 +376,7 @@ func TestDeliverTerminalAbandonsAfterRetryBudget(t *testing.T) {
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
-	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+	runner := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"},

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -34,19 +35,15 @@ type heartbeatMetadataProvider interface {
 }
 
 type Runner struct {
+	*runtimeExecutor
 	workerID              uuid.UUID
-	cfg                   config.Config
-	client                *workerprotocol.Client
-	processor             taskProcessor
-	logger                *zap.Logger
-	journals              *journalStore
 	ssh                   *sshAgentManager
 	browser               *browserHealthMonitor
-	coordinator           *runCoordinator
 	sshHostKeyFingerprint string
-	wake                  *wakeSignals
 	turnSlots             chan struct{}
 	runtimeReports        func() []workerprotocol.RuntimeReport
+	executors             []*runtimeExecutor
+	nextExecutor          int
 
 	catalogMu         sync.Mutex
 	catalogRevision   string
@@ -64,17 +61,24 @@ func (r *Runner) SetRuntimeReports(provider func() []workerprotocol.RuntimeRepor
 
 // NotifyControlWake 接收 Control 推送的唤醒种类。
 func (r *Runner) NotifyControlWake(kinds []string) {
-	r.wake.Notify(kinds)
+	for _, executor := range r.executors {
+		executor.wake.Notify(kinds)
+	}
 }
 
 // SetControlChannelState 记录控制通道的连接与唤醒能力状态。
 func (r *Runner) SetControlChannelState(connected, wake bool) {
-	r.wake.SetState(connected, wake)
+	for _, executor := range r.executors {
+		executor.wake.SetState(connected, wake)
+	}
 }
 
 func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskProcessor,
 	logger *zap.Logger,
 ) (*Runner, error) {
+	if client == nil || client.Engine() != runtimeidentity.Codex {
+		return nil, errors.New("Worker 调度器需要 Codex 主客户端管理共享身份")
+	}
 	if cfg.NodeHeartbeatInterval <= 0 {
 		cfg.NodeHeartbeatInterval = time.Minute
 	}
@@ -96,8 +100,9 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 		}
 		coordinator = newRunCoordinator(journals)
 	}
-	runner := &Runner{cfg: cfg, client: client, processor: processor, logger: logger,
-		journals: journals, coordinator: coordinator}
+	executor := &runtimeExecutor{engine: runtimeidentity.Codex, cfg: cfg, client: client,
+		processor: processor, logger: logger, journals: journals, coordinator: coordinator}
+	runner := &Runner{runtimeExecutor: executor, executors: []*runtimeExecutor{executor}}
 	if concrete, ok := processor.(*Processor); ok {
 		runner.turnSlots = concrete.turnSlots
 	} else {
@@ -108,6 +113,7 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 	} else {
 		runner.wake = newWakeSignals()
 	}
+	executor.claimWake = runner.wake
 	if cfg.EnableSSH && cfg.ControlSyncEnabled() {
 		runner.ssh = newSSHAgentManager(cfg.SSHAgentDir, client, runner.wake,
 			cfg.WorkerSyncFallbackInterval, logger)
@@ -140,23 +146,13 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 	slots := r.turnSlots
 	var active sync.WaitGroup
-	stored, err := r.journals.loadAll()
-	if err != nil {
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()
+		active.Wait()
+	}()
+	if err := r.recoverJournals(ctx, &active); err != nil {
 		return err
-	}
-	for _, journal := range stored {
-		if !r.roleAllowed(journal.Task.Claimed.SourceType) {
-			return fmt.Errorf("run Journal %s 与当前 Worker 角色不匹配",
-				journal.Task.Claimed.RunID)
-		}
-		commands := make(chan workerprotocol.RunCommand, 16)
-		r.coordinator.register(journal, commands)
-		slots <- struct{}{}
-		logger := r.logger.With(zap.String("run_id", journal.Task.Claimed.RunID.String()))
-		_ = r.syncRunState(ctx, journal, commands, logger)
-		_ = r.flushEvents(ctx, journal, logger)
-		active.Add(1)
-		go r.runJournal(ctx, journal, commands, slots, &active)
 	}
 	if err := r.sendHeartbeat(ctx); err != nil {
 		r.logger.Warn("首次节点心跳失败，本地任务继续运行", zap.Error(err))
@@ -167,28 +163,18 @@ func (r *Runner) Run(ctx context.Context) error {
 		if !r.wake.Wait(ctx, r.cfg.WorkerClaimFallbackInterval, workerprotocol.WakeClaim) {
 			break
 		}
-		claim, claimErr := r.client.Claim(ctx, workerprotocol.ClaimRequest{
-			Role: r.claimRole(),
-		})
-		if claimErr != nil {
-			r.logger.Warn("从 Control 领取任务失败", zap.Error(claimErr))
-			if !waitContext(ctx, 3*time.Second) {
-				break
-			}
-			continue
-		}
-		if claim.Task == nil {
+		executor, task := r.claimNext(ctx)
+		if task == nil {
 			continue
 		}
 		// 领取成功后立刻再检查一次，直到队列为空，避免依赖下一次唤醒。
 		r.wake.Notify([]string{workerprotocol.WakeClaim})
-		task := claim.Task
-		if activeTask, routed, applied := r.coordinator.route(task); routed {
+		if activeTask, routed, applied := executor.coordinator.route(task); routed {
 			if applied {
 				decisionTask := *task
 				decisionTask.Claimed.RunID = activeTask.Claimed.RunID
 				requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
-				_ = r.client.DecideInput(requestCtx, &decisionTask,
+				_ = executor.client.DecideInput(requestCtx, &decisionTask,
 					resolvedCommandAction(task.Claimed.Operation),
 					activeTask.Claimed.ConfirmedTurnID)
 				cancel()
@@ -206,14 +192,14 @@ func (r *Runner) Run(ctx context.Context) error {
 		}
 		task.Claimed.RunID = uuid.New()
 		journal := &runJournal{Task: *task, NextSequence: 1}
-		if err := r.journals.save(journal); err != nil {
+		if err := executor.journals.save(journal); err != nil {
 			<-slots
 			return fmt.Errorf("持久化新领取任务: %w", err)
 		}
 		commands := make(chan workerprotocol.RunCommand, 16)
-		r.coordinator.register(journal, commands)
+		executor.coordinator.register(journal, commands)
 		active.Add(1)
-		go r.runJournal(ctx, journal, commands, slots, &active)
+		go executor.runJournal(ctx, journal, commands, slots, &active)
 	}
 	active.Wait()
 	return ctx.Err()

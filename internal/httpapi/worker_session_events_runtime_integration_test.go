@@ -111,6 +111,6 @@ func TestWorkerRuntimeScopeRejectsMissingUnknownAndUnsupported(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, response.StatusCode)
 		require.NoError(t, response.Body.Close())
 	}
-	_, err := f.clients[runtimeidentity.Claude].Claim(t.Context(), workerprotocol.ClaimRequest{Role: "all"})
+	_, err := f.clients[runtimeidentity.Claude].Identity(t.Context())
 	assertRuntimeHTTPStatus(t, err, http.StatusNotImplemented)
 }

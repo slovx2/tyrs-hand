@@ -31,7 +31,7 @@ func TestRegisteredWorkerIdentitySurvivesOfflineRestart(t *testing.T) {
 	cfg.WorkerCredentialFile = filepath.Join(cfg.WorkerDataRoot, "credential")
 	require.NoError(t, writeCredential(cfg.WorkerCredentialFile, "virtual-worker-credential"))
 	newRunner := func() *Runner {
-		return &Runner{cfg: cfg, client: workerprotocol.NewClient(server.URL, "", time.Second)}
+		return &Runner{runtimeExecutor: &runtimeExecutor{cfg: cfg, client: workerprotocol.NewClient(server.URL, "", time.Second)}}
 	}
 	runner := newRunner()
 	require.NoError(t, runner.Authenticate(context.Background()))
@@ -54,10 +54,10 @@ func TestRegisteredWorkerIdentitySurvivesOfflineRestart(t *testing.T) {
 func TestOfflineWorkerIdentityIsStableAndRejectsCorruption(t *testing.T) {
 	cfg := config.Config{WorkerDataRoot: t.TempDir()}
 	cfg.WorkerCredentialFile = filepath.Join(cfg.WorkerDataRoot, "credential")
-	first := &Runner{cfg: cfg}
+	first := &Runner{runtimeExecutor: &runtimeExecutor{cfg: cfg}}
 	require.NoError(t, first.InitializeOfflineIdentity())
 	require.NotEqual(t, uuid.Nil.String(), first.WorkerID())
-	second := &Runner{cfg: cfg}
+	second := &Runner{runtimeExecutor: &runtimeExecutor{cfg: cfg}}
 	require.NoError(t, second.InitializeOfflineIdentity())
 	require.Equal(t, first.WorkerID(), second.WorkerID())
 	require.NoError(t, os.WriteFile(first.identityPath(), []byte("broken"), 0o600))
@@ -75,7 +75,7 @@ func TestEnrollmentPersistsControlIdentity(t *testing.T) {
 	cfg := config.Config{WorkerDataRoot: t.TempDir(), WorkerEnrollmentToken: "virtual-enrollment",
 		WorkerControlURL: server.URL, WorkerProtocolVersion: workerprotocol.Version}
 	cfg.WorkerCredentialFile = filepath.Join(cfg.WorkerDataRoot, "credential")
-	runner := &Runner{cfg: cfg, client: workerprotocol.NewClient(server.URL, "", time.Second)}
+	runner := &Runner{runtimeExecutor: &runtimeExecutor{cfg: cfg, client: workerprotocol.NewClient(server.URL, "", time.Second)}}
 	require.NoError(t, runner.Authenticate(context.Background()))
 	require.Equal(t, id.String(), runner.WorkerID())
 	require.NoError(t, runner.InitializeOfflineIdentity())

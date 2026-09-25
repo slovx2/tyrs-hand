@@ -14,7 +14,7 @@ import (
 
 const remoteEventFlushInterval = time.Second
 
-func (r *Runner) runJournal(ctx context.Context, journal *runJournal,
+func (r *runtimeExecutor) runJournal(ctx context.Context, journal *runJournal,
 	commands chan workerprotocol.RunCommand, slots chan struct{}, active *sync.WaitGroup,
 ) {
 	defer active.Done()
@@ -28,7 +28,7 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal,
 	defer func() {
 		releaseSlot()
 		// 释放并发槽后立刻重新检查待办，避免等下一次唤醒。
-		r.wake.Notify([]string{workerprotocol.WakeClaim})
+		r.claimWake.Notify([]string{workerprotocol.WakeClaim})
 	}()
 	task := &journal.Task
 	logger := r.logger.With(zap.String("run_id", task.Claimed.RunID.String()),
@@ -117,7 +117,7 @@ func shouldFlushRemoteEvents(lastAttempt, now time.Time) bool {
 	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= remoteEventFlushInterval
 }
 
-func (r *Runner) syncRunState(ctx context.Context, journal *runJournal,
+func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) error {
@@ -164,7 +164,7 @@ func (r *Runner) syncRunState(ctx context.Context, journal *runJournal,
 	return nil
 }
 
-func (r *Runner) runStateSyncLoop(ctx context.Context, journal *runJournal,
+func (r *runtimeExecutor) runStateSyncLoop(ctx context.Context, journal *runJournal,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) {
@@ -185,7 +185,7 @@ func (r *Runner) runStateSyncLoop(ctx context.Context, journal *runJournal,
 	}
 }
 
-func (r *Runner) abandonIfPermanentDesktopSync(ctx context.Context, journal *runJournal,
+func (r *runtimeExecutor) abandonIfPermanentDesktopSync(ctx context.Context, journal *runJournal,
 	commands chan<- workerprotocol.RunCommand, logger *zap.Logger,
 ) bool {
 	err := r.syncRunState(ctx, journal, commands, logger)
@@ -209,13 +209,13 @@ func deliverCommands(target chan<- workerprotocol.RunCommand,
 	}
 }
 
-func (r *Runner) flushEvents(ctx context.Context, journal *runJournal, logger *zap.Logger) error {
+func (r *runtimeExecutor) flushEvents(ctx context.Context, journal *runJournal, logger *zap.Logger) error {
 	journal.mu.Lock()
 	defer journal.mu.Unlock()
 	return r.flushEventsLocked(ctx, journal, logger)
 }
 
-func (r *Runner) flushEventsLocked(ctx context.Context, journal *runJournal,
+func (r *runtimeExecutor) flushEventsLocked(ctx context.Context, journal *runJournal,
 	logger *zap.Logger,
 ) error {
 	if len(journal.PendingEvents) == 0 {
@@ -235,7 +235,7 @@ func (r *Runner) flushEventsLocked(ctx context.Context, journal *runJournal,
 	return nil
 }
 
-func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
+func (r *runtimeExecutor) deliverTerminal(ctx context.Context, journal *runJournal,
 	logger *zap.Logger,
 ) {
 	for ctx.Err() == nil {

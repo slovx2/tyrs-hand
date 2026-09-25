@@ -80,6 +80,24 @@
         "codex",
         "claude-code"
       ]
+    },
+    {
+      "id": "CONTROL-DISPATCH-001",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerRuntimeClaimEventsAndTerminalIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-CAPABILITY-002",
+      "package": "./internal/httpapi",
+      "test": "TestLiveCannotBindOrDispatchToClaudeRuntime",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
     }
   ]
 }

@@ -65,6 +65,8 @@ func (c *Client) ForEngine(engine runtimeidentity.Engine) (*Client, error) {
 
 func (c *Client) SetCredential(value string) { c.credential = value }
 
+func (c *Client) Engine() runtimeidentity.Engine { return c.engine }
+
 func (c *Client) Identity(ctx context.Context) (WorkerIdentityResponse, error) {
 	var result WorkerIdentityResponse
 	err := c.call(ctx, http.MethodGet, "/worker/v1/identity", nil, &result, true)

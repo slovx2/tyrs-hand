@@ -17,7 +17,13 @@ import (
 func workerRuntimeScopedPath(path string) bool {
 	switch path {
 	case "/worker/v1/runs/:id/interactive", "/worker/v1/interactive/:id", "/worker/v1/interactive/answer",
-		"/worker/v1/runs/:id/tools/call":
+		"/worker/v1/runs/:id/tools/call", "/worker/v1/claims", "/worker/v1/inputs/decide",
+		"/worker/v1/workspace", "/worker/v1/blobs/:id",
+		"/worker/v1/runs/:id/heartbeat", "/worker/v1/runs/:id/commands/ack",
+		"/worker/v1/runs/:id/events", "/worker/v1/runs/:id/attachments",
+		"/worker/v1/runs/:id/complete", "/worker/v1/runs/:id/fail",
+		"/worker/v1/runs/:id/thread", "/worker/v1/runs/:id/submission",
+		"/worker/v1/runs/:id/confirm", "/worker/v1/runs/:id/workspace-project-state":
 		return true
 	}
 	for _, prefix := range []string{
@@ -26,6 +32,9 @@ func workerRuntimeScopedPath(path string) bool {
 		"/worker/v1/thread-metadata-events",
 		"/worker/v1/thread-name-updates",
 		"/worker/v1/thread-lifecycle-requests",
+		"/worker/v1/desktop-turns",
+		"/worker/v1/desktop-rollbacks",
+		"/worker/v1/desktop-steers",
 	} {
 		if path == prefix || strings.HasPrefix(path, prefix+"/") {
 			return true

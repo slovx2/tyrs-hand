@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -232,11 +233,15 @@ func liveVoiceWritebackPayload(text, channel, delegationID string) map[string]an
 
 func (s *Server) liveSessionBinding(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID) (uuid.UUID, uuid.UUID, error) {
 	var projectID, workerID uuid.UUID
-	err := tx.QueryRowContext(ctx, `SELECT session.workspace_project_id, workspace.worker_id
+	var engine runtimeidentity.Engine
+	err := tx.QueryRowContext(ctx, `SELECT session.workspace_project_id, workspace.worker_id, session.engine
 		FROM workspace_sessions session
 		JOIN worker_workspaces workspace ON workspace.id=session.workspace_id
 		WHERE session.id=$1 AND session.lifecycle_state='active' FOR SHARE`, sessionID).
-		Scan(&projectID, &workerID)
+		Scan(&projectID, &workerID, &engine)
+	if err == nil && engine != runtimeidentity.Codex {
+		err = errors.New("Claude 会话不支持 Live 语音")
+	}
 	return projectID, workerID, err
 }
 

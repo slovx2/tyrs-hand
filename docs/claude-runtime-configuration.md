@@ -75,7 +75,8 @@ Control 会话、桌面创建请求和定时任务现已保存不可变的 `engi
 Thread 索引使用 `(worker_id, engine, external_thread_id)`，相同项目与相同 thread ID
 可分别属于两引擎。创建、fork、元数据、命名、归档及标题任务均使用运行时作用域。
 Worker 会话操作请求必须携带 `X-Tyrs-Runtime-Engine`；缺失或未知值返回 400。
-尚未完成 Claude 接线的 Control 接口返回 501，不将请求送入 Codex。
+Claude 的会话、Run、事件、附件、工具及输入决议接口使用该作用域。
+未开放的 Worker 全局管理或专属接口返回 501，不将请求送入 Codex。
 定时任务从来源 Session 继承引擎；列表、更新、删除和立即运行使用相同作用域。
 调度器重建后仍从任务记录创建同引擎 Session 与 Control。Claude 标题请求使用
 `claude-default` 遵循原生模型配置，不再指定 GPT、Codex fast tier 或其 effort。
@@ -93,7 +94,13 @@ Worker 升级在持有数据锁时一次性迁移旧 Codex Journal，保存原�
 交互提问校验原生进程 generation、request ID 和问题内容，多端竞争只接受一个答案。
 Control 必需用例包含实际定时任务记录、重复工具提交及交互回答仲裁断言。
 
-当前发布状态：`releaseReady=false`。控制台可预配置 Claude；正式 Worker 的 Claude
-Controller 已接入本地 SSH；Claude 的 Control 会话同步仍关闭，任务、Discord 和
-定时任务的引擎隔离尚未全部接线。未启用的 runtime 重启会明确报错。
+单一 Runner 轮流领取两个运行时队列，按返回快照校验引擎后交给对应执行器。
+执行器使用独立客户端、Journal 和会话协调器，并共享 Worker 并发预算。
+恢复前检查所有 Journal 的目录归属；已有终态只补报，不再执行模型或工具。
+启用 Claude 时，其 Controller 与 Control 同步也启用。Live 的绑定、可选会话列表
+和跨会话工具限定 Codex；不能从 Live 转入 Claude 会话。
+
+当前发布状态：`releaseReady=false`。Control 数据层已覆盖领取、事件幂等与终态隔离；
+仍需补齐在线 Control→真实双运行时的全链路故障验收，手机运行时关联、Discord 引擎
+选择和完整协议矩阵。未启用的 runtime 重启会明确报错。
 这部分验收通过不代表完整双引擎协议矩阵或移动/桌面 GUI 发布验收通过。

@@ -804,7 +804,7 @@ func (s *Server) listClientLiveWorkerSessions(c *gin.Context) {
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT session.id, session.title
 		FROM workspace_sessions session
 		JOIN worker_workspaces workspace ON workspace.id=session.workspace_id
-		WHERE workspace.worker_id=$1 AND session.lifecycle_state='active'
+		WHERE workspace.worker_id=$1 AND session.lifecycle_state='active' AND session.engine='codex'
 		ORDER BY session.last_activity_at DESC LIMIT 50`, workerID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Session 失败", err)

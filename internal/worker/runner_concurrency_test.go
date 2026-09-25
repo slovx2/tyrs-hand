@@ -17,7 +17,7 @@ import (
 )
 
 func TestRunnerUsesSingleAllClaim(t *testing.T) {
-	runner := &Runner{cfg: config.Config{WorkerRole: "all"}}
+	runner := &Runner{runtimeExecutor: &runtimeExecutor{cfg: config.Config{WorkerRole: "all"}}}
 	require.Equal(t, "discord", runner.claimRole())
 	require.Equal(t, []string{"discord"}, runner.roles())
 }
@@ -34,10 +34,10 @@ func TestRunnerHeartbeatIncludesSSHHostKeyFingerprint(t *testing.T) {
 		response.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(server.Close)
-	runner := &Runner{cfg: config.Config{WorkerID: "worker-test", WorkerRole: "discord",
+	runner := &Runner{runtimeExecutor: &runtimeExecutor{cfg: config.Config{WorkerID: "worker-test", WorkerRole: "discord",
 		WorkerProtocolVersion: workerprotocol.Version, WorkerMaxConcurrentJobs: 2,
 		WorkerSSHListenAddr: "127.0.0.1:2222"},
-		client: workerprotocol.NewClient(server.URL, "credential", time.Second)}
+		client: workerprotocol.NewClient(server.URL, "credential", time.Second)}}
 	runner.SetSSHHostKeyFingerprint("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	runner.SetRuntimeReports(func() []workerprotocol.RuntimeReport {
 		return []workerprotocol.RuntimeReport{

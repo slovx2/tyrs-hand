@@ -161,7 +161,7 @@ func TestRunStateSyncReplaysAppliedInputDecisionAfterAckLoss(t *testing.T) {
 	journal := &runJournal{Task: task, AppliedInputs: []appliedInputDecision{{
 		InputID: steerID, Action: "steer", TurnID: "turn-1",
 	}}}
-	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+	runner := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "credential", time.Second),
 		logger: zap.NewNop()}
 	require.NoError(t, runner.syncRunState(context.Background(), journal, nil, zap.NewNop()))

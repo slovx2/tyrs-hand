@@ -146,12 +146,14 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		claudeConfig.WorkerDataRoot = cfg.ClaudeStateDir()
 		claudeConfig.WorkerHome = cfg.ClaudeHome()
 		claudeConfig.WorkerCodexHome = cfg.ClaudeAdapterHome()
-		// Control 尚未完成引擎作用域迁移，禁止 Claude 复用 Codex 的事务与投影。
-		// 此阶段只开放明确隔离的 SSH 会话，发布门禁继续保持未完成。
-		claudeConfig.WorkerDisableControlSync = true
-		claudeProcessor = worker.NewProcessor(ctx, claudeConfig, nil, provideWorkspace(cfg), catalog, logger)
+		claudeClient, err := client.ForEngine(runtimeidentity.Claude)
+		if err != nil {
+			cleanupFailure(nil)
+			return nil, nil, err
+		}
+		claudeProcessor = worker.NewProcessor(ctx, claudeConfig, claudeClient, provideWorkspace(cfg), catalog, logger)
 		claudeProcessor.ShareTurnBudget(processor)
-		claudeController = worker.NewHostDesktopController(claudeProcessor, nil)
+		claudeController = worker.NewHostDesktopController(claudeProcessor, manifest)
 	}
 	runtimeOptions := hostworker.RuntimeOptions{Engine: runtimeidentity.Codex,
 		WorkerID: runner.WorkerID(),
@@ -205,13 +207,6 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		return nil, nil, err
 	}
 	runtime := entry.Runtime
-	if configService != nil && cfg.ControlSyncEnabled() {
-		configService.SetWorkspaceRoot(cfg.WorkerWorkspaceRoot)
-		configService.SetRestart(func() error { return registry.Restart(runtimeidentity.Codex) })
-		claudeConfig := workerconfig.NewClaudeService(cfg.ClaudeConfigDir())
-		claudeConfig.SetRestart(func() error { return registry.Restart(runtimeidentity.Claude) })
-		go runControlChannel(ctx, cfg, credential, configService, claudeConfig, runner, logger)
-	}
 	var modelCatalog json.RawMessage
 	if client := runtime.Client(); client != nil {
 		catalogCtx, cancel := context.WithTimeout(ctx, cfg.ControlTimeout)
@@ -230,6 +225,13 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	if claudeController != nil {
 		claudeEntry, _ := registry.Entry(runtimeidentity.Claude)
 		claudeProcessor.UseHostRuntime(claudeEntry.Runtime, scopeID, nil)
+		if cfg.ControlSyncEnabled() {
+			if err := runner.AddRuntimeProcessor(claudeProcessor); err != nil {
+				_ = registry.Close()
+				cleanupFailure(nil)
+				return nil, nil, err
+			}
+		}
 		if err := claudeController.AttachRuntime(ctx, claudeEntry.Runtime); err != nil {
 			_ = registry.Close()
 			cleanupFailure(nil)
@@ -242,6 +244,13 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 			runtimeidentity.Codex: processor, runtimeidentity.Claude: claudeProcessor,
 		})
 	})
+	if configService != nil && cfg.ControlSyncEnabled() {
+		configService.SetWorkspaceRoot(cfg.WorkerWorkspaceRoot)
+		configService.SetRestart(func() error { return registry.Restart(runtimeidentity.Codex) })
+		claudeConfig := workerconfig.NewClaudeService(cfg.ClaudeConfigDir())
+		claudeConfig.SetRestart(func() error { return registry.Restart(runtimeidentity.Claude) })
+		go runControlChannel(ctx, cfg, credential, configService, claudeConfig, runner, logger)
+	}
 	registry.WatchAuthorizedClients(cfg.WorkerAuthorizedKeysFile, logger)
 	app := &WorkerApp{Runner: runner, Runtimes: registry, Logger: logger}
 	return app, func() {

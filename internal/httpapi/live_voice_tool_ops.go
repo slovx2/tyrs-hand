@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 func (s *Server) liveVoiceListSessions(ctx context.Context, workerID uuid.UUID) (codex.ToolCallResult, error) {
@@ -18,7 +19,7 @@ func (s *Server) liveVoiceListSessions(ctx context.Context, workerID uuid.UUID) 
 			WHERE control.session_id=session.id AND run.status IN ('starting','running','reconciling'))
 		FROM workspace_sessions session
 		JOIN worker_workspaces workspace ON workspace.id=session.workspace_id
-		WHERE workspace.worker_id=$1 AND session.lifecycle_state='active'
+		WHERE workspace.worker_id=$1 AND session.lifecycle_state='active' AND session.engine='codex'
 		ORDER BY session.last_activity_at DESC LIMIT 50`, workerID)
 	if err != nil {
 		return codex.ToolCallResult{}, err
@@ -204,15 +205,19 @@ func parseLiveToolSessionID(args map[string]any) (uuid.UUID, error) {
 
 func (s *Server) ensureSessionOnWorker(ctx context.Context, sessionID, workerID uuid.UUID) error {
 	var found uuid.UUID
-	err := s.db.QueryRowContext(ctx, `SELECT workspace.worker_id
+	var engine runtimeidentity.Engine
+	err := s.db.QueryRowContext(ctx, `SELECT workspace.worker_id, session.engine
 		FROM workspace_sessions session
 		JOIN worker_workspaces workspace ON workspace.id=session.workspace_id
-		WHERE session.id=$1`, sessionID).Scan(&found)
+		WHERE session.id=$1`, sessionID).Scan(&found, &engine)
 	if err != nil {
 		return errors.New("session 不在当前 Worker")
 	}
 	if found != workerID {
 		return errors.New("不能操作其他 Worker 的 session")
+	}
+	if engine != runtimeidentity.Codex {
+		return errors.New("Claude 会话不支持 Live 语音")
 	}
 	return nil
 }
