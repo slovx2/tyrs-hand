@@ -75,6 +75,36 @@ test('新增调用未登记，或者登记用例没有执行该协议，均失�
   fixture.manifest.methods[0].cases.codex = ['OTHER-001']
   assert.equal(run(fixture).complete, false)
 })
+
+test('真实进程崩溃可终结挂起请求，但不能替代成功协议覆盖', () => {
+  const fixture = fixtures()
+  const messages = fixture.artifacts[0].payload.messages
+  messages.push({ direction: 'client', id: 2, method, params: { threadId: 'b' } },
+    { transport: { event: 'closed', source: 'process', exitCode: null, signal: 'SIGKILL', expectedSignal: 'SIGKILL' } })
+  assert.equal(run(fixture).complete, true)
+  assert.equal(run(fixture).evidence.filter(item => item.outcome === 'interrupted').length, 1)
+  messages.splice(0, 2)
+  assert.equal(run(fixture).complete, false, '崩溃证据不能作为正常功能成功覆盖')
+})
+
+test('未声明崩溃、关闭事件不符或关闭后报文不能掩盖缺失响应', () => {
+  for (const mutate of [
+    end => { delete end.expectedSignal },
+    end => { end.signal = 'SIGTERM' },
+    end => { end.exitCode = 0 },
+    end => { end.source = 'guess' },
+  ]) {
+    const fixture = fixtures()
+    const end = { event: 'closed', source: 'process', exitCode: null, signal: 'SIGKILL', expectedSignal: 'SIGKILL' }
+    mutate(end)
+    fixture.artifacts[0].payload.messages.push({ direction: 'client', id: 2, method, params: { threadId: 'b' } }, { transport: end })
+    assert.equal(run(fixture).complete, false)
+  }
+  const fixture = fixtures()
+  fixture.artifacts[0].payload.messages.push({ transport: { event: 'closed', source: 'process', exitCode: 0, signal: null } },
+    { direction: 'client', id: 3, method, params: { threadId: 'b' } }, { id: 3, result: { status: 'ready' } })
+  assert.equal(run(fixture).complete, false)
+})
 test('不适用能力必须有原因与真实拒绝响应，空成功不能通过', () => {
   const fixture = fixtures()
   const entry = fixture.manifest.methods[0]

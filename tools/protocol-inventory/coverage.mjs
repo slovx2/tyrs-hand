@@ -16,7 +16,29 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
       continue
     }
     const pending = new Map()
+    let closed = false
     for (const message of artifact.payload.messages) {
+      if (closed) {
+        missing.push({ reason: '连接关闭后仍出现报文', caseName: artifact.caseName })
+        continue
+      }
+      if (message.transport) {
+        const end = message.transport
+        if (end.event !== 'closed' || end.source !== 'process' || message.method || message.id != null ||
+            !((Number.isInteger(end.exitCode) && end.signal === null) ||
+              (end.exitCode === null && typeof end.signal === 'string'))) {
+          missing.push({ reason: '无效的进程关闭证据', caseName: artifact.caseName })
+          continue
+        }
+        closed = true
+        // 只接受用例主动注入且真实观察到的崩溃，不把任意断线视为请求完成。
+        if (end.expectedSignal === 'SIGKILL' && end.signal === end.expectedSignal) {
+          for (const request of pending.values()) evidence.push({ engine: artifact.engine,
+            method: request.method, cases: execution.caseIds, outcome: 'interrupted' })
+          pending.clear()
+        }
+        continue
+      }
       const sender = message.direction === 'client' ? 'client' : 'server'
       if (message.method) {
         const contract = index.get(message.method)
