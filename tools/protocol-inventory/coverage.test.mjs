@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { protocolCoverage } from './coverage.mjs'
-import { payloadValidator } from './schema.mjs'
+import { payloadValidator, schemaIndex } from './schema.mjs'
+import { resolve } from 'node:path'
 
 const method = 'fixture/read'
 const index = new Map([[method, { kind: 'ClientRequest',
@@ -9,6 +10,23 @@ const index = new Map([[method, { kind: 'ClientRequest',
   response: { type: 'object', required: ['status'], properties: { status: { const: 'ready' } } },
 }]])
 const validate = payloadValidator(index)
+
+test('运行时扩展必须校验真实身份字段与版本，不能仅凭方法名计覆盖', () => {
+  const root = resolve(import.meta.dirname, '../..')
+  const validate = payloadValidator(schemaIndex(
+    resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'), resolve(root, 'protocol/extensions')))
+  validate('runtime/info', 'params', {})
+  assert.throws(() => validate('runtime/info', 'params', { engine: 'claude-code' }))
+  const codex = { engine: 'codex', protocolVersion: '0.147.0', cliBuild: 'codex-cli 0.147.0',
+    capabilities: [], releaseReady: true, workerId: 'worker', status: 'running' }
+  validate('runtime/info', 'response', codex)
+  assert.throws(() => validate('runtime/info', 'response', { ...codex, workerId: undefined }))
+  const claude = { engine: 'claude-code', protocolVersion: '0.147.0', cliBuild: '2.1.282 (Claude Code)',
+    capabilities: [], releaseReady: false, nodeVersion: '24.14.0', sdkVersion: '0.3.282', cliSha256: 'a'.repeat(64) }
+  validate('runtime/info', 'response', claude)
+  assert.throws(() => validate('runtime/info', 'response', { ...claude, cliSha256: 'unverified' }))
+  assert.throws(() => validate('runtime/info', 'response', { ...claude, sdkVersion: '0.3.283' }))
+})
 function fixtures() {
   const manifest = { methods: [{ method, schema: { params: 'FixtureParams.json' },
     engines: { codex: 'required', 'claude-code': 'required' },

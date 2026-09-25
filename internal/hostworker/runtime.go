@@ -222,10 +222,15 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 	}
 	// ctx 只约束本轮启动；恢复路径会在启动完成后取消超时 context。
 	// Hub 的生命周期由 appServerGeneration 显式关闭，不能继承启动 context。
-	hub, err := appserverhub.Start(appServerGenerationContext(ctx), appserverhub.Options{
+	hubOptions := appserverhub.Options{
 		UpstreamSocketPath: socketPath,
 		Controller:         controller,
-	})
+	}
+	if options.Engine == runtimeidentity.Codex {
+		// 原生 Codex 不实现此扩展。返回已验证版本的宿主身份，不把引擎参数用于路由。
+		hubOptions.RuntimeInfo = func() any { return r.Info() }
+	}
+	hub, err := appserverhub.Start(appServerGenerationContext(ctx), hubOptions)
 	if err != nil {
 		stopAppServerGeneration(generation)
 		return nil, fmt.Errorf("启动 Worker AppServerHub: %w", err)

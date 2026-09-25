@@ -2007,14 +2007,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": ["ENTRY-001"],
+        "claude-code": ["ENTRY-001"]
       },
       "callers": [
         "internal/appserverhub/methods.go",
         "internal/hostworker/runtime.go"
       ],
-      "schema": null
+      "schema": {
+        "params": "extensions/runtime-info.json#/params",
+        "response": "extensions/runtime-info.json#/response"
+      }
     },
     {
       "method": "serverRequest/resolved",

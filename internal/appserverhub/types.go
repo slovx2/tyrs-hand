@@ -24,6 +24,8 @@ type Options struct {
 	ServerRequestTimeout    time.Duration
 	EventBacklog            int
 	Controller              Controller
+	// RuntimeInfo 由宿主提供已验证的入口身份；未设置时向原生适配器查询。
+	RuntimeInfo func() any
 }
 
 type ClientOptions struct {

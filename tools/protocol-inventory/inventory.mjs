@@ -8,7 +8,7 @@ import { protocolCoverage } from './coverage.mjs'
 const root = resolve(import.meta.dirname, '../..')
 const require = createRequire(import.meta.url)
 const ts = require('typescript')
-const index = schemaIndex(join(root, 'protocol/codex-app-server/0.147.0/json-schema'))
+const index = schemaIndex(join(root, 'protocol/codex-app-server/0.147.0/json-schema'), join(root, 'protocol/extensions'))
 const usages = JSON.parse(execFileSync('go', ['run', './tools/protocol-inventory'], { cwd: root, encoding: 'utf8' }))
 function walk(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {

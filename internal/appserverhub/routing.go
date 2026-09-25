@@ -13,6 +13,13 @@ import (
 func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 	params json.RawMessage,
 ) (json.RawMessage, error) {
+	if method == "runtime/info" && r.options.RuntimeInfo != nil {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(params, &fields); err != nil || fields == nil || len(fields) != 0 {
+			return nil, &ProtocolError{Code: -32602, Message: "runtime/info 参数必须为空对象"}
+		}
+		return marshalRaw(r.options.RuntimeInfo())
+	}
 	class := classifyMethod(method)
 	if class == methodLocal {
 		if err := source.identifyClient(params); err != nil {

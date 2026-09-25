@@ -1,0 +1,26 @@
+{
+  "method": "runtime/info",
+  "kind": "ClientRequest",
+  "params": { "type": "object", "additionalProperties": false },
+  "response": {
+    "type": "object",
+    "required": ["engine", "protocolVersion", "cliBuild", "capabilities", "releaseReady"],
+    "properties": {
+      "engine": { "enum": ["codex", "claude-code"] },
+      "protocolVersion": { "const": "0.147.0" },
+      "cliBuild": { "type": "string", "minLength": 1 },
+      "capabilities": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+      "releaseReady": { "type": "boolean" },
+      "workerId": { "type": "string", "minLength": 1 },
+      "status": { "enum": ["running", "unavailable", "stopped"] },
+      "nodeVersion": { "const": "24.14.0" },
+      "sdkVersion": { "const": "0.3.282" },
+      "cliSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+    },
+    "oneOf": [
+      { "properties": { "engine": { "const": "codex" } }, "required": ["workerId", "status"] },
+      { "properties": { "engine": { "const": "claude-code" } }, "required": ["nodeVersion", "sdkVersion", "cliSha256"] }
+    ],
+    "additionalProperties": false
+  }
+}

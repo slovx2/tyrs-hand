@@ -179,6 +179,19 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 		require.Error(t, err, "不允许包装器另启 app-server")
 		client := connectRuntimeSSH(t, ctx, connection, engine)
 		protocol[engine] = client
+		var live RuntimeInfo
+		require.NoError(t, client.Call(ctx, "runtime/info", map[string]any{}, &live))
+		require.Equal(t, engine, live.Engine)
+		require.Equal(t, "0.147.0", live.ProtocolVersion)
+		require.Equal(t, entry.Runtime.Info().CLIBuild, live.CLIBuild)
+		if engine == runtimeidentity.Codex {
+			require.Equal(t, "one-worker", live.WorkerID)
+			require.Equal(t, "running", live.Status)
+		} else {
+			require.Equal(t, "0.3.282", live.SDKVersion)
+			require.Equal(t, entry.Runtime.Info().CLISHA256, live.CLISHA256)
+			require.False(t, live.ReleaseReady)
+		}
 		if commandPermissions {
 			verifyRuntimeCommandPermissions(t, ctx, client, filepath.Join(root, string(engine)), upstream.URL)
 			continue

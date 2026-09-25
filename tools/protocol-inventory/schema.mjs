@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, basename, relative } from 'node:path'
 import Ajv from 'ajv'
 
-export function schemaIndex(root) {
+export function schemaIndex(root, extensionsRoot) {
   const files = new Map()
   const walk = directory => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -25,6 +25,13 @@ export function schemaIndex(root) {
         references: { params: `${kind}.json${params?.$ref ?? ''}`, response: responseFile ? relative(root, responseFile) : null },
       })
     }
+  }
+  if (extensionsRoot) for (const file of readdirSync(extensionsRoot).filter(name => name.endsWith('.json'))) {
+    const extension = JSON.parse(readFileSync(join(extensionsRoot, file), 'utf8'))
+    if (index.has(extension.method)) throw new Error(`扩展不能覆盖原生 schema: ${extension.method}`)
+    index.set(extension.method, { ...extension, references: {
+      params: `extensions/${file}#/params`, response: `extensions/${file}#/response`,
+    } })
   }
   return index
 }
