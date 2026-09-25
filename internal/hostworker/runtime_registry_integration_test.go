@@ -30,20 +30,25 @@ import (
 )
 
 func TestRuntimeRegistryRealSSHBothEngines(t *testing.T) {
-	testRuntimeRegistryRealSSH(t, false, false)
+	testRuntimeRegistryRealSSH(t, "runtime")
 }
 
 func TestRuntimeHistoryRealSSH(t *testing.T) {
-	testRuntimeRegistryRealSSH(t, false, true)
+	testRuntimeRegistryRealSSH(t, "history")
+}
+
+func TestRuntimeSessionRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "session")
 }
 
 // macOS 不允许叠加 sandbox-exec。此用例仅调用独立 command RPC，不创建 Turn，
 // 用真实运行时的 OS 沙箱验证文件和网络限制；模型请求数必须始终为零。
 func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
-	testRuntimeRegistryRealSSH(t, true, false)
+	testRuntimeRegistryRealSSH(t, "command-permissions")
 }
 
-func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions, historyOnly bool) {
+func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
+	commandPermissions, historyOnly, sessionOnly := mode == "command-permissions", mode == "history", mode == "session"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -59,6 +64,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions, historyOnly bo
 	var requestsMu sync.Mutex
 	modelRequests := map[runtimeidentity.Engine][]json.RawMessage{}
 	history := &runtimeHistoryFixture{t: t, root: root}
+	lifecycle := &runtimeSessionFixture{started: make(chan struct{}), release: make(chan struct{})}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -81,10 +87,14 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions, historyOnly bo
 				history.model(w, body)
 				return
 			}
+			if sessionOnly && engine == runtimeidentity.Claude {
+				lifecycle.model(t, request.Context(), body)
+			}
 		}
 		dualEngineModel(w, request)
 	}))
 	t.Cleanup(upstream.Close)
+	t.Cleanup(lifecycle.unblock)
 	t.Cleanup(func() {
 		if directory := os.Getenv("PROTOCOL_ARTIFACT_DIR"); directory != "" {
 			requestsMu.Lock()
@@ -206,7 +216,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions, historyOnly bo
 			require.Equal(t, entry.Runtime.Info().CLISHA256, live.CLISHA256)
 			require.False(t, live.ReleaseReady)
 		}
-		if historyOnly {
+		if historyOnly || sessionOnly {
 			continue
 		}
 		if commandPermissions {
@@ -231,6 +241,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions, historyOnly bo
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if sessionOnly {
+		verifyClaudeSessionLifecycle(t, ctx, registry, clients[runtimeidentity.Claude], protocol[runtimeidentity.Claude], signer, lifecycle)
+		require.Equal(t, int64(2), modelCalls.Load(), "只有两个明确提交的 Turn 可以调用模型")
+		return
 	}
 	if historyOnly {
 		history.create(ctx, protocol[runtimeidentity.Claude])

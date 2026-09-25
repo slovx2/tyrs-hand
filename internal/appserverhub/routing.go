@@ -146,7 +146,14 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			r.markEphemeral(threadID)
 			ephemeral = true
 		}
-		r.subscribeCreatedThread(source, threadID, ephemeral)
+		if method == "thread/resume" {
+			// 恢复只代表请求端重新订阅，不能撤销其他端主动取消订阅的选择。
+			if source.role == RoleDesktop {
+				source.subscribe(threadID)
+			}
+		} else {
+			r.subscribeCreatedThread(source, threadID, ephemeral)
+		}
 		r.bindDesktopTools(source, threadID, result)
 	}
 	if controlled {

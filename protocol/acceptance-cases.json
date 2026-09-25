@@ -4,7 +4,7 @@
     { "id": "CONFIG", "description": "独立原生 settings.json 的地址、两种认证、模型及 CLAUDE.md 真实生效", "cases": ["CONFIG-001"] },
     { "id": "ENTRY", "description": "双 SSH、专用包装器、幂等启动与独立恢复", "cases": ["ENTRY-001", "ENTRY-002"] },
     { "id": "ISOLATION", "description": "入口路由、相同提交 ID、强制同名 thread、审批和缓存隔离", "cases": ["ISOLATION-001", "ISOLATION-002", "ISOLATION-003"] },
-    { "id": "SESSION", "description": "完整会话生命周期与离线继续执行", "cases": ["SESSION-001"] },
+    { "id": "SESSION", "description": "真实 SSH 离线继续执行、会话生命周期及原生元数据重启持久化", "cases": ["SESSION-001", "SESSION-002"] },
     { "id": "HISTORY", "description": "双向分页、各 itemsView、超大工具输出和无模型读取", "cases": ["HISTORY-001", "HISTORY-002", "HISTORY-003"] },
     { "id": "CONTEXT", "description": "真实 SDK 恢复、分叉、回退、压缩及 SQLite 事务失败", "cases": ["CONTEXT-001", "CONTEXT-002", "CONTEXT-003"] },
     { "id": "SUBMIT", "description": "提交去重、重启重试、工具不确定状态及并发操纵", "cases": ["SUBMIT-001", "SUBMIT-002", "SUBMIT-003"] },

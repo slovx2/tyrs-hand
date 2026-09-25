@@ -51,6 +51,8 @@ const suites = controlOnly ? [
     cases: ['PERMISSION-command'] },
   { name: 'history', pkg: './internal/hostworker', test: 'TestRuntimeHistoryRealSSH',
     cases: ['HISTORY-002'], engines: ['claude-code'] },
+  { name: 'session', pkg: './internal/hostworker', test: 'TestRuntimeSessionRealSSH',
+    cases: ['SESSION-001'], engines: ['claude-code'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]

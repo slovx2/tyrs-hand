@@ -1111,7 +1111,9 @@
         "codex": [],
         "claude-code": [
           "TOOLS-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -1276,7 +1278,9 @@
         "codex": [],
         "claude-code": [
           "TOOLS-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2131,7 +2135,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -2152,7 +2159,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/routing.go",
@@ -2214,7 +2224,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-003"
+          "HISTORY-003",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2234,7 +2246,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CONTEXT-001"
+          "CONTEXT-001",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2351,7 +2365,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-003"
+          "HISTORY-003",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2373,7 +2389,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-003"
+          "HISTORY-003",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2392,7 +2410,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2411,7 +2432,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-003"
+          "HISTORY-003",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2435,7 +2458,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-003"
+          "HISTORY-003",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2458,7 +2483,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2486,7 +2513,9 @@
         "codex": [],
         "claude-code": [
           "HISTORY-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2549,7 +2578,9 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2567,7 +2598,9 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/testutil/mockcodex/server.go",
@@ -2607,7 +2640,9 @@
         "claude-code": [
           "CONTEXT-001",
           "HISTORY-003",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2634,7 +2669,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CONTEXT-001"
+          "CONTEXT-001",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2720,7 +2757,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -2740,7 +2780,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/routing.go",
@@ -2761,7 +2804,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "SESSION-001",
+          "SESSION-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -2857,7 +2903,9 @@
         "codex": [],
         "claude-code": [
           "CONTEXT-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2910,7 +2958,9 @@
         "codex": [],
         "claude-code": [
           "SUBMIT-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
@@ -2937,7 +2987,9 @@
         "codex": [],
         "claude-code": [
           "CONTEXT-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "SESSION-001",
+          "SESSION-002"
         ]
       },
       "callers": [
