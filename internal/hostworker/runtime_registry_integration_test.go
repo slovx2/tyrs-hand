@@ -30,6 +30,16 @@ import (
 )
 
 func TestRuntimeRegistryRealSSHBothEngines(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, false)
+}
+
+// macOS 不允许叠加 sandbox-exec。此用例仅调用独立 command RPC，不创建 Turn，
+// 用真实运行时的 OS 沙箱验证文件和网络限制；模型请求数必须始终为零。
+func TestRuntimeCommandPermissionsRealSSHBothEngines(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, true)
+}
+
+func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -37,6 +47,8 @@ func TestRuntimeRegistryRealSSHBothEngines(t *testing.T) {
 	require.NotEmpty(t, bin, "必需的 Codex CLI 不允许 skip")
 	require.NotEmpty(t, adapter, "必需的 Claude 适配器不允许 skip")
 	root, err := os.MkdirTemp("/tmp", "dual-runtime-")
+	require.NoError(t, err)
+	root, err = filepath.EvalSymlinks(root)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	var modelCalls atomic.Int64
@@ -167,6 +179,15 @@ func TestRuntimeRegistryRealSSHBothEngines(t *testing.T) {
 		require.Error(t, err, "不允许包装器另启 app-server")
 		client := connectRuntimeSSH(t, ctx, connection, engine)
 		protocol[engine] = client
+		if commandPermissions {
+			verifyRuntimeCommandPermissions(t, ctx, client, filepath.Join(root, string(engine)), upstream.URL)
+			continue
+		}
+		verifyRuntimeFilesystem(t, ctx, client, filepath.Join(root, string(engine)))
+		second := connectRuntimeSSH(t, ctx, connection, engine)
+		verifyRuntimeWatchIsolation(t, ctx, client, second, filepath.Join(root, string(engine)))
+		verifyRuntimeProcessIsolation(t, ctx, second, client, filepath.Join(root, string(engine)))
+		verifyRuntimeProcesses(t, ctx, client, filepath.Join(root, string(engine)))
 		var started struct {
 			Thread struct {
 				ID string `json:"id"`
@@ -174,6 +195,10 @@ func TestRuntimeRegistryRealSSHBothEngines(t *testing.T) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if commandPermissions {
+		require.Zero(t, modelCalls.Load(), "独立命令权限测试不得发起模型请求")
+		return
 	}
 	require.NotEqual(t, registry.entries[runtimeidentity.Codex].SSH.HostKeyFingerprint(), registry.entries[runtimeidentity.Claude].SSH.HostKeyFingerprint())
 	for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude} {

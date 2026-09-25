@@ -111,6 +111,10 @@ func (r *Hub) handleDesktopCall(parent context.Context, source *session,
 	if message.Method == "thread/archive" {
 		timeout = r.options.LifecycleRequestTimeout
 	}
+	if message.Method == "command/exec" {
+		// 此响应必须等待进程退出；超时由运行时的 timeoutMs/disableTimeout 管理。
+		timeout = 0
+	}
 	ctx, cancel := requestContext(parent, timeout)
 	defer cancel()
 	result, err := r.routeCall(ctx, source, message.Method, message.Params)

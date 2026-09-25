@@ -312,16 +312,52 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-003",
+          "FILES-004",
+          "PERMISSION-command"
+        ],
+        "claude-code": [
+          "FILES-003",
+          "FILES-004",
+          "PERMISSION-command"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/CommandExecParams",
         "response": "v2/CommandExecResponse.json"
       }
+    },
+    {
+      "method": "command/exec/outputDelta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-003",
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-003",
+          "FILES-004"
+        ]
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/CommandExecOutputDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "internal/appserverhub/connection_resources.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
     },
     {
       "method": "command/exec/resize",
@@ -330,11 +366,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-004"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/CommandExecResizeParams",
@@ -348,11 +390,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-003"
+        ],
+        "claude-code": [
+          "FILES-003"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/CommandExecTerminateParams",
@@ -366,11 +414,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-004"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/CommandExecWriteParams",
@@ -506,7 +560,8 @@
         "web/src/pages/WorkspacesPage.tsx",
         "web/src/state.ts",
         "web/src/test/setup.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "web/src/pages/WorkspaceProjectForums.tsx"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ErrorNotification",
@@ -663,7 +718,7 @@
       }
     },
     {
-      "method": "fs/copy",
+      "method": "fs/changed",
       "engines": {
         "codex": "required",
         "claude-code": "required"
@@ -672,8 +727,34 @@
         "codex": [],
         "claude-code": []
       },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/FsChangedNotification",
+        "response": null
+      },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/connection_resources.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "fs/copy",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsCopyParams",
@@ -687,11 +768,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsCreateDirectoryParams",
@@ -705,11 +792,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsGetMetadataParams",
@@ -723,11 +816,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsReadDirectoryParams",
@@ -741,11 +840,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsReadFileParams",
@@ -759,11 +864,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsRemoveParams",
@@ -777,11 +888,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsUnwatchParams",
@@ -795,11 +912,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsWatchParams",
@@ -813,11 +936,17 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "FILES-002"
+        ],
+        "claude-code": [
+          "FILES-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/FsWriteFileParams",
@@ -1670,6 +1799,158 @@
       "reasons": {
         "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
       }
+    },
+    {
+      "method": "process/exited",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-003",
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-003",
+          "FILES-004"
+        ]
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ProcessExitedNotification",
+        "response": null
+      },
+      "callers": [
+        "internal/appserverhub/connection_resources.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "process/kill",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-003"
+        ],
+        "claude-code": [
+          "FILES-003"
+        ]
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProcessKillParams",
+        "response": "v2/ProcessKillResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "process/outputDelta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-003",
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-003",
+          "FILES-004"
+        ]
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ProcessOutputDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "internal/appserverhub/connection_resources.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "process/resizePty",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-004"
+        ]
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProcessResizePtyParams",
+        "response": "v2/ProcessResizePtyResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "process/spawn",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-003",
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-003",
+          "FILES-004"
+        ]
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProcessSpawnParams",
+        "response": "v2/ProcessSpawnResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
+    },
+    {
+      "method": "process/writeStdin",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "FILES-003",
+          "FILES-004"
+        ],
+        "claude-code": [
+          "FILES-003",
+          "FILES-004"
+        ]
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProcessWriteStdinParams",
+        "response": "v2/ProcessWriteStdinResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:claude-code",
+        "wire:codex"
+      ]
     },
     {
       "method": "review/start",

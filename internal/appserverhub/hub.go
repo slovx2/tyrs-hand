@@ -27,6 +27,7 @@ type Hub struct {
 	toolThreads       map[string]*toolThreadState
 	ephemeralThreads  map[string]bool
 	archiveOperations map[string]*archiveOperation
+	resources         map[string]connectionResource
 	nextID            atomic.Int64
 	closed            bool
 	stats             Stats
@@ -57,6 +58,7 @@ func Start(ctx context.Context, options Options) (*Hub, error) {
 		SocketPath: options.UpstreamSocketPath, RequestTimeout: options.RequestTimeout,
 		ServerRequestTimeout: options.ServerRequestTimeout, EventBacklog: options.EventBacklog,
 		ServerRequestHandler: hub.handleServerRequest,
+		NotificationHandler:  hub.forwardResourceEvent,
 	})
 	if err != nil {
 		return nil, err
@@ -203,6 +205,7 @@ func (r *Hub) removeSession(s *session) {
 	r.unbindDesktopTools(s, "")
 	r.mu.Unlock()
 	s.close(errSessionClosed)
+	r.closeSessionResources(s.id)
 	if s.role != RoleDesktop {
 		return
 	}

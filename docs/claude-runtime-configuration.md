@@ -88,6 +88,20 @@ Worker 升级在持有数据锁时一次性迁移旧 Codex Journal，保存原�
 报告、JUnit 与测试日志在 `.artifacts/control-runtime/<runId>/`，CI 独立保存证据。
 这些是 Control 数据层验收，不计入 SSH→SDK→Mock LLM 的协议覆盖率。
 
+文件与终端专项通过两个真实 SSH 入口执行：文件内容、复制、删除、符号链接元数据、
+watch、二进制 stdin、输出上限、PTY 初始尺寸及 resize、退出码和终止都有实际副作用断言。
+Hub 将连接级 watch/进程标识分别映射到上游，并只向原连接发送事件；相同 ID 不互相覆盖。
+连接关闭会撤销其 watch 和进程，不关闭其他连接，也不终止后台会话的模型 Turn。
+终端输出在 command 最终响应之前发送，等待进程退出不受普通 RPC 的 30 秒上限截断。
+
+独立 `command/exec` 使用 macOS sandbox-exec 或 Linux bubblewrap，未指定权限时只读；
+工作区写权限以服务器工作区及显式 writableRoots 为准，cwd 不扩大授权。未知权限拒绝。
+Linux 缺少 bubblewrap 时不会无沙箱执行。`process/spawn` 按固定协议定义直接在宿主执行。
+macOS 不允许叠加 sandbox-exec，因此仅执行 command RPC、模型请求数必须为零的权限专项
+独立测试运行时的 OS 沙箱；所有创建 Turn 的 SDK/Mock LLM 用例继续使用外层网络隔离。
+CI 的完整数据库和覆盖门禁在 Linux 执行，macOS 必须另行通过原生 SSH 与 SDK 合约测试。
+这些专项不替代未完成的附件、多模态、完整工具权限及 GUI 验收。
+
 迁移 032 将工具调用与交互提问的协议 ID 去重限定在 Control 内，并用复合外键
 校验 Run、Intent 与 Control 的归属。历史工具结果与已回答提问保持原样。
 同引擎的工具重试返回原结果，改变参数会被拒绝；两引擎相同 ID 分别执行。

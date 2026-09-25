@@ -46,7 +46,9 @@ const suites = controlOnly ? [
     cases: ['CHANNELS-002', 'AUTOMATION-002'] },
 ] : [
   { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
-    cases: ['ENTRY-001', 'ISOLATION-001', 'FAILURE-001'] },
+    cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004'] },
+  { name: 'command-permissions', pkg: './internal/hostworker', test: 'TestRuntimeCommandPermissionsRealSSHBothEngines',
+    cases: ['PERMISSION-command'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]
@@ -68,7 +70,10 @@ const infrastructure = suites.some(suite => suite.name === 'bootstrap-control') 
 Object.assign(env, infrastructure?.env ?? {})
 try {
 for (const suite of suites) {
-  const runtime = spawnSync(command, [...isolation, go, 'tool', 'test2json', '-t', '-p', `${suite.name}-e2e`, suite.binary,
+  // macOS 禁止套用第二层 sandbox-exec。此专项无 Turn/模型调用，测试的就是运行时 OS 沙箱。
+  // 所有含 SDK/LLM 的链路仍运行在仅允许本机网络的外层沙箱内。
+  const nativePermissionTest = suite.name === 'command-permissions' && process.platform === 'darwin'
+  const runtime = spawnSync(nativePermissionTest ? go : command, [...(nativePermissionTest ? [] : [...isolation, go]), 'tool', 'test2json', '-t', '-p', `${suite.name}-e2e`, suite.binary,
     '-test.v', `-test.run=^${suite.test}$`, '-test.timeout=180s'],
     { cwd: root, env, encoding: 'utf8', timeout: 200_000, maxBuffer: 16 * 1024 * 1024 })
   writeFileSync(resolve(artifacts, `${suite.name}.jsonl`), runtime.stdout ?? '')

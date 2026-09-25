@@ -36,6 +36,8 @@ type SocketClientOptions struct {
 	ServerRequestTimeout time.Duration
 	EventBacklog         int
 	ServerRequestHandler ServerRequestHandler
+	// 在读取响应前同步处理连接级通知，保证终端输出不会晚于 command 最终响应。
+	NotificationHandler func(Event) bool
 }
 
 type ThreadFilter struct {
@@ -257,7 +259,10 @@ func (c *SocketClient) readLoop() {
 			continue
 		}
 		if message.Method != "" {
-			c.publish(Event{Method: message.Method, Params: message.Params})
+			event := Event{Method: message.Method, Params: message.Params}
+			if c.options.NotificationHandler == nil || !c.options.NotificationHandler(event) {
+				c.publish(event)
+			}
 		}
 	}
 }

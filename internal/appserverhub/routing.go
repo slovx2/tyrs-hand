@@ -115,7 +115,12 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			if method == "turn/start" {
 				toolTurn = r.beginToolTurn(source, threadID)
 			}
-			upstreamErr = r.upstream.Call(ctx, method, plan.Params, &result)
+			scoped, finishResource, scopeErr := r.scopeResourceCall(source, method, plan.Params)
+			if scopeErr != nil {
+				return nil, scopeErr
+			}
+			upstreamErr = r.upstream.Call(ctx, method, scoped, &result)
+			finishResource(upstreamErr)
 			r.finishToolTurnStart(threadID, toolTurn, result, upstreamErr)
 		}
 	}
