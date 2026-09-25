@@ -173,6 +173,7 @@ func (s *Server) adminRouter() http.Handler {
 	authenticated.GET("/workspaces", s.listWorkspaces)
 	authenticated.POST("/workspaces", s.requireCSRF(), s.createWorkspace)
 	authenticated.POST("/workspace-projects/:id/forums", s.requireCSRF(), s.createWorkspaceProjectForum)
+	authenticated.PUT("/workspace-forums/:id/engine", s.requireCSRF(), s.putWorkspaceForumEngine)
 	authenticated.POST("/workspace-forums/:id/disable", s.requireCSRF(), s.disableWorkspaceForum)
 	authenticated.POST("/workspace-forums/:id/enable", s.requireCSRF(), s.enableWorkspaceForum)
 	authenticated.PUT("/workspace-projects/:id/forums/:forumId/collaborators/:memberId",

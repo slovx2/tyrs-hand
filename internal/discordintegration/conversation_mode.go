@@ -10,9 +10,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 type ConversationModeState struct {
+	Engine           runtimeidentity.Engine
 	ConversationID   uuid.UUID
 	Mode             string
 	Revision         int64
@@ -291,7 +293,7 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 		COALESCE(conversation.service_tier,'standard'), conversation.settings_revision,
 		conversation.status, conversation.configuration_status,
 		COALESCE(conversation.configured_by_discord_user_id,''),
-		COALESCE(control.id::text, '')
+		COALESCE(control.id::text, ''), conversation.engine
 		FROM discord_conversations conversation
 		LEFT JOIN codex_thread_controls control
 			ON control.discord_conversation_id = conversation.id
@@ -306,7 +308,7 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 		&forumID, &ownerID, &lifecycle, &state.Mode, &state.Revision,
 		&state.TriggerMode, &state.TriggerRevision, &state.Model, &state.ReasoningEffort,
 		&state.ServiceTier, &state.SettingsRevision, &status, &configurationStatus,
-		&configuredBy, &controlRaw)
+		&configuredBy, &controlRaw, &state.Engine)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ConversationModeState{}, uuid.Nil, errors.New("当前频道不是 Codex 会话 Post")
 	}
@@ -353,7 +355,7 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 
 func conversationModeCard(state ConversationModeState, notice string) ComponentCardPayload {
 	body := "**消息触发模式**  `" + triggerModeLabel(state.TriggerMode) + "`\n" +
-		triggerModeDescription(state.TriggerMode) + "\n\n**Codex 协作模式**  `" +
+		triggerModeDescription(state.TriggerMode) + "\n\n**" + engineDisplayName(state.Engine) + " 协作模式**  `" +
 		collaborationModeLabel(state.Mode) + "`\n\n" + runtimePreferencesSummary(state)
 	if state.Busy {
 		body += "\n\n当前 Turn 保持原设置；模型、思考、速度和 Default/Plan 将从下一 Turn 生效。"
@@ -363,9 +365,9 @@ func conversationModeCard(state ConversationModeState, notice string) ComponentC
 	if notice != "" {
 		body += "\n\n" + notice
 	}
-	color, header := cardColorBlurple, "⚙️ Codex · 会话设置"
+	color, header := cardColorBlurple, "⚙️ "+engineDisplayName(state.Engine)+" · 会话设置"
 	if state.Awaiting {
-		color, header = cardColorYellow, "⚙️ Codex · 即将启动"
+		color, header = cardColorYellow, "⚙️ "+engineDisplayName(state.Engine)+" · 即将启动"
 	}
 	card := ComponentCardPayload{AccentColor: color, Header: header,
 		Body: body, Buttons: []ComponentButtonPayload{
@@ -391,7 +393,7 @@ func conversationModeCard(state ConversationModeState, notice string) ComponentC
 func runtimePreferencesSummary(state ConversationModeState) string {
 	model := state.Model
 	if model == "" {
-		model = "Codex 默认"
+		model = engineDisplayName(state.Engine) + " 默认"
 	}
 	return "**模型**  `" + cardText(model, 128) + "`\n" +
 		"**思考等级**  `" + effortLabel(state.ReasoningEffort) + "`\n" +

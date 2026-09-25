@@ -564,6 +564,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspace-forums/{id}/engine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putWorkspaceForumEngine"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspace-forums/{id}/disable": {
         parameters: {
             query?: never;
@@ -2698,6 +2714,8 @@ export interface components {
             administratorBypass: boolean;
         };
         WorkspaceForum: {
+            /** @enum {string} */
+            defaultEngine: "codex" | "claude-code";
             /** Format: uuid */
             id: string;
             name: string;
@@ -4130,6 +4148,34 @@ export interface operations {
         responses: {
             /** @description Forum 创建已排队或历史 Forum 已恢复 */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putWorkspaceForumEngine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    engine: "codex" | "claude-code";
+                };
+            };
+        };
+        responses: {
+            /** @description 默认引擎已更新，仅影响之后新建的帖子 */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

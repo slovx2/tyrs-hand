@@ -1693,6 +1693,11 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 		(name, roles, status) VALUES ('discord-test-node', '["github","discord"]', 'online')
 		RETURNING id`).Scan(&workerID))
 	seed.workerID = workerID
+	_, runtimeErr := db.ExecContext(ctx, `INSERT INTO worker_runtimes(worker_id,engine,enabled,status,
+ ssh_listen_address,protocol_version,heartbeat_at,model_catalog)
+ VALUES ($1,'codex',true,'running',':2222','0.147.0',now(),'{"data":[]}')`, workerID)
+	require.NoError(t, runtimeErr)
+
 	_, err := db.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value) VALUES
 		('worker.default.github', jsonb_build_object('workerId', $1::text)),
 		('worker.default.discord', jsonb_build_object('workerId', $1::text))`, workerID)
@@ -2011,9 +2016,9 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 
 	connector.onComponent(newComponentEvent(t, client, "5100", seed.workspaceForumChannelID,
 		"codex-new-open", nil))
-	modal, err := connector.newCodexModal(ctx, seed.workspaceForumChannelID, "1001", "default")
+	modal, err := connector.newCodexModal(ctx, seed.workspaceForumChannelID, "1001", "default", "")
 	require.NoError(t, err)
-	require.Equal(t, newCodexModalPrefix+seed.workspaceForumChannelID+":default", modal.CustomID)
+	require.Equal(t, newCodexModalPrefix+seed.workspaceForumChannelID+":default:codex", modal.CustomID)
 	require.Len(t, modal.Components, 5)
 	_, _, _, _, err = connector.authorizedForum(ctx, seed.workspaceForumChannelID, "1003")
 	require.NoError(t, err)
@@ -2021,7 +2026,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Error(t, err)
 	_, _, _, _, err = connector.authorizedForum(ctx, "999999999999999999", "1001")
 	require.Error(t, err)
-	_, err = connector.newCodexModal(ctx, seed.workspaceForumChannelID, "1002", "default")
+	_, err = connector.newCodexModal(ctx, seed.workspaceForumChannelID, "1002", "default", "")
 	require.Error(t, err)
 	models := []codexcatalog.Model{
 		{ID: "codex-model", IsDefault: true,
@@ -2109,7 +2114,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.False(t, configurationDeadline.Valid)
 
 	newPostSubmit := newModalEvent(t, client, "5104", seed.workspaceForumChannelID,
-		newCodexModalPrefix+seed.workspaceForumChannelID+":plan", []discord.LayoutComponent{
+		newCodexModalPrefix+seed.workspaceForumChannelID+":plan:codex", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "bot-created task"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"gpt-5.6-sol"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -2125,7 +2130,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Equal(t, "pending", model)
 	require.Equal(t, "plan", collaborationMode)
 	emptyCustom := newModalEvent(t, client, "5107", seed.workspaceForumChannelID,
-		newCodexModalPrefix+seed.workspaceForumChannelID+":default", []discord.LayoutComponent{
+		newCodexModalPrefix+seed.workspaceForumChannelID+":default:codex", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "invalid custom model"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -2134,7 +2139,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 		})
 	connector.onModalSubmit(emptyCustom)
 	emptyTask := newModalEvent(t, client, "5108", seed.workspaceForumChannelID,
-		newCodexModalPrefix+seed.workspaceForumChannelID+":default", []discord.LayoutComponent{
+		newCodexModalPrefix+seed.workspaceForumChannelID+":default:codex", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__default__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),

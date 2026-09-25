@@ -55,6 +55,18 @@ export function WorkspaceProjectForums({
       await refresh()
     },
   })
+  const setEngine = useMutation({
+    mutationFn: (engine: 'codex' | 'claude-code') =>
+      api<void>(`/workspace-forums/${activeForum?.id}/engine`, {
+        method: 'PUT',
+        body: JSON.stringify({ engine }),
+      }),
+    onSuccess: async () => {
+      showToast('success', '默认引擎已更新，已有会话保持原引擎')
+      await refresh()
+    },
+    onError: (error: Error) => showToast('error', error.message),
+  })
   const disable = useMutation({
     mutationFn: (forumId: string) =>
       api<void>(`/workspace-forums/${forumId}/disable`, { method: 'POST' }),
@@ -92,6 +104,20 @@ export function WorkspaceProjectForums({
               {disable.isPending ? '停用中…' : '停用 Forum'}
             </button>
           </div>
+          <label className="text-sm">
+            新会话默认引擎
+            <select
+              className="field mt-1"
+              value={activeForum.defaultEngine}
+              disabled={setEngine.isPending}
+              onChange={(event) =>
+                setEngine.mutate(event.target.value as 'codex' | 'claude-code')
+              }
+            >
+              <option value="codex">Codex</option>
+              <option value="claude-code">Claude</option>
+            </select>
+          </label>
           <ForumCollaborators
             workerId={workerId}
             projectId={project.id}

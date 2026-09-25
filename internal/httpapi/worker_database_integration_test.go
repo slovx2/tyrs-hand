@@ -32,6 +32,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -707,6 +708,15 @@ func TestWorkerAPIUnknownDesktopThreadReturnsNotFound(t *testing.T) {
 }
 
 func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
+	testWorkerDesktopDiscordBinding(t, runtimeidentity.Codex)
+}
+
+func TestWorkerAPIClaudeDesktopThreadBindsDiscordPost(t *testing.T) {
+	testWorkerDesktopDiscordBinding(t, runtimeidentity.Claude)
+}
+
+func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine) {
+	t.Helper()
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -719,7 +729,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
-	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	client, err := workerprotocol.NewClient(endpoint, credential, 5*time.Second).ForEngine(engine)
+	require.NoError(t, err)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 41)
 	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
@@ -936,6 +947,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "completed", state.Status)
 	require.NotEqual(t, uuid.Nil, state.ConversationID)
+	var conversationEngine, controlEngine string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT conversation.engine,control.engine FROM discord_conversations conversation
+ JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id WHERE conversation.id=$1`, state.ConversationID).
+		Scan(&conversationEngine, &controlEngine))
+	require.Equal(t, string(engine), conversationEngine)
+	require.Equal(t, conversationEngine, controlEngine)
+
 	var conversationControlID uuid.UUID
 	var titleRenameStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.id, conversation.title_rename_status
@@ -1263,7 +1281,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
 		actor_display_name, desktop_input_projection_status
 		FROM codex_turn_intents WHERE idempotency_key=$1`,
-		"desktop-steer:"+workspaceID.String()+":codex:"+strings.Repeat("f", 64)).
+		"desktop-steer:"+workspaceID.String()+":"+string(engine)+":"+strings.Repeat("f", 64)).
 		Scan(&steerIntentID, &steerStatus, &steerParticipantID, &steerDisplayName,
 			&steerProjectionStatus))
 	require.Equal(t, "running", steerStatus)

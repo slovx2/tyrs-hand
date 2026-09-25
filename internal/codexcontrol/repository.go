@@ -327,14 +327,14 @@ func (r *Repository) lockWorkspaceSession(ctx context.Context, tx *sql.Tx, sessi
 	err := tx.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
 		workspace_id,workspace_project_id,agent_profile_id,title,
 		lifecycle_state,model,reasoning_effort,service_tier,collaboration_mode,
-		settings_version,last_activity_at,created_at,updated_at)
+		settings_version,last_activity_at,created_at,updated_at,engine)
 		SELECT forum.workspace_id,conversation.workspace_project_id,
 			conversation.agent_profile_id,COALESCE(conversation.generated_title,conversation.title),
 			conversation.lifecycle_state,
 				conversation.model,conversation.reasoning_effort,
 				COALESCE(conversation.service_tier,'standard'),
 			conversation.collaboration_mode,conversation.settings_revision,
-			conversation.last_activity_at,conversation.created_at,conversation.updated_at
+			conversation.last_activity_at,conversation.created_at,conversation.updated_at,conversation.engine
 		FROM discord_conversations conversation
 		JOIN discord_forums forum ON forum.id=conversation.forum_id
 		WHERE conversation.id=$1 AND conversation.workspace_project_id IS NOT NULL

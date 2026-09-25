@@ -175,11 +175,11 @@ func ProjectConversationConfiguration(ctx context.Context, db *sql.DB, guildID, 
 	var state ConversationModeState
 	err = tx.QueryRowContext(ctx, `SELECT id, collaboration_mode, collaboration_mode_revision,
 		trigger_mode, trigger_mode_revision, COALESCE(model,''), COALESCE(reasoning_effort,''),
-		COALESCE(service_tier,'standard'), settings_revision
+		COALESCE(service_tier,'standard'), settings_revision, engine
 		FROM discord_conversations WHERE id = $1 AND guild_id = $2 AND thread_id = $3`,
 		conversationID, guildID, threadID).Scan(&state.ConversationID, &state.Mode, &state.Revision,
 		&state.TriggerMode, &state.TriggerRevision, &state.Model, &state.ReasoningEffort,
-		&state.ServiceTier, &state.SettingsRevision)
+		&state.ServiceTier, &state.SettingsRevision, &state.Engine)
 	if err != nil {
 		return err
 	}

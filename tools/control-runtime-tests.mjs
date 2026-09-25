@@ -11,7 +11,7 @@ const ids = new Set()
 const targets = new Set()
 for (const test of manifest.cases) {
   if (!test.id || ids.has(test.id) || !/^Test[A-Za-z0-9]+$/.test(test.test) ||
-    !['./internal/database', './internal/httpapi', './internal/scheduledtasks'].includes(test.package)) {
+    !['./internal/database', './internal/httpapi', './internal/scheduledtasks', './internal/discordintegration'].includes(test.package)) {
     throw new Error(`无效或重复用例: ${JSON.stringify(test)}`)
   }
   const target = `${test.package}:${test.test}`

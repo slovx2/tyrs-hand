@@ -18,6 +18,7 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -242,7 +243,8 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 			return
 		}
 		mode, _ := data.OptString("mode")
-		modal, err := c.newCodexModal(context.Background(), forum.ID.String(), event.User().ID.String(), mode)
+		engine, _ := data.OptString("engine")
+		modal, err := c.newCodexModal(context.Background(), forum.ID.String(), event.User().ID.String(), mode, runtimeidentity.Engine(engine))
 		if err != nil {
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 			return
@@ -437,7 +439,7 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent("请选择开发 Forum。").WithEphemeral(true))
 			return
 		}
-		modal, err := c.newCodexModal(context.Background(), values[0].String(), event.User().ID.String(), "")
+		modal, err := c.newCodexModal(context.Background(), values[0].String(), event.User().ID.String(), "", "")
 		if err != nil {
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 			return
@@ -792,9 +794,12 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 			discord.ApplicationCommandOptionSubCommand{Name: "unbind", Description: "解绑 GitHub 身份"},
 		}},
 		discord.SlashCommandCreate{Name: "codex", Description: "管理当前 Codex 会话", Options: []discord.ApplicationCommandOption{
-			discord.ApplicationCommandOptionSubCommand{Name: "new", Description: "新建 Codex Forum 帖子", Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionSubCommand{Name: "new", Description: "选择引擎新建 Forum 帖子", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionChannel{Name: "forum", Description: "目标开发 Forum", Required: true,
 					ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildForum}},
+				discord.ApplicationCommandOptionString{Name: "engine", Description: "会话引擎（省略时使用论坛默认值）", Choices: []discord.ApplicationCommandOptionChoiceString{
+					{Name: "Codex", Value: "codex"}, {Name: "Claude", Value: "claude-code"},
+				}},
 				discord.ApplicationCommandOptionString{Name: "mode", Description: "初始协作模式", Choices: []discord.ApplicationCommandOptionChoiceString{
 					{Name: "Default", Value: "default"}, {Name: "Plan", Value: "plan"},
 				}},

@@ -115,6 +115,23 @@
       "engines": [
         "codex"
       ]
+    },
+    {
+      "id": "CONTROL-DISCORD-001",
+      "package": "./internal/discordintegration",
+      "test": "TestDiscordRuntimeCreationPreferencesAndReplyIsolation",
+      "engines": [
+        "codex",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "CONTROL-DISCORD-002",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerAPIClaudeDesktopThreadBindsDiscordPost",
+      "engines": [
+        "claude-code"
+      ]
     }
   ]
 }

@@ -33,7 +33,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	var desiredRevision, lifecycleRevision, modeRevision int64
 	var lifecycleState, mode string
 	var model, effort sql.NullString
-	var serviceTier string
+	var serviceTier, engine string
 	err = tx.QueryRowContext(ctx, `SELECT r.status, r.workspace_id, r.forum_id,
 		r.control_id, f.guild_id, f.owner_discord_user_id,
 		COALESCE(NULLIF(r.first_input_actor_discord_user_id,''),
@@ -46,7 +46,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
 		COALESCE(r.first_input_projection_key,''), COALESCE(r.first_input_text,''),
 		ct.lifecycle_state, ct.lifecycle_revision,
-		ct.collaboration_mode, ct.collaboration_mode_revision
+		ct.collaboration_mode, ct.collaboration_mode_revision, ct.engine
 		FROM desktop_thread_requests r JOIN discord_forums f ON f.id = r.forum_id
 		JOIN worker_workspaces e ON e.id = r.workspace_id
 		JOIN codex_thread_controls ct ON ct.id = r.control_id
@@ -58,7 +58,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		&repositoryID, &projectID, &sessionID, &profileID,
 		&model, &effort, &serviceTier, &previewTitle, &desiredName,
 		&desiredSource, &desiredRevision, &firstProjectionKey, &firstInputText,
-		&lifecycleState, &lifecycleRevision, &mode, &modeRevision)
+		&lifecycleState, &lifecycleRevision, &mode, &modeRevision, &engine)
 	if err != nil {
 		return err
 	}
@@ -84,11 +84,11 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 			 repository_id, workspace_project_id, session_id, agent_profile_id, title, status,
 			 model, reasoning_effort, service_tier,
 			 configuration_status, configured_by_discord_user_id, title_rename_status,
-			 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision)
+			 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision, engine)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active',NULLIF($12,''),NULLIF($13,''),NULLIF($14,''),
-			'configured',$6,'skipped',$15,$16,$17,$18)`, conversationID, guildID, forumID, result.ThreadID,
+			'configured',$6,'skipped',$15,$16,$17,$18,$19)`, conversationID, guildID, forumID, result.ThreadID,
 		result.MessageID, ownerID, repositoryID, projectID, sessionID, profileID, title,
-		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision, mode, modeRevision)
+		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision, mode, modeRevision, engine)
 	if err != nil {
 		return err
 	}

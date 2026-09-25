@@ -521,6 +521,24 @@ paths:
       responses:
         "202": { description: Forum 创建已排队或历史 Forum 已恢复 }
         default: { $ref: "#/components/responses/Problem" }
+  /workspace-forums/{id}/engine:
+    put:
+      operationId: putWorkspaceForumEngine
+      tags: [Discord]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [engine]
+              properties:
+                engine: { type: string, enum: [codex, claude-code] }
+      responses:
+        "204": { description: 默认引擎已更新，仅影响之后新建的帖子 }
+        default: { $ref: "#/components/responses/Problem" }
   /workspace-forums/{id}/disable:
     post:
       operationId: disableWorkspaceForum
@@ -2393,8 +2411,9 @@ components:
         administratorBypass: { type: boolean }
     WorkspaceForum:
       type: object
-      required: [id, name, discordId, bindingStatus, collaborators]
+      required: [defaultEngine, id, name, discordId, bindingStatus, collaborators]
       properties:
+        defaultEngine: { type: string, enum: [codex, claude-code] }
         id: { type: string, format: uuid }
         name: { type: string }
         discordId: { type: string }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	disgorest "github.com/disgoorg/disgo/rest"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 const runtimeConfigurationModalPrefix = "codex-runtime-config-modal:"
@@ -43,7 +45,7 @@ func (c *DisgoConnector) runtimeConfigurationModal(ctx context.Context,
 		Scan(&workspaceID); err != nil {
 		return discord.ModalCreate{}, err
 	}
-	models, err := codexModelsForEnvironment(ctx, c.manager.db, workspaceID)
+	models, err := runtimeModelsForEnvironment(ctx, c.manager.db, workspaceID, state.Engine)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
@@ -53,7 +55,7 @@ func (c *DisgoConnector) runtimeConfigurationModal(ctx context.Context,
 	effortSelect := effortModalSelect(state.ReasoningEffort,
 		reasoningEffortsForModel(state.Model, models))
 	return discord.NewModalCreate(fmt.Sprintf("%s%s:%d", runtimeConfigurationModalPrefix,
-		conversationID, revision), "调整 Codex 运行参数",
+		conversationID, revision), "调整 "+engineDisplayName(state.Engine)+" 运行参数",
 		discord.NewLabel("模型", modelSelect), discord.NewLabel("自定义模型", custom),
 		discord.NewLabel("思考等级", effortSelect), discord.NewLabel("速度", tierSelect)), nil
 }
@@ -190,13 +192,14 @@ func (c *DisgoConnector) saveRuntimeConfiguration(event *events.ModalSubmitInter
 	var result ConfigurationUpdate
 	if err == nil {
 		var workspaceID uuid.UUID
-		err = c.manager.db.QueryRowContext(context.Background(), `SELECT forum.workspace_id
+		var engine runtimeidentity.Engine
+		err = c.manager.db.QueryRowContext(context.Background(), `SELECT forum.workspace_id,conversation.engine
 			FROM discord_conversations conversation JOIN discord_forums forum
 			ON forum.id=conversation.forum_id WHERE conversation.id=$1`, conversationID).
-			Scan(&workspaceID)
+			Scan(&workspaceID, &engine)
 		if err == nil {
 			var models []codexcatalog.Model
-			models, err = codexModelsForEnvironment(context.Background(), c.manager.db, workspaceID)
+			models, err = runtimeModelsForEnvironment(context.Background(), c.manager.db, workspaceID, engine)
 			if err == nil {
 				err = validateKnownModelSelection(model, effort, tier, models)
 			}
@@ -241,23 +244,27 @@ func (c *DisgoConnector) showForumSelector(event *events.ComponentInteractionCre
 }
 
 func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, userID,
-	mode string,
+	mode string, requestedEngine runtimeidentity.Engine,
 ) (discord.ModalCreate, error) {
-	_, _, _, workspaceID, err := c.authorizedForum(ctx,
+	forumID, _, _, workspaceID, err := c.authorizedForum(ctx,
 		forumDiscordID, userID)
+	if err != nil {
+		return discord.ModalCreate{}, err
+	}
+	engine, err := forumEngine(ctx, c.manager.db, forumID, requestedEngine)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
 	preferences := codexsettings.EffectivePreferences{}
 	userPreferences, remembered, err := loadUserCodexPreferences(ctx, c.manager.db,
-		c.guildID, userID)
+		c.guildID, userID, engine)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
 	if remembered {
 		applyUserCodexPreferences(&preferences, userPreferences)
 	}
-	models, err := codexModelsForEnvironment(ctx, c.manager.db, workspaceID)
+	models, err := runtimeModelsForEnvironment(ctx, c.manager.db, workspaceID, engine)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
@@ -267,7 +274,7 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 	effortSelect := effortModalSelect(preferences.ReasoningEffort,
 		reasoningEffortsForModel(preferences.Model, models))
 	task := discord.NewParagraphTextInput("task").WithRequired(true).WithMinLength(1).WithMaxLength(2000).
-		WithPlaceholder("描述希望 Codex 完成的任务")
+		WithPlaceholder("描述希望 " + engineDisplayName(engine) + " 完成的任务")
 	if mode == "" {
 		mode = userPreferences.CollaborationMode
 		if mode == "" {
@@ -277,7 +284,7 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 	if mode != "default" && mode != "plan" {
 		return discord.ModalCreate{}, errors.New("新建会话模式无效")
 	}
-	return discord.NewModalCreate(newCodexModalPrefix+forumDiscordID+":"+mode, "新建 Codex 帖子",
+	return discord.NewModalCreate(newCodexModalPrefix+forumDiscordID+":"+mode+":"+string(engine), "新建 "+engineDisplayName(engine)+" 帖子",
 		discord.NewLabel("任务", task), discord.NewLabel("模型", modelSelect),
 		discord.NewLabel("自定义模型", custom), discord.NewLabel("服务等级", tierSelect),
 		discord.NewLabel("思考等级", effortSelect)), nil
@@ -316,14 +323,24 @@ func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, us
 	return forumID, uuid.Nil, profileID, workspaceID, nil
 }
 
-func codexModelsForEnvironment(ctx context.Context, db *sql.DB,
-	workspaceID uuid.UUID,
+func runtimeModelsForEnvironment(ctx context.Context, db *sql.DB,
+	workspaceID uuid.UUID, engine runtimeidentity.Engine,
 ) ([]codexcatalog.Model, error) {
-	catalogs, err := codexcatalog.WorkspaceCatalogs(ctx, db, []uuid.UUID{workspaceID})
-	if err != nil {
+	if err := engine.Validate(); err != nil {
 		return nil, err
 	}
-	return codexcatalog.Models(catalogs), nil
+	var raw json.RawMessage
+	err := db.QueryRowContext(ctx, `SELECT runtime.model_catalog FROM worker_workspaces workspace
+ JOIN worker_runtimes runtime ON runtime.worker_id=workspace.worker_id AND runtime.engine=$2
+ WHERE workspace.id=$1 AND runtime.enabled AND runtime.status='running'
+ AND runtime.heartbeat_at > now() - interval '2 minutes' AND runtime.model_catalog IS NOT NULL`, workspaceID, engine).Scan(&raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s 模型目录暂不可用: %w", engineDisplayName(engine), err)
+	}
+	if _, err := codexcatalog.Parse(raw); err != nil {
+		return nil, err
+	}
+	return codexcatalog.Models(map[uuid.UUID]json.RawMessage{workspaceID: raw}), nil
 }
 
 func modelModalOptions(model string, models []codexcatalog.Model) (
@@ -340,7 +357,7 @@ func modelModalOptions(model string, models []codexcatalog.Model) (
 		options = append(options, discord.NewStringSelectMenuOption(value.ID, value.ID).WithDefault(selected))
 	}
 	options = append(options,
-		discord.NewStringSelectMenuOption("Codex 默认", "__default__").WithDefault(model == ""),
+		discord.NewStringSelectMenuOption("引擎默认", "__default__").WithDefault(model == ""),
 		discord.NewStringSelectMenuOption("自定义", "__custom__").WithDefault(model != "" && !preset))
 	custom := discord.NewShortTextInput("custom_model").WithRequired(false).WithMaxLength(128)
 	if model != "" && !preset {
@@ -405,7 +422,7 @@ func validateKnownModelSelection(model, effort, tier string,
 
 func effortModalSelect(effort string, efforts []string) discord.StringSelectMenuComponent {
 	options := []discord.StringSelectMenuOption{
-		discord.NewStringSelectMenuOption("Codex 默认", "__default__").WithDefault(effort == ""),
+		discord.NewStringSelectMenuOption("引擎默认", "__default__").WithDefault(effort == ""),
 	}
 	if effort != "" && !slices.Contains(efforts, effort) {
 		efforts = append([]string{effort}, efforts...)
@@ -423,11 +440,16 @@ func effortModalSelect(effort string, efforts []string) discord.StringSelectMenu
 
 func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCreate) {
 	parts := strings.Split(strings.TrimPrefix(event.Data.CustomID, newCodexModalPrefix), ":")
-	if len(parts) != 2 {
+	if len(parts) != 3 {
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("新建会话参数无效。").WithEphemeral(true))
 		return
 	}
 	forumDiscordID, mode := parts[0], parts[1]
+	engine := runtimeidentity.Engine(parts[2])
+	if engine.Validate() != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("引擎无效").WithEphemeral(true))
+		return
+	}
 	body := strings.TrimSpace(event.Data.Text("task"))
 	model := firstModalValue(event.Data.StringValues("model"))
 	customSelected := model == "__custom__"
@@ -459,7 +481,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 	}
 	if err == nil {
 		var models []codexcatalog.Model
-		models, err = codexModelsForEnvironment(ctx, c.manager.db, workspaceID)
+		models, err = runtimeModelsForEnvironment(ctx, c.manager.db, workspaceID, engine)
 		if err == nil {
 			err = validateKnownModelSelection(model, effort, tier, models)
 		}
@@ -471,7 +493,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 	var threadID string
 	if err == nil {
 		post, createErr := event.Client().Rest.CreatePostInThreadChannel(forumSnowflake,
-			discord.ThreadChannelPostCreate{Name: "Codex 正在生成标题", AutoArchiveDuration: discord.AutoArchiveDuration3d,
+			discord.ThreadChannelPostCreate{Name: engineDisplayName(engine) + " 正在生成标题", AutoArchiveDuration: discord.AutoArchiveDuration3d,
 				Message: discord.MessageCreate{Content: body}}, disgorest.WithCtx(ctx))
 		if createErr != nil {
 			err = createErr
@@ -480,15 +502,15 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 			input := IncomingMessage{GuildID: c.guildID, ForumID: forumDiscordID, ThreadID: threadID,
 				MessageID: post.Message.ID.String(), DiscordUserID: event.User().ID.String(),
 				DisplayName: event.User().EffectiveName(), Username: event.User().Username,
-				Title: "Codex 正在生成标题", Body: body, Model: model, ReasoningEffort: effort,
+				Title: engineDisplayName(engine) + " 正在生成标题", Body: body, Model: model, ReasoningEffort: effort,
 				ServiceTier: tier, CollaborationMode: mode, ConfigurationConfirmed: true,
-				RememberPreferences: true}
+				RememberPreferences: true, Engine: engine}
 			_, err = c.conversations.BeginPost(ctx, input)
 		}
 	}
-	message := "已创建 Codex 帖子：<#" + threadID + ">"
+	message := "已创建 " + engineDisplayName(engine) + " 帖子：<#" + threadID + ">"
 	if err != nil {
-		message = fmt.Sprintf("创建 Codex 帖子失败：%v", err)
+		message = fmt.Sprintf("创建 %s 帖子失败：%v", engineDisplayName(engine), err)
 	}
 	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
 		discord.MessageUpdate{Content: &message})

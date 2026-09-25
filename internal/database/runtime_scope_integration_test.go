@@ -41,6 +41,17 @@ func TestRuntimeScopeBackfillsExistingSessionsAndSchedules(t *testing.T) {
 		INSERT INTO workspace_sessions(workspace_id,workspace_project_id,agent_profile_id,title)
 		SELECT project.workspace_id,project.id,profile.id,'旧会话' FROM project,agent_profiles profile
 		WHERE profile.name='Default';
+        INSERT INTO discord_resources(guild_id,resource_key,discord_id,kind,name,managed_marker)
+        VALUES ('legacy','forum.legacy','legacy-forum','forum','legacy','legacy');
+        INSERT INTO discord_forums(guild_id,resource_id,forum_type,owner_discord_user_id,workspace_id,workspace_project_id)
+        SELECT 'legacy',resource.id,'workspace','legacy',project.workspace_id,project.id
+        FROM discord_resources resource,workspace_projects project;
+        INSERT INTO discord_conversations(guild_id,forum_id,thread_id,owner_discord_user_id,agent_profile_id,
+            workspace_project_id,session_id,title)
+        SELECT 'legacy',forum.id,'legacy-post','legacy',session.agent_profile_id,session.workspace_project_id,session.id,'原帖'
+        FROM discord_forums forum,workspace_sessions session;
+        INSERT INTO discord_user_codex_preferences(guild_id,discord_user_id,model)
+        VALUES ('legacy','legacy','legacy-codex-model');
 		INSERT INTO codex_thread_controls(source_type,session_id,agent_profile_id,workspace_id,
 			workspace_project_id,worker_id,external_thread_id)
 		SELECT 'workspace_session',session.id,session.agent_profile_id,session.workspace_id,
@@ -78,12 +89,17 @@ RRULE:FREQ=HOURLY','UTC','interval',3600 FROM workspace_sessions;
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id::text FROM codex_turn_intents`).Scan(&originalIntent))
 	require.NoError(t, Migrate(ctx, db))
 	require.NoError(t, Migrate(ctx, db), "迁移重跑不能重复或丢弃旧记录")
-	for _, table := range []string{"workspace_sessions", "codex_thread_controls", "desktop_thread_requests", "scheduled_tasks"} {
+	for _, table := range []string{"workspace_sessions", "codex_thread_controls", "desktop_thread_requests", "scheduled_tasks", "discord_conversations", "discord_user_codex_preferences"} {
 		var total, codex int
 		require.NoError(t, db.QueryRowContext(ctx, "SELECT count(*),count(*) FILTER (WHERE engine='codex') FROM "+table).Scan(&total, &codex))
 		require.Equal(t, 1, total, table)
 		require.Equal(t, total, codex, table)
 	}
+	var forumEngine, preference string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT default_engine FROM discord_forums`).Scan(&forumEngine))
+	require.Equal(t, "codex", forumEngine)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT model FROM discord_user_codex_preferences WHERE engine='codex'`).Scan(&preference))
+	require.Equal(t, "legacy-codex-model", preference)
 	var title, prompt, thread string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.title,task.prompt,control.external_thread_id
 		FROM workspace_sessions session JOIN scheduled_tasks task ON task.target_session_id=session.id

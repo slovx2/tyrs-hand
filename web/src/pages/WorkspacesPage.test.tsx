@@ -51,6 +51,7 @@ const workspace = {
           name: 'bob-atlas',
           discordId: '901',
           bindingStatus: 'active',
+          defaultEngine: 'codex',
           collaborators: [
             {
               forumId: '22222222-2222-2222-2222-222222222222',
@@ -288,6 +289,7 @@ describe('WorkerWorkspacePage', () => {
 
   it('可在当前 Worker 下创建 Forum 并管理协作者', async () => {
     const pair = vi.fn()
+    const changeEngine = vi.fn()
     const grant = vi.fn()
     const remove = vi.fn()
     server.use(
@@ -296,6 +298,13 @@ describe('WorkerWorkspacePage', () => {
       ),
       membersHandler(),
       scanHandler(),
+      http.put(
+        '/api/v1/workspace-forums/:id/engine',
+        async ({ params, request }) => {
+          changeEngine(params.id, await request.json())
+          return new HttpResponse(null, { status: 204 })
+        },
+      ),
       http.post(
         '/api/v1/workspace-projects/:id/forums',
         async ({ params, request }) => {
@@ -337,6 +346,14 @@ describe('WorkerWorkspacePage', () => {
 
     await user.click(
       screen.getByRole('button', { name: 'atlas 管理 Forum 配对' }),
+    )
+    await user.selectOptions(
+      screen.getByLabelText('新会话默认引擎'),
+      'claude-code',
+    )
+    expect(changeEngine).toHaveBeenCalledWith(
+      '22222222-2222-2222-2222-222222222222',
+      { engine: 'claude-code' },
     )
     await user.selectOptions(screen.getByLabelText('bob-atlas 协作者'), '30')
     await user.selectOptions(

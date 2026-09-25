@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 type Workspace struct {
@@ -20,11 +21,12 @@ type Workspace struct {
 }
 
 type WorkspaceForum struct {
-	ID            uuid.UUID     `json:"id"`
-	Name          string        `json:"name"`
-	DiscordID     string        `json:"discordId"`
-	BindingStatus string        `json:"bindingStatus"`
-	Collaborators []ForumAccess `json:"collaborators"`
+	DefaultEngine runtimeidentity.Engine `json:"defaultEngine"`
+	ID            uuid.UUID              `json:"id"`
+	Name          string                 `json:"name"`
+	DiscordID     string                 `json:"discordId"`
+	BindingStatus string                 `json:"bindingStatus"`
+	Collaborators []ForumAccess          `json:"collaborators"`
 }
 
 type WorkspaceProject struct {
@@ -140,7 +142,7 @@ func (m *Manager) workspaceProjects(ctx context.Context,
 		COALESCE(project.head_sha,''), project.dirty, COALESCE(project.remote_url,''),
 		project.last_seen_at, COALESCE(project.scan_error,''),
 		forum.id::text, COALESCE(resource.name,''), COALESCE(resource.discord_id,''),
-		COALESCE(forum.binding_status,'')
+		COALESCE(forum.binding_status,''), COALESCE(forum.default_engine,'')
 		FROM workspace_projects project
 		LEFT JOIN discord_forums forum ON forum.workspace_project_id=project.id
 			AND forum.forum_type='workspace'
@@ -163,7 +165,7 @@ func (m *Manager) workspaceProjects(ctx context.Context,
 			&project.ProjectKind, &project.AvailabilityStatus,
 			&project.Branch, &project.HeadSHA, &project.Dirty, &project.RemoteURL,
 			&project.LastSeenAt, &project.ScanError, &forumID, &forum.Name,
-			&forum.DiscordID, &forum.BindingStatus); err != nil {
+			&forum.DiscordID, &forum.BindingStatus, &forum.DefaultEngine); err != nil {
 			return nil, err
 		}
 		index, exists := byID[project.ID]

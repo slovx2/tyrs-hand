@@ -15,9 +15,11 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 )
 
 type IncomingMessage struct {
+	Engine                 runtimeidentity.Engine
 	GuildID                string
 	ForumID                string
 	ThreadID               string
@@ -168,6 +170,10 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if err != nil {
 		return uuid.Nil, err
 	}
+	engine, err := resolvePostEngine(ctx, tx, forumID, input)
+	if err != nil {
+		return uuid.Nil, err
+	}
 	_ = repositoryID
 	preferences := codexsettings.EffectivePreferences{}
 	var profileID uuid.UUID
@@ -176,7 +182,7 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		return uuid.Nil, err
 	}
 	userPreferences, remembered, err := loadUserCodexPreferences(ctx, tx,
-		input.GuildID, input.DiscordUserID)
+		input.GuildID, input.DiscordUserID, engine)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -214,17 +220,18 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 			 model, reasoning_effort, service_tier,
 		 collaboration_mode, trigger_mode,
 		 configuration_status, configuration_deadline, configured_by_discord_user_id,
-		 title_rename_status)
+		 title_rename_status, engine)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6::text,'')::uuid, NULLIF($7::text,'')::uuid,
 			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), NULLIF($13,''), $14, $15,
 			$16, NULL, $17,
-			'pending')
+			'pending',$18)
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
+ WHERE discord_conversations.engine=EXCLUDED.engine
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
 		optionalUUID(repositoryID), optionalUUID(projectID), profileID, input.Title, status,
 		preferences.Model, preferences.ReasoningEffort,
 		preferences.ServiceTier, mode, triggerMode, configurationStatus,
-		input.DiscordUserID).Scan(&conversationID)
+		input.DiscordUserID, engine).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -236,7 +243,7 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		return conversationID, tx.Commit()
 	}
 	if input.RememberPreferences {
-		if err := saveUserCodexPreferences(ctx, tx, input.GuildID, input.DiscordUserID,
+		if err := saveUserCodexPreferences(ctx, tx, input.GuildID, input.DiscordUserID, engine,
 			userCodexPreferences{Model: preferences.Model,
 				ReasoningEffort: preferences.ReasoningEffort, ServiceTier: preferences.ServiceTier,
 				CollaborationMode: mode, TriggerMode: triggerMode}); err != nil {
@@ -363,15 +370,16 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 	defer func() { _ = tx.Rollback() }()
 	var model, effort, tier, mode, triggerMode, guildID, threadID string
 	var settingsRevision int64
+	var engine runtimeidentity.Engine
 	var forumID uuid.UUID
 	var owner, configuredBy, status string
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
 		COALESCE(service_tier,'standard'), collaboration_mode,
 		trigger_mode, guild_id, thread_id, forum_id, owner_discord_user_id,
-		COALESCE(configured_by_discord_user_id,''), configuration_status, settings_revision
+		COALESCE(configured_by_discord_user_id,''), configuration_status, settings_revision, engine
 		FROM discord_conversations WHERE id = $1 FOR UPDATE`, conversationID).
 		Scan(&model, &effort, &tier, &mode, &triggerMode, &guildID, &threadID, &forumID, &owner,
-			&configuredBy, &status, &settingsRevision)
+			&configuredBy, &status, &settingsRevision, &engine)
 	if err != nil {
 		return false, err
 	}
@@ -392,7 +400,7 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 	if err != nil {
 		return false, err
 	}
-	if err := saveUserCodexPreferences(ctx, tx, guildID, configuredBy, userCodexPreferences{
+	if err := saveUserCodexPreferences(ctx, tx, guildID, configuredBy, engine, userCodexPreferences{
 		Model: model, ReasoningEffort: effort, ServiceTier: tier,
 		CollaborationMode: mode, TriggerMode: triggerMode,
 	}); err != nil {
