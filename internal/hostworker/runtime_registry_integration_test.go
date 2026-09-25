@@ -183,6 +183,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, commandPermissions bool) {
 			verifyRuntimeCommandPermissions(t, ctx, client, filepath.Join(root, string(engine)), upstream.URL)
 			continue
 		}
+		if engine == runtimeidentity.Claude {
+			before := modelCalls.Load()
+			verifyClaudeInapplicableCapabilities(t, ctx, client)
+			require.Equal(t, before, modelCalls.Load(), "不适用能力不得调用模型或转发到 Codex")
+		}
 		verifyRuntimeFilesystem(t, ctx, client, filepath.Join(root, string(engine)))
 		second := connectRuntimeSSH(t, ctx, connection, engine)
 		verifyRuntimeWatchIsolation(t, ctx, client, second, filepath.Join(root, string(engine)))

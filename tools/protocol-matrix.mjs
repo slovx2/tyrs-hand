@@ -89,7 +89,7 @@ for (const suite of suites) {
   runtimeExecutions += ['codex', 'claude-code'].map(engine => JSON.stringify({
     runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
     caseIds: [...suite.cases.filter(id => id !== 'AUTOMATION-002' || engine === 'claude-code'),
-      ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001'] : [])], status: 'passed',
+      ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001', 'CAPABILITY-002'] : [])], status: 'passed',
   })).join('\n') + '\n'
 }
 } finally { infrastructure?.close() }

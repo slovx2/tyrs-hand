@@ -11,7 +11,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -22,7 +23,7 @@
         "response": "v2/CancelLoginAccountResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -34,7 +35,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -46,7 +48,7 @@
         "response": "v2/LoginAccountResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -58,7 +60,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -69,7 +72,7 @@
         "response": null
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -81,7 +84,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -92,18 +96,21 @@
         "response": "v2/ConsumeAccountRateLimitResetCreditResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
       "method": "account/rateLimits/read",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -112,6 +119,9 @@
       "schema": {
         "params": "ClientRequest.json",
         "response": null
+      },
+      "reasons": {
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -140,7 +150,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -160,7 +173,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -171,7 +185,7 @@
         "response": "v2/SendAddCreditsNudgeEmailResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -201,7 +215,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -212,7 +227,7 @@
         "response": null
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -703,7 +718,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -714,7 +730,7 @@
         "response": "v2/FeedbackUploadResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1337,7 +1353,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1349,7 +1366,7 @@
         "response": "v2/MarketplaceAddResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1361,7 +1378,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1372,7 +1390,7 @@
         "response": "v2/MarketplaceRemoveResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1384,7 +1402,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1395,7 +1414,7 @@
         "response": "v2/MarketplaceUpgradeResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1555,7 +1574,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1566,7 +1586,7 @@
         "response": "v2/PluginInstallResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1578,7 +1598,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1589,7 +1610,7 @@
         "response": "v2/PluginInstalledResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1601,7 +1622,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1613,7 +1635,7 @@
         "response": "v2/PluginListResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1625,7 +1647,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1636,7 +1659,7 @@
         "response": "v2/PluginReadResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1648,7 +1671,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1659,7 +1683,7 @@
         "response": "v2/PluginShareCheckoutResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1671,7 +1695,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1682,7 +1707,7 @@
         "response": "v2/PluginShareDeleteResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1694,7 +1719,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1705,7 +1731,7 @@
         "response": "v2/PluginShareListResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1717,7 +1743,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1728,7 +1755,7 @@
         "response": "v2/PluginShareSaveResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1740,7 +1767,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1751,7 +1779,7 @@
         "response": "v2/PluginShareUpdateTargetsResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1763,7 +1791,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1774,7 +1803,7 @@
         "response": "v2/PluginSkillReadResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
@@ -1786,7 +1815,8 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "CAPABILITY-001"
+          "CAPABILITY-001",
+          "CAPABILITY-002"
         ]
       },
       "callers": [
@@ -1797,7 +1827,7 @@
         "response": "v2/PluginUninstallResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，不调用 Codex 或返回空成功"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
     },
     {
