@@ -796,7 +796,13 @@ func TestHubArchivesImmediatelyWhenIdleAndUnarchivesForEveryClient(t *testing.T)
 func TestHubCoalescesConcurrentArchiveRequests(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)
-	hub := startHub(t, mock.SocketPath)
+	prepared := make(chan struct{}, 2)
+	hub, err := appserverhub.Start(context.Background(), appserverhub.Options{
+		SocketPath: shortTempDir(t) + "/hub.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: concurrentArchiveController{prepared: prepared},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, hub.Close()) })
 	worker, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleWorker})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close() })
@@ -824,10 +830,33 @@ func TestHubCoalescesConcurrentArchiveRequests(t *testing.T) {
 		Params: mustJSON(map[string]string{"threadId": threadID})})
 	second.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
 		Params: mustJSON(map[string]string{"threadId": threadID})})
+	// 写入两个 socket 不代表 Hub 已处理两个请求。必须先观察它们均进入
+	// Controller（归档预留之后），再结束回合，才能真实构造并发合并场景。
+	for range 2 {
+		select {
+		case <-prepared:
+		case <-time.After(3 * time.Second):
+			t.Fatal("并发归档请求没有到达 Hub")
+		}
+	}
 	require.True(t, mock.CompleteTurn(threadID, turn.Turn.ID, "done"))
 	require.Nil(t, first.response(t, rawID(3)).Error)
 	require.Nil(t, second.response(t, rawID(3)).Error)
 	require.Equal(t, 1, mock.RequestCount("thread/archive"))
+}
+
+type concurrentArchiveController struct {
+	appserverhub.PassThroughController
+	prepared chan<- struct{}
+}
+
+func (c concurrentArchiveController) PrepareCall(ctx context.Context,
+	call appserverhub.Call,
+) (appserverhub.CallPlan, error) {
+	if call.Method == "thread/archive" {
+		c.prepared <- struct{}{}
+	}
+	return c.PassThroughController.PrepareCall(ctx, call)
 }
 
 func TestHubArchivePendingAllowsInputAnswerAndInterrupt(t *testing.T) {

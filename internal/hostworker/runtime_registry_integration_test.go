@@ -87,6 +87,8 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	contextInjection := mode == "context-injection"
 	reviewOnly := mode == "review"
 	codexReview := mode == "codex-review"
+	codexContext := mode == "codex-context"
+	codexPlugins := mode == "codex-plugins"
 	codexAccount := mode == "codex-account"
 	parallelApprovals := mode == "parallel-approvals"
 	codexMcp := mode == "codex-mcp"
@@ -133,6 +135,8 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	contextInjectionFixture := &runtimeContextInjectionFixture{}
 	reviewFixture := newRuntimeReviewFixture(root)
 	codexReviewFixture := newRuntimeCodexReviewFixture(root)
+	codexContextFixture := &runtimeCodexContextFixture{}
+	codexPluginsFixture := newRuntimeCodexPluginsFixture(root)
 	accountFixture := &runtimeCodexAccountFixture{}
 	codexMcpFixture := newRuntimeCodexMcpFixture(root)
 	codexOAuthFixture := newRuntimeCodexOAuthFixture(root)
@@ -190,6 +194,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if codexReview {
 				require.Equal(t, runtimeidentity.Codex, engine)
 				codexReviewFixture.model(t, w, request, body)
+				return
+			}
+			if codexContext {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				codexContextFixture.model(t, w, request, body)
+				return
+			}
+			if codexPlugins {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				codexPluginsFixture.model(t, w, request, body)
 				return
 			}
 			if claudeEventGaps {
@@ -408,7 +422,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || parallelApprovals || codexMcp || codexMcpOAuth || reviewOnly || codexReview {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || parallelApprovals || codexMcp || codexMcpOAuth || reviewOnly || codexReview || codexContext || codexPlugins {
 			continue
 		}
 		if configOnly {
@@ -482,6 +496,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if codexReview {
 		verifyRuntimeCodexReview(t, ctx, registry, clients[runtimeidentity.Codex], codexReviewFixture, root)
 		require.Equal(t, int64(4), modelCalls.Load(), "仅两次原生Codex审查读取及结果回模可以请求模型")
+		return
+	}
+	if codexContext {
+		verifyRuntimeCodexContext(t, ctx, registry, clients[runtimeidentity.Codex], codexContextFixture, root)
+		require.Equal(t, int64(4), modelCalls.Load(), "仅业务回合与真实压缩可以请求模型")
+		return
+	}
+	if codexPlugins {
+		verifyRuntimeCodexPlugins(t, ctx, registry, clients[runtimeidentity.Codex], codexPluginsFixture, root)
+		require.Equal(t, int64(5), modelCalls.Load(), "仅插件技能业务回合与卸载后目录检查可以请求模型")
 		return
 	}
 	if shellCommands {

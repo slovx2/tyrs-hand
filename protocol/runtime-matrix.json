@@ -2053,7 +2053,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PLUGIN-002"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2078,7 +2080,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PLUGIN-002"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2103,7 +2107,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PLUGIN-002"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2128,7 +2134,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PLUGIN-002"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2303,7 +2311,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PLUGIN-002"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2782,7 +2792,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CONTEXT-007"
+        ],
         "claude-code": [
           "CONTEXT-002"
         ]
@@ -3017,7 +3029,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CONTEXT-007"
+        ],
         "claude-code": [
           "CONTEXT-004",
           "CONTEXT-006"
