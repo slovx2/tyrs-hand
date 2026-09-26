@@ -143,10 +143,12 @@ func verifyRuntimeMobileSFTP(t *testing.T, ctx context.Context, registry *Runtim
 		entry := registry.entries[engine]
 		address := entry.SSH.Addr().(*net.TCPAddr)
 		host, port, fingerprint := address.IP.String(), address.Port, entry.SSH.HostKeyFingerprint()
+		uploadAttempt := 0
 		upload := func() string {
 			t.Helper()
+			uploadAttempt++
 			result, uploadErr := sshtransport.UploadAttachment(host, port, "mobile", privateKey, "", fingerprint, local, "attachment.dat", "application/octet-stream")
-			require.NoError(t, uploadErr)
+			require.NoError(t, uploadErr, "引擎 %s 第 %d 次上传，SSH 目标 %s:%d", engine, uploadAttempt, host, port)
 			var uploaded struct{ RemotePath, SHA256 string }
 			require.NoError(t, json.Unmarshal([]byte(result), &uploaded))
 			digest := sha256.Sum256(fixture.content)

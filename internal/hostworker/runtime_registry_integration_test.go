@@ -83,6 +83,8 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	approvalOnly := mode == "approval-lifecycle"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
+	codexEvents := mode == "codex-events"
+	hooksOnly := mode == "hooks"
 	catalogOnly := mode == "catalog"
 	configOnly := mode == "config"
 	codexNative := mode == "codex-catalog" || mode == "codex-migration" || mode == "codex-metadata" || mode == "codex-items"
@@ -110,6 +112,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	sftpFixture := newRuntimeSFTPFixture(root)
 	plan := &runtimePlanFixture{root: root}
 	approval := &runtimeApprovalFixture{root: root}
+	nativeEvents := &runtimeCodexEventsFixture{root: root}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -128,6 +131,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if codexEvents {
+				require.Equal(t, runtimeidentity.Codex, engine, "Codex 事件验收不能调用 Claude 模型")
+				nativeEvents.model(t, w, body)
+				return
+			}
 			if mcpOnly {
 				require.Equal(t, runtimeidentity.Claude, engine, "MCP 回调不能调用另一个引擎")
 				mcp.model(t, w, request, body)
@@ -310,7 +318,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative {
+		if codexNative || codexEvents || hooksOnly {
 			continue
 		}
 		if configOnly {
@@ -346,6 +354,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if hooksOnly {
+		verifyRuntimeHooks(t, ctx, registry, clients, protocol, root)
+		require.Equal(t, int64(2), modelCalls.Load(), "Hook 管理只能执行两个显式模型回合")
+		return
+	}
+	if codexEvents {
+		verifyCodexNativeEvents(t, ctx, protocol[runtimeidentity.Codex], nativeEvents)
+		require.Equal(t, int64(6), modelCalls.Load(), "四个显式 Turn 和两次真实工具续写之外不能调用模型")
+		return
 	}
 	if codexNative {
 		client, connection := protocol[runtimeidentity.Codex], clients[runtimeidentity.Codex]

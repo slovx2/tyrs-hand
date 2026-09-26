@@ -1,6 +1,7 @@
 {
   "formatVersion": 1,
   "groups": [
+    {"id": "HOOKS", "description": "原生用户及当前项目Hook目录、禁用与真实副作用、生命周期同ID和累计进度、失败中断超时及崩溃唯一终态；004真实SSH目录执行及重启历史对账", "cases": ["HOOKS-001", "HOOKS-002", "HOOKS-003", "HOOKS-004"], "caseEngines": {"HOOKS-001": ["claude-code"], "HOOKS-002": ["claude-code"], "HOOKS-003": ["claude-code"], "HOOKS-004": ["claude-code"]}},
     {"id": "SKILLS", "description": "真实CLI技能开关及持久化、临时目录加载与崩溃清理、内联命令权限边界、变更通知、配置原子失败及祖先目录继承", "cases": ["SKILLS-001", "SKILLS-002", "SKILLS-003", "SKILLS-004", "SKILLS-005"], "caseEngines": {"SKILLS-001": ["claude-code"], "SKILLS-002": ["claude-code"], "SKILLS-003": ["claude-code"], "SKILLS-004": ["claude-code"], "SKILLS-005": ["claude-code"]}},
     {"id": "CATALOG", "description": "双 SSH 模型与权限目录分页、计划模式发现及提供方能力，无隐式模型调用；002 原生 Skills、Hooks、实验特性及重启持久化", "cases": ["CATALOG-001", "CATALOG-002"], "caseEngines": {"CATALOG-001": ["codex", "claude-code"], "CATALOG-002": ["codex"]}},
     {"id": "CONFIG", "description": "原生 provider、CLAUDE.md、配置版本与原子写入、权限默认继承、热重载及双 SSH 隔离", "cases": ["CONFIG-001", "CONFIG-004", "CONFIG-005", "CONFIG-006", "CONFIG-007"], "caseEngines": {"CONFIG-001": ["claude-code"], "CONFIG-004": ["claude-code"], "CONFIG-005": ["claude-code"], "CONFIG-006": ["claude-code"], "CONFIG-007": ["codex", "claude-code"]}},
@@ -11,7 +12,7 @@
     {"id": "HISTORY", "description": "双向分页、各 itemsView、超大工具输出和无模型读取", "cases": ["HISTORY-001", "HISTORY-002", "HISTORY-003", "HISTORY-004", "HISTORY-005"], "caseEngines": {"HISTORY-004": ["codex"], "HISTORY-005": ["codex"]}},
     {"id": "CONTEXT", "description": "真实 SDK 恢复、分叉、回退、压缩及 SQLite 事务失败", "cases": ["CONTEXT-001", "CONTEXT-002", "CONTEXT-003"]},
     {"id": "SUBMIT", "description": "提交去重、重启重试、工具不确定状态及并发操纵；004 双 SSH 追加指令进入原生上下文", "cases": ["SUBMIT-001", "SUBMIT-002", "SUBMIT-003", "SUBMIT-004"]},
-    {"id": "EVENTS", "description": "001 完整事件种类及故障终态；002 原生流式、持久用量及历史；003 双 SSH 成功事件顺序及对账；004 原生工具取消与终态；005 双 SSH 中断和重启恢复；006 真实120秒提问和计划确认超时的唯一条目终态", "cases": ["EVENTS-001", "EVENTS-002", "EVENTS-003", "EVENTS-004", "EVENTS-005", "EVENTS-006"], "caseEngines": {"EVENTS-006": ["claude-code"]}},
+    {"id": "EVENTS", "description": "001 完整事件种类及故障终态；002 原生流式、持久用量及历史；003 双 SSH 成功事件顺序及对账；004 原生工具取消与终态；005 双 SSH 中断和重启恢复；006 真实120秒提问和计划确认超时的唯一条目终态；008 原生Codex真SSH文本推理计划命令流、补丁副作用及完整历史对账", "cases": ["EVENTS-001", "EVENTS-002", "EVENTS-003", "EVENTS-004", "EVENTS-005", "EVENTS-006", "EVENTS-008"], "caseEngines": {"EVENTS-006": ["claude-code"], "EVENTS-008": ["codex"]}},
     {"id": "APPROVAL", "description": "多端仲裁、取消、超时、重启失效与真实用户回答；005 真 SSH 提问和审批重连、取消、重启失效及完全访问；006 真 Control/Discord 审批、早到回调补投、实际文件副作用；007 默认120秒超时、迟到回答及计划权限不扩大", "cases": ["APPROVAL-001", "APPROVAL-002", "APPROVAL-003", "APPROVAL-004", "APPROVAL-005", "APPROVAL-006", "APPROVAL-007"], "caseEngines": {"APPROVAL-007": ["claude-code"]}},
     {"id": "PERMISSION", "description": "实际文件写入、工作区边界、网络和审批权限变更；005 完整策略持久化；006 原生 Bash 沙箱；007 双 SSH 保存自定义策略；008 只读及计划中的真实结构化输出不扩大权限；009 真 Control/Discord 权限仲裁、turn/session 作用域及重启失效", "cases": ["PERMISSION-read-only", "PERMISSION-plan", "PERMISSION-001", "PERMISSION-command", "PERMISSION-004", "PERMISSION-005", "PERMISSION-006", "PERMISSION-007", "PERMISSION-008", "PERMISSION-009"], "caseEngines": {"PERMISSION-009": ["codex"]}},
     {"id": "TOOLS", "description": "所有业务工具的成功副作用、错误、拒绝和取消", "cases": ["TOOLS-001", "TOOLS-002"]},

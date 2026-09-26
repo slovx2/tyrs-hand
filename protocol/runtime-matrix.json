@@ -327,7 +327,8 @@
         "response": "ApplyPatchApprovalResponse.json"
       },
       "callers": [
-        "client/src/app-server/officialClient.ts"
+        "client/src/app-server/officialClient.ts",
+        "internal/appserverhub/routing.go"
       ]
     },
     {
@@ -667,7 +668,8 @@
         "web/src/state.ts",
         "web/src/test/setup.ts",
         "wire:claude-code",
-        "web/src/pages/WorkspaceProjectForums.tsx"
+        "web/src/pages/WorkspaceProjectForums.tsx",
+        "internal/appserverhub/oauth_callback.go"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ErrorNotification",
@@ -689,7 +691,8 @@
         "response": "ExecCommandApprovalResponse.json"
       },
       "callers": [
-        "client/src/app-server/officialClient.ts"
+        "client/src/app-server/officialClient.ts",
+        "internal/appserverhub/routing.go"
       ]
     },
     {
@@ -770,6 +773,46 @@
       "schema": {
         "params": "ClientRequest.json#/definitions/ExternalAgentConfigImportParams",
         "response": "v2/ExternalAgentConfigImportResponse.json"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "MIGRATION-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportCompletedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/progress",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "MIGRATION-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportProgressNotification",
+        "response": null
       }
     },
     {
@@ -1109,7 +1152,10 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "HOOKS-001",
+          "HOOKS-004"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -1188,7 +1234,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-008"
+        ],
         "claude-code": [
           "CONTEXT-001",
           "EVENTS-003",
@@ -1210,7 +1258,8 @@
         "client/src/preview/runtime.ts",
         "client/src/store/appStore.ts",
         "client/src/store/threadNotificationReducer.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/AgentMessageDeltaNotification",
@@ -1224,7 +1273,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-008"
+        ],
         "claude-code": [
           "PLAN-003",
           "PERMISSION-006",
@@ -1236,7 +1287,8 @@
         "response": null
       },
       "callers": [
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ]
     },
     {
@@ -1260,7 +1312,14 @@
       "callers": [
         "client/src/app-server/officialClient.ts",
         "client/src/features/chat/ServerRequestCard.tsx",
-        "wire:claude-code"
+        "wire:claude-code",
+        "internal/appserverhub/routing.go",
+        "internal/hostworker/runtime.go",
+        "internal/interactiveprotocol/approval.go",
+        "internal/openapi/openapi.gen.go",
+        "client/src/features/chat/approvalActions.ts",
+        "client/src/types/openapi.ts",
+        "web/src/api/schema.ts"
       ]
     },
     {
@@ -1272,7 +1331,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "PERMISSION-009"
+          "PERMISSION-009",
+          "EVENTS-008"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1287,7 +1347,10 @@
           "SUBMIT-002",
           "CONTEXT-003",
           "MCP-014",
-          "FAILURE-004"
+          "FAILURE-004",
+          "HOOKS-002",
+          "HOOKS-003",
+          "HOOKS-004"
         ]
       },
       "callers": [
@@ -1354,7 +1417,14 @@
       "callers": [
         "client/src/app-server/officialClient.ts",
         "client/src/features/chat/ServerRequestCard.tsx",
-        "wire:claude-code"
+        "wire:claude-code",
+        "internal/appserverhub/routing.go",
+        "internal/hostworker/runtime.go",
+        "internal/interactiveprotocol/approval.go",
+        "internal/openapi/openapi.gen.go",
+        "client/src/features/chat/approvalActions.ts",
+        "client/src/types/openapi.ts",
+        "web/src/api/schema.ts"
       ]
     },
     {
@@ -1375,7 +1445,13 @@
       },
       "callers": [
         "client/src/app-server/officialClient.ts",
-        "client/src/features/chat/ServerRequestCard.tsx"
+        "client/src/features/chat/ServerRequestCard.tsx",
+        "internal/appserverhub/routing.go",
+        "internal/hostworker/runtime.go",
+        "internal/interactiveprotocol/approval.go",
+        "internal/openapi/openapi.gen.go",
+        "client/src/types/openapi.ts",
+        "web/src/api/schema.ts"
       ]
     },
     {
@@ -1385,7 +1461,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-008"
+        ],
         "claude-code": [
           "PLAN-001",
           "PLAN-002",
@@ -1400,7 +1478,8 @@
       "callers": [
         "client/src/store/appStore.ts",
         "client/src/store/threadNotificationReducer.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ]
     },
     {
@@ -1410,7 +1489,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-008"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -1418,7 +1499,8 @@
         "response": null
       },
       "callers": [
-        "client/src/store/threadNotificationReducer.ts"
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:codex"
       ]
     },
     {
@@ -1428,7 +1510,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-008"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -1437,7 +1521,8 @@
       },
       "callers": [
         "client/src/store/appStore.ts",
-        "client/src/store/threadNotificationReducer.ts"
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:codex"
       ]
     },
     {
@@ -1447,7 +1532,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "EVENTS-008"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -1456,7 +1543,8 @@
       },
       "callers": [
         "client/src/store/appStore.ts",
-        "client/src/store/threadNotificationReducer.ts"
+        "client/src/store/threadNotificationReducer.ts",
+        "wire:codex"
       ]
     },
     {
@@ -1468,7 +1556,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "PERMISSION-009"
+          "PERMISSION-009",
+          "EVENTS-008"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1483,7 +1572,10 @@
           "SUBMIT-002",
           "CONTEXT-003",
           "MCP-014",
-          "FAILURE-004"
+          "FAILURE-004",
+          "HOOKS-002",
+          "HOOKS-003",
+          "HOOKS-004"
         ]
       },
       "callers": [
@@ -1553,7 +1645,11 @@
         "client/src/features/chat/ServerRequestCard.tsx",
         "client/src/preview/fixtures.ts",
         "client/src/store/appStore.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "internal/interactiveprotocol/approval.go",
+        "internal/openapi/openapi.gen.go",
+        "client/src/types/openapi.ts",
+        "web/src/api/schema.ts"
       ],
       "schema": {
         "params": "ServerRequest.json#/definitions/ToolRequestUserInputParams",
@@ -1656,7 +1752,15 @@
       "callers": [
         "client/src/app-server/officialClient.ts",
         "client/src/store/appStore.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "internal/appserverhub/routing.go",
+        "internal/hostworker/runtime.go",
+        "internal/interactiveprotocol/approval.go",
+        "internal/openapi/openapi.gen.go",
+        "client/src/features/chat/McpElicitationCard.tsx",
+        "client/src/features/chat/ServerRequestCard.tsx",
+        "client/src/types/openapi.ts",
+        "web/src/api/schema.ts"
       ]
     },
     {
@@ -1679,6 +1783,29 @@
       "schema": {
         "params": "ClientRequest.json#/definitions/McpServerOauthLoginParams",
         "response": "v2/McpServerOauthLoginResponse.json"
+      }
+    },
+    {
+      "method": "mcpServer/oauthLogin/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "MCP-011",
+          "MCP-012",
+          "MCP-013"
+        ]
+      },
+      "callers": [
+        "wire:claude-code",
+        "internal/appserverhub/oauth_callback.go"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/McpServerOauthLoginCompletedNotification",
+        "response": null
       }
     },
     {
@@ -2338,10 +2465,33 @@
         "client/src/app-server/officialClient.ts",
         "client/src/preview/runtime.ts",
         "client/src/store/appStore.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "internal/codex/socket_client.go"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ServerRequestResolvedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "skills/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "CATALOG-002"
+        ],
+        "claude-code": [
+          "SKILLS-004"
+        ]
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/SkillsChangedNotification",
         "response": null
       }
     },
@@ -2947,7 +3097,10 @@
           "FAILURE-003",
           "ISOLATION-004",
           "FILES-007",
-          "FAILURE-004"
+          "FAILURE-004",
+          "HOOKS-002",
+          "HOOKS-003",
+          "HOOKS-004"
         ]
       },
       "callers": [
@@ -3073,7 +3226,8 @@
       },
       "callers": [
         "internal/appserverhub/methods.go",
-        "wire:claude-code"
+        "wire:claude-code",
+        "client/src/app-server/officialClient.ts"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadSettingsUpdateParams",
@@ -3105,7 +3259,8 @@
         "internal/testutil/mockcodex/server.go",
         "internal/worker/workspace_codex.go",
         "client/src/store/threadNotificationReducer.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadSettingsUpdatedNotification",
@@ -3301,7 +3456,8 @@
         "internal/appserverhub/methods.go",
         "client/src/app-server/officialClient.ts",
         "client/src/preview/runtime.ts",
-        "wire:claude-code"
+        "wire:claude-code",
+        "internal/appserverhub/thread_items.go"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadTurnsListParams",
@@ -3487,7 +3643,8 @@
         "codex": [
           "EVENTS-003",
           "EVENTS-005",
-          "PERMISSION-009"
+          "PERMISSION-009",
+          "EVENTS-008"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3526,6 +3683,26 @@
         "params": "ServerNotification.json#/definitions/TurnCompletedNotification",
         "response": null
       }
+    },
+    {
+      "method": "turn/diff/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "EVENTS-008"
+        ],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/TurnDiffUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:codex"
+      ]
     },
     {
       "method": "turn/interrupt",
@@ -3622,7 +3799,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "EVENTS-005"
+          "EVENTS-005",
+          "EVENTS-008"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3739,90 +3917,6 @@
       "schema": {
         "params": "ClientRequest.json#/definitions/WindowsSandboxSetupStartParams",
         "response": "v2/WindowsSandboxSetupStartResponse.json"
-      }
-    },
-    {
-      "method": "externalAgentConfig/import/progress",
-      "engines": {
-        "codex": "required",
-        "claude-code": "required"
-      },
-      "cases": {
-        "codex": [
-          "MIGRATION-003"
-        ],
-        "claude-code": []
-      },
-      "callers": [
-        "wire:codex"
-      ],
-      "schema": {
-        "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportProgressNotification",
-        "response": null
-      }
-    },
-    {
-      "method": "externalAgentConfig/import/completed",
-      "engines": {
-        "codex": "required",
-        "claude-code": "required"
-      },
-      "cases": {
-        "codex": [
-          "MIGRATION-003"
-        ],
-        "claude-code": []
-      },
-      "callers": [
-        "wire:codex"
-      ],
-      "schema": {
-        "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportCompletedNotification",
-        "response": null
-      }
-    },
-    {
-      "method": "skills/changed",
-      "engines": {
-        "codex": "required",
-        "claude-code": "required"
-      },
-      "cases": {
-        "codex": [
-          "CATALOG-002"
-        ],
-        "claude-code": [
-          "SKILLS-004"
-        ]
-      },
-      "callers": [
-        "wire:codex"
-      ],
-      "schema": {
-        "params": "ServerNotification.json#/definitions/SkillsChangedNotification",
-        "response": null
-      }
-    },
-    {
-      "method": "mcpServer/oauthLogin/completed",
-      "engines": {
-        "codex": "required",
-        "claude-code": "required"
-      },
-      "cases": {
-        "codex": [],
-        "claude-code": [
-          "MCP-011",
-          "MCP-012",
-          "MCP-013"
-        ]
-      },
-      "callers": [
-        "wire:claude-code"
-      ],
-      "schema": {
-        "params": "ServerNotification.json#/definitions/McpServerOauthLoginCompletedNotification",
-        "response": null
       }
     }
   ]
