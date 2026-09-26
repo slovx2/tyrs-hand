@@ -90,6 +90,14 @@ func (r *Hub) desktopToolOwner(ctx context.Context, threadID, turnID string) (*s
 				}
 			}
 		}
+		if !found && wait == nil {
+			if reviews := r.reviewWaitsLocked(threadID); len(reviews) > 0 {
+				if r.interactionChanged == nil {
+					r.interactionChanged = make(chan struct{})
+				}
+				wait = r.interactionChanged
+			}
+		}
 		available := found && owner.source.canExecuteDesktopTools() && r.sessions[owner.source.id] == owner.source
 		var fallback *session
 		if !available && wait == nil {

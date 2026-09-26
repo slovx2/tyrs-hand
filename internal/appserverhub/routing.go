@@ -129,7 +129,11 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			if scopeErr != nil {
 				return nil, scopeErr
 			}
-			upstreamErr = r.upstream.Call(ctx, method, scoped, &result)
+			if method == "review/start" {
+				result, upstreamErr = r.startReview(ctx, source, scoped, ephemeral)
+			} else {
+				upstreamErr = r.upstream.Call(ctx, method, scoped, &result)
+			}
 			finishResource(upstreamErr)
 			r.finishToolTurnStart(threadID, toolTurn, result, upstreamErr)
 		}
@@ -253,45 +257,73 @@ func (r *Hub) anyDesktopSubscribed(threadID string) bool {
 }
 
 func (r *Hub) forwardEvents() {
-	for event := range r.upstreamEvents.Events() {
-		r.finishOAuthCallbacks(event)
-		r.updateToolTurn(event)
-		threadID, _ := threadScope(event.Params)
-		switch event.Method {
-		case "turn/started", "turn/completed", "thread/archived", "thread/unarchived":
-			r.signalLifecycle(threadID)
-		}
-		if event.Method == "thread/started" && eventThreadEphemeral(event.Params) {
-			r.markEphemeral(threadID)
-		}
-		ephemeral := r.isEphemeral(threadID)
-		r.mu.Lock()
-		sessions := make([]*session, 0, len(r.sessions))
-		for _, item := range r.sessions {
-			if item.role == RoleWorker {
-				if !ephemeral {
-					sessions = append(sessions, item)
+	var held []heldReviewEvent
+	for {
+		var event codex.Event
+		select {
+		case next, ok := <-r.upstreamEvents.Events():
+			if !ok {
+				select {
+				case <-r.done:
+				default:
+					r.shutdown(errors.New("hub 上游事件流已关闭"))
 				}
-				continue
+				return
 			}
-			// 普通会话的创建与删除都影响列表，即使客户端已退出正文订阅也要通知。
-			listChanged := event.Method == "thread/started" || event.Method == "thread/deleted"
-			if threadID == "" || (listChanged && !ephemeral) ||
-				item.subscribed(threadID) {
+			event = next
+		case <-r.reviewChanged:
+		case <-r.done:
+			return
+		}
+		held = r.flushReviewEvents(held)
+		if event.Method == "" {
+			continue
+		}
+		if waits := r.reviewEventWaits(event, held); len(waits) > 0 {
+			if len(held) >= r.options.EventBacklog {
+				r.shutdown(errors.New("审查启动事件缓存已满"))
+				return
+			}
+			held = append(held, heldReviewEvent{event: event, waits: waits})
+			continue
+		}
+		r.forwardEvent(event)
+	}
+}
+
+func (r *Hub) forwardEvent(event codex.Event) {
+	r.finishOAuthCallbacks(event)
+	r.updateToolTurn(event)
+	threadID, _ := threadScope(event.Params)
+	switch event.Method {
+	case "turn/started", "turn/completed", "thread/archived", "thread/unarchived":
+		r.signalLifecycle(threadID)
+	}
+	if event.Method == "thread/started" && eventThreadEphemeral(event.Params) {
+		r.markEphemeral(threadID)
+	}
+	ephemeral := r.isEphemeral(threadID)
+	r.mu.Lock()
+	sessions := make([]*session, 0, len(r.sessions))
+	for _, item := range r.sessions {
+		if item.role == RoleWorker {
+			if !ephemeral {
 				sessions = append(sessions, item)
 			}
+			continue
 		}
-		r.mu.Unlock()
-		for _, item := range sessions {
-			if err := item.publish(event); err != nil {
-				r.removeSession(item)
-			}
+		// 普通会话的创建与删除都影响列表，即使客户端已退出正文订阅也要通知。
+		listChanged := event.Method == "thread/started" || event.Method == "thread/deleted"
+		if threadID == "" || (listChanged && !ephemeral) ||
+			item.subscribed(threadID) {
+			sessions = append(sessions, item)
 		}
 	}
-	select {
-	case <-r.done:
-	default:
-		r.shutdown(errors.New("hub 上游事件流已关闭"))
+	r.mu.Unlock()
+	for _, item := range sessions {
+		if err := item.publish(event); err != nil {
+			r.removeSession(item)
+		}
 	}
 }
 

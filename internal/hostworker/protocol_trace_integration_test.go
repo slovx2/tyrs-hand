@@ -84,6 +84,52 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 	defer p.mu.Unlock()
 	caseName := t.Name()
 	caseIDs := []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexReviewRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"REVIEW-006"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeReviewRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"REVIEW-004"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexMcpPaginationRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"MCP-017"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeParallelApprovalsRealSSHBothEngines" {
+		caseName = rootName
+		caseIDs = []string{"ISOLATION-005"}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexMcpRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"MCP-015", "MCP-016"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexMcpOAuthRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"MCP-018"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexMcpOAuthHeadersRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"MCP-019"}
+		}
+	}
 	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexAccountRealSSH" {
 		caseName = rootName
 		caseIDs = []string{}

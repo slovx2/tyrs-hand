@@ -30,6 +30,8 @@ type Hub struct {
 	archiveOperations  map[string]*archiveOperation
 	resources          map[string]connectionResource
 	oauthCallbacks     map[string]oauthCallback
+	reviewStarts       map[*pendingReviewStart]bool
+	reviewChanged      chan struct{}
 	nextID             atomic.Int64
 	closed             bool
 	stats              Stats
@@ -55,6 +57,8 @@ func Start(ctx context.Context, options Options) (*Hub, error) {
 	hub := &Hub{options: options, sessions: make(map[int64]*session),
 		interactionChanged: make(chan struct{}),
 		toolThreads:        make(map[string]*toolThreadState),
+		reviewStarts:       make(map[*pendingReviewStart]bool),
+		reviewChanged:      make(chan struct{}, 1),
 		ephemeralThreads:   make(map[string]bool),
 		archiveOperations:  make(map[string]*archiveOperation), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{

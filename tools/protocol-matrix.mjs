@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { startControlInfrastructure } from './protocol-control-infra.mjs'
 import { runMigrationMatrix } from './protocol-migration-matrix.mjs'
+import { runRecoveryMatrix } from './protocol-recovery-matrix.mjs'
 import { collectMacNetworkDiagnostics } from './protocol-macos-diagnostics.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -62,6 +63,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'EVENTS-003'] },
   { name: 'isolation', pkg: './internal/hostworker', test: 'TestRuntimeIsolationRealSSHBothEngines',
     cases: ['ISOLATION-004'], engines: ['codex', 'claude-code'] },
+  { name: 'parallel-approvals', pkg: './internal/hostworker', test: 'TestRuntimeParallelApprovalsRealSSHBothEngines',
+    cases: ['ISOLATION-005'] },
   { name: 'files-acceptance', pkg: './internal/hostworker', test: 'TestRuntimeFilesRealSSHBothEngines',
     cases: ['FILES-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'FILES-007'], engines: ['codex', 'claude-code'] },
   { name: 'command-permissions', pkg: './internal/hostworker', test: 'TestRuntimeCommandPermissionsRealSSHBothEngines',
@@ -78,10 +81,22 @@ const suites = controlOnly ? controlSuites : [
     cases: ['FEATURE-002'], engines: ['claude-code'] },
   { name: 'shell-commands', pkg: './internal/hostworker', test: 'TestRuntimeShellCommandsRealSSHBothEngines',
     cases: ['SHELL-002'] },
+  { name: 'codex-mcp-oauth', pkg: './internal/hostworker', test: 'TestRuntimeCodexMcpOAuthRealSSH',
+    cases: ['MCP-018'], engines: ['codex'] },
+  { name: 'codex-mcp-oauth-headers', pkg: './internal/hostworker', test: 'TestRuntimeCodexMcpOAuthHeadersRealSSH',
+    cases: ['MCP-019'], engines: ['codex'] },
+  { name: 'codex-mcp', pkg: './internal/hostworker', test: 'TestRuntimeCodexMcpRealSSH',
+    cases: ['MCP-015', 'MCP-016'], engines: ['codex'] },
+  { name: 'codex-mcp-pagination', pkg: './internal/hostworker', test: 'TestRuntimeCodexMcpPaginationRealSSH',
+    cases: ['MCP-017'], engines: ['codex'] },
   { name: 'codex-account', pkg: './internal/hostworker', test: 'TestRuntimeCodexAccountRealSSH',
     cases: ['ACCOUNT-001'], engines: ['codex'] },
   { name: 'context-injection', pkg: './internal/hostworker', test: 'TestRuntimeContextInjectionRealSSH',
     cases: ['CONTEXT-006'], engines: ['claude-code'] },
+  { name: 'review', pkg: './internal/hostworker', test: 'TestRuntimeReviewRealSSH',
+    cases: ['REVIEW-004'], engines: ['claude-code'] },
+  { name: 'codex-review', pkg: './internal/hostworker', test: 'TestRuntimeCodexReviewRealSSH',
+    cases: ['REVIEW-006'], engines: ['codex'] },
   { name: 'hooks', pkg: './internal/hostworker', test: 'TestRuntimeHooksRealSSH',
     cases: ['HOOKS-004'], engines: ['claude-code'] },
   { name: 'history', pkg: './internal/hostworker', test: 'TestRuntimeHistoryRealSSH',
@@ -173,6 +188,9 @@ if (!controlOnly && !process.argv.includes('--runtime-only')) {
   const migration = await runMigrationMatrix({ root, artifacts, runId, env })
   runtimeFailures.push(...migration.failures)
   runtimeExecutions += migration.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
+  const recovery = await runRecoveryMatrix({ root, artifacts, runId, env })
+  runtimeFailures.push(...recovery.failures)
+  runtimeExecutions += recovery.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
 }
 if (!runtimeFailures.length) console.log(controlOnly ? '真实 Control、双 SSH、SDK、Discord 审批与重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
   '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')

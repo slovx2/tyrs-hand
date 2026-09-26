@@ -312,6 +312,12 @@ func verifyCodexNativeMetadata(t *testing.T, ctx context.Context, client *codex.
 	verifyNativeSectionMembership(t, ctx, client, thread.ID, created[0])
 	verifyNativeTurnPages(t, ctx, client, thread.ID, turns)
 	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": thread.ID, "includeTurns": true}).Turns, 2)
+	readSessionThread(t, ctx, client, "thread/resume", map[string]any{"threadId": thread.ID})
 	verifyCodexPausedGoalAfterRestart(t, ctx, client, goal)
+	// 清除必须写入真实原生存储，第二次重启后不能重新出现。
+	require.NoError(t, registry.Restart(runtimeidentity.Codex))
+	client = connectRuntimeSSH(t, ctx, connection, runtimeidentity.Codex)
+	require.Nil(t, nativeMetadataCall[nativeGoalResponse](t, ctx, client, "thread/goal/get", map[string]any{"threadId": thread.ID}).Goal)
+	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": thread.ID, "includeTurns": true}).Turns, 2)
 	require.Equal(t, otherGeneration, registry.entries[runtimeidentity.Claude].Runtime.Generation())
 }

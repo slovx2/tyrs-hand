@@ -545,7 +545,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-015"
+        ],
         "claude-code": [
           "MCP-006"
         ]
@@ -597,7 +599,9 @@
       "cases": {
         "codex": [
           "CONFIG-007",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "MCP-015",
+          "MCP-018"
         ],
         "claude-code": [
           "CONFIG-007",
@@ -1374,7 +1378,9 @@
           "EVENTS-003",
           "PERMISSION-009",
           "EVENTS-008",
-          "APPROVAL-008"
+          "APPROVAL-008",
+          "MCP-016",
+          "MCP-018"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1801,7 +1807,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-016"
+        ],
         "claude-code": [
           "MCP-004",
           "MCP-005",
@@ -1833,7 +1841,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-018"
+        ],
         "claude-code": [
           "MCP-011",
           "MCP-012",
@@ -1855,7 +1865,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-018"
+        ],
         "claude-code": [
           "MCP-011",
           "MCP-012",
@@ -1878,7 +1890,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-015"
+        ],
         "claude-code": [
           "MCP-006"
         ]
@@ -1899,7 +1913,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-015"
+        ],
         "claude-code": [
           "MCP-006"
         ]
@@ -1919,7 +1935,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-015"
+        ],
         "claude-code": [
           "MCP-006"
         ]
@@ -1940,7 +1958,10 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MCP-015",
+          "MCP-018"
+        ],
         "claude-code": [
           "MCP-006",
           "MCP-011",
@@ -2482,7 +2503,10 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "REVIEW-001",
+          "REVIEW-004"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2896,7 +2920,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "GOAL-004"
+        ],
         "claude-code": [
           "GOAL-001",
           "GOAL-003"
@@ -2968,7 +2994,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "GOAL-004"
+        ],
         "claude-code": [
           "GOAL-001",
           "GOAL-003"
@@ -2992,7 +3020,6 @@
         "codex": [],
         "claude-code": [
           "CONTEXT-004",
-          "CONTEXT-005",
           "CONTEXT-006"
         ]
       },
@@ -3179,7 +3206,8 @@
           "SESSION-003",
           "ISOLATION-004",
           "FILES-007",
-          "MIGRATION-004"
+          "MIGRATION-004",
+          "MCP-016"
         ],
         "claude-code": [
           "HISTORY-002",
@@ -3404,7 +3432,10 @@
           "FILES-007",
           "PERMISSION-009",
           "MIGRATION-004",
-          "APPROVAL-008"
+          "APPROVAL-008",
+          "MCP-015",
+          "MCP-016",
+          "MCP-018"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3754,7 +3785,9 @@
           "PERMISSION-009",
           "EVENTS-008",
           "MIGRATION-004",
-          "APPROVAL-008"
+          "APPROVAL-008",
+          "MCP-016",
+          "MCP-018"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3863,7 +3896,9 @@
           "FILES-007",
           "PERMISSION-009",
           "MIGRATION-004",
-          "APPROVAL-008"
+          "APPROVAL-008",
+          "MCP-016",
+          "MCP-018"
         ],
         "claude-code": [
           "SUBMIT-001",

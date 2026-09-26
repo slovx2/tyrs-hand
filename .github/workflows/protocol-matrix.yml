@@ -10,6 +10,28 @@ permissions:
   contents: read
 
 jobs:
+  macos-loopback-comparison:
+    # 对比系统版本，保留 macOS 14 的业务门禁；探针不能替代真实 SSH 验收。
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.14.0'
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: go.sum
+      - name: Compare loopback sandbox on macOS 15
+        run: node tools/protocol-macos-loopback.mjs
+      - name: Preserve loopback comparison
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-15-loopback
+          path: .artifacts/protocol/macos-loopback
+          if-no-files-found: error
   control-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -92,7 +114,7 @@ jobs:
       - name: Verify coverage gate itself
         run: |
           npm test --prefix tools/protocol-inventory
-          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs
+          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs tools/protocol-recovery-matrix.test.mjs
       - name: Prepare Linux sandbox dependencies
         if: runner.os == 'Linux'
         run: |
@@ -100,6 +122,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends bubblewrap=0.9.0-1ubuntu0.3 socat=1.8.0.0-4ubuntu0.1
           command -v unshare ip bwrap socat docker
+      - name: Real Codex recorder shutdown boundaries
+        run: |
+          TYRS_HAND_TEST_CODEX_NATIVE_BIN=$(node --input-type=module - <<'JS'
+          import { execFileSync } from 'node:child_process';
+          import { createRequire } from 'node:module';
+          import { dirname, resolve } from 'node:path';
+          const root = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
+          const require = createRequire(resolve(root, '@openai/codex/package.json'));
+          const packagePath = require.resolve(`@openai/codex-${process.platform}-${process.arch}/package.json`);
+          const target = { 'darwin-arm64': 'aarch64-apple-darwin', 'linux-x64': 'x86_64-unknown-linux-musl' }[`${process.platform}-${process.arch}`];
+          if (!target) throw new Error('未登记的 CI 原生平台');
+          console.log(resolve(dirname(packagePath), 'vendor', target, 'bin/codex'));
+          JS
+          )
+          export TYRS_HAND_TEST_CODEX_NATIVE_BIN
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            unshare --user --map-root-user --net /bin/sh -ec 'ip link set lo up; exec node --test tools/mobile-e2e/record-runtime-native-check.mjs'
+          else
+            sandbox-exec -p '(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*") (remote unix-socket))' node --test tools/mobile-e2e/record-runtime-native-check.mjs
+          fi
       - name: Complete protocol matrix with real Control and Docker databases
         if: runner.os == 'Linux'
         run: make test-protocol-matrix

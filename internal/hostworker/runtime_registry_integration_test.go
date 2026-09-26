@@ -85,7 +85,12 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	experimentalFeatures := mode == "experimental-features"
 	shellCommands := mode == "shell-commands"
 	contextInjection := mode == "context-injection"
+	reviewOnly := mode == "review"
+	codexReview := mode == "codex-review"
 	codexAccount := mode == "codex-account"
+	parallelApprovals := mode == "parallel-approvals"
+	codexMcp := mode == "codex-mcp"
+	codexMcpOAuth := mode == "codex-mcp-oauth"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	codexEvents := mode == "codex-events"
@@ -126,7 +131,12 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	claudeEventsFixture := &runtimeClaudeEventsFixture{}
 	claudeEventGapsFixture := &runtimeClaudeEventGapsFixture{root: root}
 	contextInjectionFixture := &runtimeContextInjectionFixture{}
+	reviewFixture := newRuntimeReviewFixture(root)
+	codexReviewFixture := newRuntimeCodexReviewFixture(root)
 	accountFixture := &runtimeCodexAccountFixture{}
+	codexMcpFixture := newRuntimeCodexMcpFixture(root)
+	codexOAuthFixture := newRuntimeCodexOAuthFixture(root)
+	parallelFixture := &runtimeParallelApprovalFixture{root: root, codex: runtimeCodexApprovalFixture{root: root}}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -148,6 +158,20 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if codexMcpOAuth {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				codexOAuthFixture.model(t, w, request, body)
+				return
+			}
+			if codexMcp {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				codexMcpFixture.model(t, w, request, body)
+				return
+			}
+			if parallelApprovals {
+				parallelFixture.model(t, w, request, engine, body)
+				return
+			}
 			if codexAccount {
 				require.Equal(t, runtimeidentity.Codex, engine)
 				accountFixture.model(t, w, request, body)
@@ -156,6 +180,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if contextInjection {
 				require.Equal(t, runtimeidentity.Claude, engine)
 				contextInjectionFixture.model(t, w, request, body)
+				return
+			}
+			if reviewOnly {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				reviewFixture.model(t, w, request, body)
+				return
+			}
+			if codexReview {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				codexReviewFixture.model(t, w, request, body)
 				return
 			}
 			if claudeEventGaps {
@@ -374,7 +408,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || parallelApprovals || codexMcp || codexMcpOAuth || reviewOnly || codexReview {
 			continue
 		}
 		if configOnly {
@@ -411,6 +445,25 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
 	}
+	if codexMcpOAuth {
+		verifyRuntimeCodexOAuth(t, ctx, registry, clients, codexOAuthFixture, root)
+		require.Equal(t, int64(4), modelCalls.Load(), "仅授权后与重启后两次 MCP 工具业务回合可以请求模型")
+		return
+	}
+	if codexMcp {
+		verifyRuntimeCodexMcp(t, ctx, registry, clients[runtimeidentity.Codex], codexMcpFixture, root)
+		if t.Name() == "TestRuntimeCodexMcpPaginationRealSSH" {
+			require.Zero(t, modelCalls.Load(), "目录分页不能请求模型")
+		} else {
+			require.Equal(t, int64(16), modelCalls.Load(), "仅八个 MCP 业务场景可以请求模型")
+		}
+		return
+	}
+	if parallelApprovals {
+		verifyRuntimeParallelApprovals(t, ctx, clients, parallelFixture)
+		require.Equal(t, int64(8), modelCalls.Load(), "两个引擎各两次真实工具及结果回模")
+		return
+	}
 	if codexAccount {
 		verifyRuntimeCodexAccount(t, ctx, registry, clients[runtimeidentity.Codex], accountFixture, root)
 		require.Equal(t, int64(2), modelCalls.Load(), "仅两次业务 Turn 可以请求模型")
@@ -419,6 +472,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if contextInjection {
 		verifyRuntimeContextInjection(t, ctx, registry, clients[runtimeidentity.Claude], contextInjectionFixture, root)
 		require.Equal(t, int64(2), modelCalls.Load(), "注入和恢复不能额外请求模型")
+		return
+	}
+	if reviewOnly {
+		verifyRuntimeReview(t, ctx, registry, clients[runtimeidentity.Claude], reviewFixture, root)
+		require.Equal(t, int64(4), modelCalls.Load(), "仅两次原生审查读取及结果回模可以请求模型")
+		return
+	}
+	if codexReview {
+		verifyRuntimeCodexReview(t, ctx, registry, clients[runtimeidentity.Codex], codexReviewFixture, root)
+		require.Equal(t, int64(4), modelCalls.Load(), "仅两次原生Codex审查读取及结果回模可以请求模型")
 		return
 	}
 	if shellCommands {

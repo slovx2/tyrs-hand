@@ -12,6 +12,7 @@ import { validateRuntimeWire } from './lib/wire.mjs'
 import { mobileScenarios } from './lib/mcp-scenarios.mjs'
 import { AndroidTransportTrace } from './lib/android-transport-trace.mjs'
 import { cleanupManaged, completionError } from './lib/cleanup.mjs'
+import { collectIosDriverDiagnostics } from './lib/ios-driver-diagnostics.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const argumentsMap = new Map()
@@ -111,6 +112,7 @@ async function redactEvidenceSecrets(directory, secrets) {
 }
 
 async function runMaestro(environment, label = 'suite', flowPath = flow) {
+  const startedAt = Date.now()
   await androidTransportTrace?.capture(`maestro-${label}-before`)
   const maestro = process.env.TYRS_HAND_E2E_MAESTRO_BIN ?? 'maestro'
   const args = ['--device', deviceID, 'test', flowPath, '--debug-output', `${runDir}/maestro-debug-${label}`,
@@ -144,6 +146,17 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
   clearInterval(heartbeat)
   await androidTransportTrace?.capture(`maestro-${label}-after`)
   await writeFile(`${runDir}/logs/maestro-${label}.log`, Buffer.concat(log))
+  if (platform === 'ios') {
+    const secrets = Object.entries(environment)
+      .filter(([key]) => key.includes('PAIRING') || key.includes('PRIVATE_KEY'))
+      .flatMap(([, value]) => [value, ...value.split('\n').filter((line) => line.length > 40)])
+    try {
+      await collectIosDriverDiagnostics({ runDir, label, startedAt, deviceID, secrets })
+    } catch {
+      // 诊断落盘失败也不能覆盖真实 Maestro 失败或把失败变成成功。
+      process.stderr.write('[mobile-e2e] iOS 驱动诊断无法落盘，原始验收结果保持不变\n')
+    }
+  }
   if (platform === 'android') {
     // 保留真实 JS/原生崩溃栈，不能只留下启动器画面和“找不到按钮”。
     await writeFile(`${runDir}/logs/android-crash-${label}.log`,
