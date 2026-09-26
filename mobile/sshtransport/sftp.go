@@ -106,9 +106,18 @@ func UploadAttachment(host string, port int, user, privateKey, passphrase,
 		return "", err
 	}
 	remotePath := path.Join(directory, digest)
-	if info, statErr := filesystem.Stat(remotePath); statErr == nil &&
+	if info, statErr := filesystem.Lstat(remotePath); statErr == nil &&
 		info.Mode().IsRegular() && info.Size() == size {
-		return marshalJSON(uploadedAttachment{RemotePath: remotePath, SHA256: digest})
+		// 内容寻址缓存必须核对字节，长度相同不能证明附件未被改写。
+		if existing, openErr := filesystem.Open(remotePath); openErr == nil {
+			hash := sha256.New()
+			written, readErr := io.Copy(hash, io.LimitReader(existing, size+1))
+			closeErr := existing.Close()
+			if readErr == nil && closeErr == nil && written == size &&
+				hex.EncodeToString(hash.Sum(nil)) == digest {
+				return marshalJSON(uploadedAttachment{RemotePath: remotePath, SHA256: digest})
+			}
+		}
 	}
 	token, err := randomLoopbackToken()
 	if err != nil {
@@ -131,8 +140,9 @@ func UploadAttachment(host string, port int, user, privateKey, passphrase,
 	if err = destination.Chmod(0o600); err != nil {
 		return "", err
 	}
-	written, err := io.Copy(destination, io.LimitReader(source, (25<<20)+1))
-	if err != nil || written != size {
+	hash := sha256.New()
+	written, err := io.Copy(destination, io.TeeReader(io.LimitReader(source, (25<<20)+1), hash))
+	if err != nil || written != size || hex.EncodeToString(hash.Sum(nil)) != digest {
 		return "", errors.New("SFTP 附件上传不完整")
 	}
 	if err = destination.Close(); err != nil {

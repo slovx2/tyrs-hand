@@ -2276,10 +2276,12 @@
       "cases": {
         "codex": [
           "ENTRY-001",
-          "SESSION-003"
+          "SESSION-003",
+          "FILES-007"
         ],
         "claude-code": [
-          "ENTRY-001"
+          "ENTRY-001",
+          "FILES-007"
         ]
       },
       "callers": [
@@ -2902,7 +2904,8 @@
           "EVENTS-003",
           "SUBMIT-004",
           "SESSION-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FILES-007"
         ],
         "claude-code": [
           "HISTORY-002",
@@ -2914,7 +2917,8 @@
           "EVENTS-004",
           "SUBMIT-004",
           "FAILURE-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FILES-007"
         ]
       },
       "callers": [
@@ -3105,7 +3109,8 @@
           "SUBMIT-004",
           "PERMISSION-007",
           "SESSION-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FILES-007"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3125,7 +3130,8 @@
           "PERMISSION-007",
           "SUBMIT-002",
           "CONTEXT-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FILES-007"
         ]
       },
       "callers": [
@@ -3517,7 +3523,8 @@
           "SUBMIT-004",
           "PERMISSION-007",
           "SESSION-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FILES-007"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3536,7 +3543,8 @@
           "PERMISSION-007",
           "SUBMIT-002",
           "CONTEXT-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FILES-007"
         ]
       },
       "callers": [

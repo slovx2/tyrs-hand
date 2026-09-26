@@ -234,8 +234,12 @@ func verifyRuntimeIsolation(t *testing.T, ctx context.Context, registry *Runtime
 			}
 			require.Error(t, clients[engine].Call(ctx, method, foreign, nil), "外部引擎的会话引用必须拒绝: %s", method)
 		}
+		completed := clients[engine].Subscribe(codex.ThreadFilter{ThreadID: threads[engine]})
+		t.Cleanup(completed.Close)
 		started := nativeMetadataCall[struct{ Turn struct{ ID string } }](t, ctx, clients[engine], "turn/start", params(engine))
 		turns[engine] = started.Turn.ID
+		waitIsolationTurnCompleted(t, ctx, completed, threads[engine], started.Turn.ID)
+		completed.Close()
 		waitSessionTurn(t, ctx, clients[engine], threads[engine], started.Turn.ID)
 		data, err := os.ReadFile(filepath.Join(fixture.root, string(engine)+"-effect.txt"))
 		require.NoError(t, err)
@@ -343,5 +347,36 @@ func verifyRuntimeIsolation(t *testing.T, ctx context.Context, registry *Runtime
 		require.NoError(t, err)
 		require.Equal(t, fixture.secret+"-"+string(engine), string(data), "重启和重复提交不得复用或重放另一引擎副作用")
 		require.Equal(t, int64(1), fixture.tools[engine].Load())
+	}
+}
+
+// Codex 的启动响应先于原生 Turn 开始，启动期历史可能仍显示 interrupted。
+// 必须先确认真实终态事件，再保留持久历史和实际文件副作用的完整断言。
+func waitIsolationTurnCompleted(t *testing.T, ctx context.Context, events *codex.EventSubscription, threadID, turnID string) {
+	t.Helper()
+	for {
+		select {
+		case event, ok := <-events.Events():
+			require.True(t, ok, "隔离回合完成前事件流不能关闭")
+			if event.Method != "turn/completed" {
+				continue
+			}
+			var params struct {
+				ThreadID string
+				Turn     struct {
+					ID, Status string
+					Error      any
+				}
+			}
+			require.NoError(t, json.Unmarshal(event.Params, &params))
+			if params.ThreadID != threadID || params.Turn.ID != turnID {
+				continue
+			}
+			require.Equal(t, "completed", params.Turn.Status)
+			require.Nil(t, params.Turn.Error)
+			return
+		case <-ctx.Done():
+			t.Fatal("真实隔离回合未发出完成事件")
+		}
 	}
 }

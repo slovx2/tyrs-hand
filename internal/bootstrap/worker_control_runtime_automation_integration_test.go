@@ -28,6 +28,7 @@ type controlAutomationCall struct {
 	args             map[string]any
 	sent, resultSeen bool
 	result           json.RawMessage
+	scheduled        chan struct{}
 }
 
 type controlAutomationScenario struct {
@@ -56,7 +57,15 @@ func (s *controlAutomationScenario) respond(t *testing.T, w http.ResponseWriter,
 		return false
 	}
 	input := automationLatestInput(payload)
-	if active := s.active; active != nil && strings.Contains(input, active.id) {
+	if active := s.active; active != nil {
+		if active.scheduled != nil && strings.LastIndex(input, "<scheduled_task>") > strings.LastIndex(input, active.id) {
+			t.Log("真实 run_now 模型请求在前一工具回合清理前到达")
+			close(active.scheduled)
+			active.scheduled = nil
+		}
+	}
+	// SDK 会合并连续 user 输入，较新的调度块优先于历史中的工具标记。
+	if active := s.active; active != nil && strings.LastIndex(input, active.id) > strings.LastIndex(input, "<scheduled_task>") {
 		if !active.sent {
 			for _, tool := range payload.Tools {
 				if strings.Contains(tool.Description, "[tyrs_hand.automation_update]") {
@@ -198,6 +207,11 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 	client, events := connect(app)
 	call := func(action string, args map[string]any) map[string]any {
 		active := &controlAutomationCall{id: "toolu_automation_" + action, args: args}
+		var scheduled <-chan struct{}
+		if action == "retry" {
+			active.scheduled = make(chan struct{})
+			scheduled = active.scheduled
+		}
 		s.mu.Lock()
 		s.active = active
 		s.mu.Unlock()
@@ -212,6 +226,18 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 				WHERE tool.thread_id=$1 AND tool.call_id=$2 AND run.status='completed'`, thread, active.id).Scan(&completed)
 			return err == nil && completed == 1
 		}, 10*time.Second, 50*time.Millisecond, "本地终态须同步至 Control 后才可开始下一阶段")
+		if scheduled != nil {
+			// 确定性覆盖 run_now 已开始，但前一个工具回合的 fixture 尚未清理。
+			deadline := time.NewTimer(15 * time.Second)
+			defer deadline.Stop()
+			select {
+			case <-scheduled:
+			case <-deadline.C:
+				t.Fatal("手动重试未在前一工具回合清理前进入真实模型")
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+		}
 		s.mu.Lock()
 		seen, result := active.resultSeen, append(json.RawMessage(nil), active.result...)
 		s.active = nil
@@ -306,6 +332,11 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 			errorCode, errorMessage, s.successfulRun, s.bashSent, s.bashResultSeen)
 		s.mu.Unlock()
 	}, 30*time.Second, 100*time.Millisecond, "模型发起的真实手动重试必须完成")
+	s.mu.Lock()
+	bashSent, bashResultSeen := s.bashSent, s.bashResultSeen
+	s.mu.Unlock()
+	require.True(t, bashSent, "手动重试必须由模型发起真实 Bash")
+	require.True(t, bashResultSeen, "真实 Bash 成功结果必须回到模型，不能只检查调度状态")
 	content, err := os.ReadFile(s.path)
 	require.NoError(t, err)
 	require.Equal(t, "AUTOMATION_EXECUTED\n", string(content), "真实 Bash 只能追加一次")

@@ -16,7 +16,7 @@
     {"id": "TOOLS", "description": "所有业务工具的成功副作用、错误、拒绝和取消", "cases": ["TOOLS-001", "TOOLS-002"]},
     {"id": "PLAN", "description": "计划进入、问题回答、原生计划文件、重启恢复、拒绝保持只读、确认执行及真实双 SSH 审批", "cases": ["PLAN-001", "PLAN-002", "PLAN-003"]},
     {"id": "MCP", "description": "HTTP、stdio、资源、elicitation、配置隔离及 Skills；004 原生回答与取消副作用；005 双 SSH 首次回答仲裁；011 OAuth PKCE、刷新与真实 SDK 副作用；012 授权失败；013 受限真 SSH 回调", "cases": ["MCP-001", "MCP-002", "MCP-003", "MCP-004", "MCP-005", "MCP-006", "MCP-011", "MCP-012", "MCP-013"], "caseEngines": {"MCP-011": ["claude-code"], "MCP-012": ["claude-code"], "MCP-013": ["claude-code"]}},
-    {"id": "FILES", "description": "文件 RPC、watch、进程、上传下载与边界", "cases": ["FILES-001", "FILES-002", "FILES-003", "FILES-004", "FILES-005", "FILES-006"]},
+    {"id": "FILES", "description": "文件 RPC、watch、进程、上传下载与边界；007 手机 SFTP、原生工具完整字节、缓存修复、中断重试与大小边界", "cases": ["FILES-001", "FILES-002", "FILES-003", "FILES-004", "FILES-005", "FILES-006", "FILES-007"], "caseEngines": {"FILES-007": ["codex", "claude-code"]}},
     {"id": "CHANNELS", "description": "桌面、手机、Discord 三端接力与身份投影；002 单独验证 SSH 与真实 Control", "cases": ["CHANNELS-001", "CHANNELS-002"]},
     {"id": "AUTOMATION", "description": "001 原生创建、修改、暂停跨到期、Worker 离线恢复、自然失败后手动重试及真实 Bash 副作用；任务和结果继承引擎；002 原生创建及 Worker 重启后执行", "cases": ["AUTOMATION-001", "AUTOMATION-002"]},
     {"id": "FAILURE", "description": "模型故障、半断流、CLI、适配器、Worker 与 Control 离线", "cases": ["FAILURE-001", "FAILURE-401", "FAILURE-429", "FAILURE-500", "FAILURE-503", "FAILURE-SSE", "FAILURE-002", "FAILURE-003"]},

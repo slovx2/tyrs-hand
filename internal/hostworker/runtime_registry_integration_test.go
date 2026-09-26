@@ -78,6 +78,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	oauthOnly := mode == "mcp-oauth"
 	goalExecution := mode == "goal-execution"
 	isolationOnly := mode == "isolation"
+	sftpOnly := mode == "mobile-sftp"
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
 	threadPermissions := mode == "thread-permissions"
@@ -106,6 +107,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	oauth := &runtimeOAuthFixture{}
 	goal := &runtimeGoalExecutionFixture{root: root, secret: rand.Text()}
 	isolation := newRuntimeIsolationFixture(filepath.Join(root, "project"), rand.Text())
+	sftpFixture := newRuntimeSFTPFixture(root)
 	plan := &runtimePlanFixture{root: root}
 	approval := &runtimeApprovalFixture{root: root}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -143,6 +145,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			}
 			if isolationOnly {
 				isolation.model(t, w, request, engine, body)
+				return
+			}
+			if sftpOnly {
+				sftpFixture.model(t, w, request, engine, body)
 				return
 			}
 			if planOnly {
@@ -315,7 +321,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || planOnly || approvalOnly {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly {
 			continue
 		}
 		if commandPermissions {
@@ -381,6 +387,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if isolationOnly {
 		verifyRuntimeIsolation(t, ctx, registry, clients, isolation)
 		require.Equal(t, int64(6), modelCalls.Load(), "同提交和工具 ID 只允许各一次实际执行及 Claude 审批回合")
+		return
+	}
+	if sftpOnly {
+		verifyRuntimeMobileSFTP(t, ctx, registry, protocol, private, sftpFixture)
+		require.Equal(t, int64(4), modelCalls.Load(), "两个引擎各执行一次原生文件工具及一次模型续写")
 		return
 	}
 	if threadPermissions {

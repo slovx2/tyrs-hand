@@ -665,15 +665,19 @@ func TestHubSynchronizesSteerInterruptAndRejectsConcurrentStart(t *testing.T) {
 	second := connectDesktop(t, hub.SocketPath())
 	first.initialize(t, 1)
 	second.initialize(t, 1)
+	// 创建响应与广播异步到达，先订阅并核对创建事件，不能让它混入 Turn 断言。
+	events := worker.Subscribe(codex.ThreadFilter{})
+	t.Cleanup(events.Close)
 
 	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
 		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
 	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	created := receiveEvent(t, events.Events())
+	require.Equal(t, "thread/started", created.Method)
+	require.Equal(t, threadID, responseThreadID(t, created.Params))
 	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
 		Params: mustJSON(map[string]string{"threadId": threadID})})
 	require.Nil(t, second.response(t, rawID(2)).Error)
-	events := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
-	t.Cleanup(events.Close)
 
 	first.write(t, rpcMessage{ID: rawID(3), Method: "turn/start",
 		Params: mustJSON(map[string]any{"threadId": threadID,
@@ -711,15 +715,18 @@ func TestHubWaitsForActiveTurnBeforeArchiving(t *testing.T) {
 	second := connectDesktop(t, hub.SocketPath())
 	first.initialize(t, 1)
 	second.initialize(t, 1)
+	events := worker.Subscribe(codex.ThreadFilter{})
+	t.Cleanup(events.Close)
 
 	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
 		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
 	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	created := receiveEvent(t, events.Events())
+	require.Equal(t, "thread/started", created.Method)
+	require.Equal(t, threadID, responseThreadID(t, created.Params))
 	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
 		Params: mustJSON(map[string]string{"threadId": threadID})})
 	require.Nil(t, second.response(t, rawID(2)).Error)
-	events := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
-	t.Cleanup(events.Close)
 
 	first.write(t, rpcMessage{ID: rawID(3), Method: "turn/start",
 		Params: mustJSON(map[string]any{"threadId": threadID,

@@ -49,6 +49,8 @@ const suites = controlOnly ? [
     cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'EVENTS-003'] },
   { name: 'isolation', pkg: './internal/hostworker', test: 'TestRuntimeIsolationRealSSHBothEngines',
     cases: ['ISOLATION-004'], engines: ['codex', 'claude-code'] },
+  { name: 'mobile-sftp', pkg: './internal/hostworker', test: 'TestRuntimeMobileSFTPRealSSHBothEngines',
+    cases: ['FILES-007'], engines: ['codex', 'claude-code'] },
   { name: 'command-permissions', pkg: './internal/hostworker', test: 'TestRuntimeCommandPermissionsRealSSHBothEngines',
     cases: ['PERMISSION-command'] },
   { name: 'thread-permissions', pkg: './internal/hostworker', test: 'TestRuntimeThreadPermissionsRealSSHBothEngines',
@@ -100,6 +102,7 @@ const isolation = process.platform === 'darwin'
   : ['--user', '--map-root-user', '--net', '/bin/sh', '-ec', 'ip link set lo up; exec "$@"', 'runtime-test']
 const xml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')
 let runtimeExecutions = ''
+const runtimeFailures = []
 const infrastructure = suites.some(suite => suite.name === 'bootstrap-control') ? await startControlInfrastructure() : undefined
 Object.assign(env, infrastructure?.env ?? {})
 try {
@@ -118,17 +121,20 @@ for (const suite of suites) {
   if (failed) {
     process.stderr.write(runtime.stdout ?? '')
     process.stderr.write(runtime.stderr ?? '')
-    throw runtime.error ?? new Error(`${suite.name} 真实 SSH 双引擎验收失败`)
+    runtimeFailures.push({ suite: suite.name, error: String(runtime.error ?? '真实 SSH 双引擎验收失败'), status: runtime.status })
   }
   runtimeExecutions += (suite.engines ?? ['codex', 'claude-code']).map(engine => JSON.stringify({
     runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
     caseIds: [...suite.cases.filter(id => !['AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'].includes(id) || engine === 'claude-code'),
-      ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001', 'CAPABILITY-002', 'HISTORY-003'] : [])], status: 'passed',
+      ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001', 'CAPABILITY-002', 'HISTORY-003'] : [])], status: failed ? 'failed' : 'passed',
   })).join('\n') + '\n'
+  // 每个专项均即时落盘；前序失败不能吞掉后续真实验收或冒充成功。
+  writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 }
 } finally { infrastructure?.close() }
-console.log(controlOnly ? '真实 Control、双 SSH、SDK、Discord 审批与重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
+if (!runtimeFailures.length) console.log(controlOnly ? '真实 Control、双 SSH、SDK、Discord 审批与重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
   '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
+writeFileSync(resolve(artifacts, 'runtime-failures.json'), JSON.stringify({ runId, failures: runtimeFailures }, null, 2))
 writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 if (!process.argv.includes('--runtime-only') && !controlOnly) {
   let adapterFailure
@@ -136,6 +142,10 @@ if (!process.argv.includes('--runtime-only') && !controlOnly) {
   const executionPath = resolve(artifacts, 'executions.jsonl')
   writeFileSync(executionPath, readFileSync(executionPath, 'utf8') + runtimeExecutions)
   // 即使 adapter 用例失败仍输出本轮覆盖缺口，不能由旧成功报表掩盖失败。
-  run(process.execPath, ['tools/protocol-inventory/inventory.mjs'])
+  let inventoryFailure
+  try { run(process.execPath, ['tools/protocol-inventory/inventory.mjs']) } catch (error) { inventoryFailure = error }
+  if (runtimeFailures.length) throw new Error(`真实运行时验收失败: ${runtimeFailures.map(item => item.suite).join(', ')}；完整报告已保留`)
   if (adapterFailure) throw adapterFailure
+  if (inventoryFailure) throw inventoryFailure
 }
+if (runtimeFailures.length) throw new Error(`真实运行时验收失败: ${runtimeFailures.map(item => item.suite).join(', ')}`)
