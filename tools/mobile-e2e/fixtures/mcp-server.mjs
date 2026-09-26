@@ -27,7 +27,8 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     ? { mode: 'form', message: 'MOBILE_MCP_TYPED_FORM', requestedSchema: mobileMcpSchema }
     : { mode: 'url', message: 'MOBILE_MCP_URL_CONFIRMATION',
       url: 'http://127.0.0.1/mobile-mcp-confirmation', elicitationId: marker.toLowerCase() }
-  const response = await server.elicitInput(request)
+  // 与 Worker 的真实工具等待窗口一致，不能让 SDK 默认 60 秒提前取消人工表单。
+  const response = await server.elicitInput(request, { timeout: 120_000 })
   const result = { action: response.action, content: response.content ?? null }
   if (response.action === 'accept') {
     await appendFile(resolve(workspace, marker + '.jsonl'), JSON.stringify(result) + '\n')

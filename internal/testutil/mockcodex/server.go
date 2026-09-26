@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -421,6 +422,13 @@ func (c *connection) write(value any) {
 	_ = c.ws.WriteMessage(websocket.TextMessage, payload)
 }
 
+// 必须持有 s.mu；响应在出锁后序列化，不能共享后续会原地修改的回合数组。
+// Status 和 Sandbox 只整体替换，Turn 的所有字段均为值类型。
+func threadSnapshot(thread Thread) Thread {
+	thread.Turns = slices.Clone(thread.Turns)
+	return thread
+}
+
 func (s *Server) createThread(cwd string, ephemeral bool) Thread {
 	id := "thread-" + jsonNumber(s.nextID.Add(1))
 	thread := Thread{ID: id, CWD: cwd, Status: map[string]string{"type": "idle"},
@@ -429,9 +437,9 @@ func (s *Server) createThread(cwd string, ephemeral bool) Thread {
 		ApprovalPolicy: "never", Sandbox: map[string]any{"type": "dangerFullAccess"},
 		ActivePermissionProfile: ":danger-full-access"}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.threads[id] = thread
-	s.mu.Unlock()
-	return thread
+	return threadSnapshot(thread)
 }
 
 func (s *Server) updateThreadSettings(id, approvalPolicy, permissions, model, effort,
@@ -467,7 +475,7 @@ func (s *Server) updateThreadSettings(id, approvalPolicy, permissions, model, ef
 		thread.ServiceTier = serviceTier
 	}
 	s.threads[id] = thread
-	return thread, true
+	return threadSnapshot(thread), true
 }
 
 func (s *Server) updateThreadRuntime(id, model, effort, serviceTier string) Thread {
@@ -480,7 +488,7 @@ func (s *Server) updateThreadRuntime(id, model, effort, serviceTier string) Thre
 	thread.ReasoningEffort = effort
 	thread.ServiceTier = serviceTier
 	s.threads[id] = thread
-	return thread
+	return threadSnapshot(thread)
 }
 
 func (s *Server) updateThreadName(id, name string) (Thread, bool) {
@@ -492,7 +500,7 @@ func (s *Server) updateThreadName(id, name string) (Thread, bool) {
 	}
 	thread.Name = name
 	s.threads[id] = thread
-	return thread, true
+	return threadSnapshot(thread), true
 }
 
 func (s *Server) listThreads(archived bool) []Thread {
@@ -503,7 +511,7 @@ func (s *Server) listThreads(archived bool) []Thread {
 		if thread.Archived != archived {
 			continue
 		}
-		result = append(result, thread)
+		result = append(result, threadSnapshot(thread))
 	}
 	return result
 }
@@ -525,7 +533,7 @@ func (s *Server) setThreadArchived(id string, archived bool) (Thread, bool) {
 	thread.Archived = archived
 	thread.Status = map[string]string{"type": "idle"}
 	s.threads[id] = thread
-	return thread, true
+	return threadSnapshot(thread), true
 }
 
 func (s *Server) startTurn(threadID, clientID string) (Turn, error) {
@@ -599,7 +607,7 @@ func (s *Server) thread(id string) (Thread, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	thread, ok := s.threads[id]
-	return thread, ok
+	return threadSnapshot(thread), ok
 }
 
 func jsonNumber(value int64) string {

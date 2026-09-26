@@ -16,6 +16,7 @@ if [[ "$(pnpm --version)" != "11.14.0" ]]; then
 fi
 
 pnpm --dir "${client}" install --frozen-lockfile
+export EXPO_PUBLIC_TYRS_HAND_PREVIEW_PERF=true
 APP_ENV=development pnpm --dir "${client}" exec expo prebuild --clean --platform "${platform}" --no-install
 
 if [[ "${platform}" == "android" ]]; then

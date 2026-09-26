@@ -5,6 +5,7 @@ import type { Thread } from "@codex-app-server/v2/Thread";
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
+import { traceInteraction } from "@/preview/perf";
 
 import { materializeUserInput, type LocalAttachment } from "@/app-server/attachments";
 import { latestExecutablePlan, textInput, THREAD_PAGE_SIZE,
@@ -750,6 +751,7 @@ function bindClient(connection: Connection, workspaceId: string | null,
         }
       } else if (threadId && event.method !== "serverRequest/resolved" &&
         isServerRequestMethod(event.method)) {
+        traceInteraction("pending", event as ServerRequest);
         observeUnread(connection.profileId, threadId, set, get);
       } else if (threadId && (event.method.startsWith("item/") || event.method.startsWith("turn/") ||
         event.method === "serverRequest/resolved")) {

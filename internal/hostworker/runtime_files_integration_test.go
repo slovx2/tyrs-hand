@@ -118,10 +118,12 @@ func verifyRuntimeWatchIsolation(t *testing.T, ctx context.Context, first, secon
 	}
 	for index, dir := range paths {
 		file := filepath.Join(dir, "changed.txt")
+		started := time.Now()
 		require.NoError(t, os.WriteFile(file, []byte("owned"), 0o600))
 		received := false
-		deadline := time.After(250 * time.Millisecond)
-		assertOwned := func(event codex.Event, owner int) {
+		// 与单监听用例使用相同的有界窗口；目录刚建立的事件不能代替目标文件变化。
+		deadline := time.After(3 * time.Second)
+		assertOwned := func(event codex.Event, owner int) bool {
 			t.Helper()
 			require.Equal(t, "fs/changed", event.Method)
 			var params struct {
@@ -130,17 +132,22 @@ func verifyRuntimeWatchIsolation(t *testing.T, ctx context.Context, first, secon
 			}
 			require.NoError(t, json.Unmarshal(event.Params, &params))
 			require.Equal(t, "same-id", params.WatchID)
+			matched := false
 			for _, changed := range params.ChangedPaths {
 				require.True(t, changed == paths[owner] || strings.HasPrefix(changed, paths[owner]+string(os.PathSeparator)),
 					"文件变化泄漏到其他连接: %s", changed)
+				matched = matched || changed == file
 			}
+			return matched
 		}
 	collect:
 		for {
 			select {
 			case event := <-events[index].Events():
-				assertOwned(event, index)
-				received = true
+				if assertOwned(event, index) && !received {
+					received = true
+					t.Logf("监听 %d 在 %s 收到目标文件变化", index, time.Since(started))
+				}
 			case event := <-events[1-index].Events():
 				assertOwned(event, 1-index)
 			case <-deadline:

@@ -1,9 +1,10 @@
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
+import { traceInteraction } from "@/preview/perf";
 
 import { approvalActions } from "./approvalActions";
 import { McpElicitationCard } from "./McpElicitationCard";
@@ -21,6 +22,7 @@ export function ServerRequestCard({ request, onAnswer }: {
 function ActiveServerRequest({ request, onAnswer }: {
   request: ServerRequest; onAnswer: (result: unknown) => void;
 }) {
+  useEffect(() => traceInteraction("mounted", request), [request]);
   if (request.method === "item/tool/requestUserInput") {
     return <QuestionRequest request={request} onAnswer={onAnswer} />;
   }

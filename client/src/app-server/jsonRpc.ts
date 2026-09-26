@@ -3,6 +3,7 @@ import type { InitializeResponse } from "@codex-app-server/InitializeResponse";
 import type { RequestId } from "@codex-app-server/RequestId";
 import type { ServerNotification } from "@codex-app-server/ServerNotification";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import { traceInteraction } from "@/preview/perf";
 
 export const CODEX_APP_SERVER_VERSION = "0.147.0";
 
@@ -225,6 +226,7 @@ export class CodexJsonRpcClient {
     }
     if ((typeof message.id === "string" || typeof message.id === "number") &&
       typeof message.method === "string") {
+      traceInteraction("received", message as ServerRequest);
       for (const listener of this.serverRequests) listener(message as ServerRequest);
       return;
     }

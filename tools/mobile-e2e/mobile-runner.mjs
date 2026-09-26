@@ -148,6 +148,23 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
     // 保留真实 JS/原生崩溃栈，不能只留下启动器画面和“找不到按钮”。
     await writeFile(`${runDir}/logs/android-crash-${label}.log`,
       output('adb', ['-s', deviceID, 'logcat', '-b', 'crash', '-d']))
+    try {
+      const pid = output('adb', ['-s', deviceID, 'shell', 'pidof', appID])
+      if (!/^\d+$/.test(pid)) throw new Error('没有唯一应用进程')
+      const lines = output('adb', ['-s', deviceID, 'logcat', '--pid', pid, '-d',
+        'ReactNativeJS:I', '*:S']).split('\n')
+      const interactions = lines.flatMap((line) => {
+        const match = line.match(/\[TYRS_PERF\] interactive\.(received|pending|mounted) method=(\S+) id=(\S+) idType=(string|number) threadId=(\S+)/)
+        return match ? [{ stage: match[1], method: match[2], id: match[3],
+          idType: match[4], threadId: match[5] }] : []
+      })
+      await writeFile(`${runDir}/logs/android-interactions-${label}.json`,
+        JSON.stringify({ available: true, events: interactions }, null, 2))
+    } catch {
+      // 应用已退出时仍保留原始 Maestro 失败，不让诊断覆盖失败原因。
+      await writeFile(`${runDir}/logs/android-interactions-${label}.json`,
+        JSON.stringify({ available: false, events: [] }))
+    }
   }
   await redactEvidenceSecrets(runDir, Object.entries(environment)
     .filter(([key]) => key.includes('PAIRING') || key.includes('PRIVATE_KEY'))

@@ -119,6 +119,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [positionRestored, setPositionRestored] = useState(false);
   const rowsRef = useRef<ConversationRow[]>([]);
+  const focusedRequest = useRef<ServerRequest | null>(null);
   const pinnedToLatest = useRef(true);
   const showScrollToLatestRef = useRef(false);
   const historyPagingReady = useRef(false);
@@ -270,6 +271,20 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       followRequest.current = { animated: false, force: false };
       if ((!request.force && !positionRestored) || (!request.force && interactionBlocked.current) ||
         (!request.force && !shouldFollowLatest(followState.current))) return;
+      const last = rowsRef.current.at(-1);
+      if (last?.kind === "request") {
+        // 大表单需要从标题和首个字段开始；填写期间的布局变化不能把输入滚走。
+        if (focusedRequest.current === last.request) return;
+        focusedRequest.current = last.request;
+        const scrolling = list.current?.scrollToIndex({ index: rowsRef.current.length - 1,
+          animated: request.animated, viewPosition: 0 });
+        if (!scrolling) focusedRequest.current = null;
+        else void scrolling.catch(() => {
+          if (focusedRequest.current === last.request) focusedRequest.current = null;
+        });
+        return;
+      }
+      focusedRequest.current = null;
       list.current?.scrollToEnd({ animated: request.animated });
     });
   }, [positionRestored]);
@@ -304,6 +319,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [positionKey]);
 
   const followLatest = useCallback((animated: boolean) => {
+    focusedRequest.current = null;
     dispatchFollow({ type: "scroll_to_bottom", latestTurnPhase: latestPhase.current });
     pinnedToLatest.current = true;
     interactionBlocked.current = false;
@@ -334,10 +350,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       dispatchFollow({ type: "user_reached_bottom", latestTurnPhase: latestPhase.current });
     }
     if (shouldFollowLatest(followState.current)) {
-      list.current?.scrollToEnd({ animated: false });
+      scheduleFollowLatest();
     }
     userScrollGesture.current = null;
-  }, [dispatchFollow, imageLoadGate]);
+  }, [dispatchFollow, imageLoadGate, scheduleFollowLatest]);
 
   const settleUserInteraction = useCallback(() => {
     if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
