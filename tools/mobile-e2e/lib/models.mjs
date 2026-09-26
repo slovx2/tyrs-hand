@@ -5,30 +5,36 @@ import { pathToFileURL } from 'node:url'
 
 const text = (value) => [{ type: 'text', text: value }]
 const tool = (name, id, input) => ({ type: 'tool_use', name, id, input })
+const title = { title: 'Mobile runtime acceptance', description: '真实 SSH 双引擎移动验收' }
+
+export function structuredTitleResponse(request) {
+  const schema = request.text?.format?.schema ?? request.output_config?.format?.schema
+  if (schema?.properties?.title && schema?.properties?.description) return text(JSON.stringify(title))
+  // 固定 Claude CLI 通过真实 StructuredOutput 工具完成 outputSchema，
+  // 标题提示词也包含用户的场景标识，不能把它当作待执行任务。
+  const output = request.tools?.find((entry) => entry.name === 'StructuredOutput' &&
+    entry.input_schema?.properties?.title && entry.input_schema?.properties?.description)
+  if (output) return [tool(output.name, 'toolu_mobile_title', title)]
+  return undefined
+}
 
 export async function startModels(adapter, evidenceDir) {
   const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'dist/test/fixtures/mock-llm.mjs')))
   const models = {}, urls = {}, completed = new Set()
   let workspace
-  const title = JSON.stringify({ title: 'Mobile runtime acceptance', description: '真实 SSH 双引擎移动验收' })
   for (const engine of ['codex', 'claude-code']) {
     const model = new MockLLM()
     models[engine] = model
     const respond = (request) => {
       model.enqueue(respond)
-      const schema = request.text?.format?.schema ?? request.output_config?.format?.schema
-      if (schema?.properties?.title) return text(title)
+      const auxiliary = structuredTitleResponse(request)
+      if (auxiliary) return auxiliary
       const messages = request.messages ?? request.input ?? []
       const user = Array.isArray(messages) ? messages.filter((message) => message.role === 'user') : []
       const matches = JSON.stringify(user).match(/MOBILE_(?:CODEX|CLAUDE)_[A-Z_]+/g) ?? []
       const marker = matches.at(-1)
       assert.ok(marker, '未登记的模型请求，不能以默认成功回答掩盖')
       assert.equal(marker.includes('CODEX'), engine === 'codex', '模型请求串入另一引擎')
-      // 辅助标题有独立模型上下文，不计为对话或副作用验收。
-      const input = JSON.stringify(messages)
-      if (input.includes('"title"') && input.includes('"description"') && /标题|title/i.test(input)) {
-        return text(title)
-      }
       const result = (id) => user.flatMap((message) => Array.isArray(message.content) ? message.content : [])
         .findLast((block) => block.type === 'tool_result' && block.tool_use_id === id)
       const finish = (answer) => { completed.add(marker); return text(answer) }

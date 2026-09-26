@@ -81,7 +81,7 @@ client-export-ios:
 
 client-e2e-contract:
 	$(PNPM) --dir client e2e:contract
-	node --test tools/mobile-e2e/lib/harness.test.mjs tools/mobile-e2e/verify-evidence.test.mjs
+	node --test tools/mobile-e2e/lib/*.test.mjs tools/mobile-e2e/verify-evidence.test.mjs
 
 .PHONY: test-mobile-runtime-e2e client-e2e-dual-engine
 test-mobile-runtime-e2e:

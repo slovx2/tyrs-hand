@@ -59,7 +59,10 @@ if [[ "$(pod _1.16.2_ --version)" != "1.16.2" ]]; then
   exit 1
 fi
 # prebuild --no-install 只生成项目，真实原生依赖必须安装后才存在 xcworkspace。
-pod _1.16.2_ install --project-directory="${client}/ios"
+(
+  cd "${client}/ios"
+  pod _1.16.2_ install
+)
 workspace="$(find "${client}/ios" -maxdepth 1 -name '*.xcworkspace' -print -quit)"
 test -n "${workspace}"
 scheme="$(basename "${workspace}" .xcworkspace)"

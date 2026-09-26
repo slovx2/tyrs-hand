@@ -51,6 +51,8 @@ const suites = controlOnly ? [
     cases: ['PERMISSION-command'] },
   { name: 'thread-permissions', pkg: './internal/hostworker', test: 'TestRuntimeThreadPermissionsRealSSHBothEngines',
     cases: ['PERMISSION-007'] },
+  { name: 'catalog', pkg: './internal/hostworker', test: 'TestRuntimeModelCatalogRealSSHBothEngines',
+    cases: ['CATALOG-001'] },
   { name: 'history', pkg: './internal/hostworker', test: 'TestRuntimeHistoryRealSSH',
     cases: ['HISTORY-002'], engines: ['claude-code'] },
   { name: 'session', pkg: './internal/hostworker', test: 'TestRuntimeSessionRealSSH',

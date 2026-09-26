@@ -48,3 +48,5 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - inputText: ${TASK_TEXT}
 - tapOn:
     id: "composer:send"
+- hideKeyboard
+- waitForAnimationToEnd

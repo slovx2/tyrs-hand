@@ -1,6 +1,7 @@
 {
   "formatVersion": 1,
   "groups": [
+    {"id": "CATALOG", "description": "双 SSH 模型与权限目录分页、计划模式发现及提供方能力，无隐式模型调用", "cases": ["CATALOG-001"], "caseEngines": {"CATALOG-001": ["codex", "claude-code"]}},
     {"id": "CONFIG", "description": "独立原生 settings.json 的地址、两种认证、模型及 CLAUDE.md 真实生效", "cases": ["CONFIG-001"]},
     {"id": "ENTRY", "description": "双 SSH、专用包装器、幂等启动与独立恢复", "cases": ["ENTRY-001", "ENTRY-002"]},
     {"id": "ISOLATION", "description": "入口路由、相同提交 ID、强制同名 thread、审批和缓存隔离", "cases": ["ISOLATION-001", "ISOLATION-002", "ISOLATION-003"]},

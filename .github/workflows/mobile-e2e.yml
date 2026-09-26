@@ -81,6 +81,7 @@ jobs:
           '
           make test-mobile-runtime-e2e > mobile-runtime-junit.xml
       - name: 创建 Android 35 手机模拟器
+        timeout-minutes: 15
         run: |
           test -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
           { yes || true; } | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
@@ -95,8 +96,15 @@ jobs:
           sudo chmod 666 /dev/kvm
           nohup emulator -avd tyrs_hand_e2e_api35 -no-window -no-audio -no-boot-anim \
             -gpu swiftshader_indirect >"${RUNNER_TEMP}/android-emulator.log" 2>&1 &
-          adb wait-for-device
-          until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do sleep 2; done
+          emulator_pid=$!
+          trap 'cat "${RUNNER_TEMP}/android-emulator.log"' ERR
+          timeout 300 adb wait-for-device
+          boot_deadline=$((SECONDS + 300))
+          until [[ "$(timeout 10 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do
+            kill -0 "${emulator_pid}"
+            test "${SECONDS}" -lt "${boot_deadline}"
+            sleep 2
+          done
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0

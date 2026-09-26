@@ -337,9 +337,10 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["CATALOG-001"],
         "claude-code": [
-          "PLAN-002"
+          "PLAN-002",
+          "CATALOG-001"
         ]
       },
       "callers": [
@@ -1705,8 +1706,8 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": ["CATALOG-001"],
+        "claude-code": ["CATALOG-001"]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -1726,8 +1727,8 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": ["CATALOG-001"],
+        "claude-code": ["CATALOG-001"]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -1744,8 +1745,8 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": ["CATALOG-001"],
+        "claude-code": ["CATALOG-001"]
       },
       "callers": [
         "internal/appserverhub/methods.go"
