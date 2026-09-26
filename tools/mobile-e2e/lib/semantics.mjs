@@ -6,6 +6,7 @@ export const mobileScenarios = ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBI
 // 仅从真实上游 wire 提取可公开的关联信息，不能以 GUI 点击代替审批回答。
 export function mobileWireSemantics(engine, messages) {
   const scenarios = new Map(), threads = new Map(), pending = new Map()
+  const planFragments = new Map()
   for (const [sequence, entry] of messages.entries()) {
     const { connection, direction, message } = entry
     const params = message.params ?? {}
@@ -26,8 +27,14 @@ export function mobileWireSemantics(engine, messages) {
       if (message.method === 'item/completed' && params.item?.type === 'fileChange') {
         scenario.fileChanges.push(sequence)
       }
-      if (message.method === 'item/completed' && params.item?.type === 'agentMessage' &&
+      if (message.method === 'item/completed' && params.item?.type === 'plan' &&
           params.item.text?.includes('MOBILE_PLAN_OUTPUT:')) scenario.planOutput.push(sequence)
+      if (message.method === 'item/plan/delta') {
+        const key = JSON.stringify([connection, params.threadId, params.itemId])
+        const text = (planFragments.get(key) ?? '') + params.delta
+        planFragments.set(key, text)
+        if (text.includes('MOBILE_PLAN_OUTPUT:')) scenario.planOutput.push(sequence)
+      }
       if (message.id !== undefined && ['item/fileChange/requestApproval',
         'item/commandExecution/requestApproval', 'item/tool/requestUserInput',
         'item/permissions/requestApproval'].includes(message.method)) {

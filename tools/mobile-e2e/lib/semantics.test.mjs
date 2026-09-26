@@ -20,8 +20,10 @@ function fixture(engine = 'claude-code') {
     if (marker.endsWith('_DENY')) ask('', { decision: 'decline' })
     if (marker.endsWith('_PLAN')) {
       ask('-color', { answers: { color: { answers: ['Blue'] } } }, [{ id: 'color' }])
-      add('response', { method: 'item/completed', params: { threadId: marker,
-        item: { type: 'agentMessage', text: 'MOBILE_PLAN_OUTPUT: Write Blue after confirmation.' } } })
+      add('response', { method: 'item/plan/delta', params: { threadId: marker,
+        itemId: 'plan-output', delta: 'MOBILE_PLAN_' } })
+      add('response', { method: 'item/plan/delta', params: { threadId: marker,
+        itemId: 'plan-output', delta: 'OUTPUT: Write Blue after confirmation.' } })
       ask('-exit', { answers: { exit: { answers: ['执行计划'] } } }, [{ id: 'exit' }])
       add('response', { method: 'item/completed', params: { threadId: marker, item: { type: 'fileChange' } } })
     }
@@ -52,8 +54,9 @@ test('手机点击后答案丢失、ID不匹配或拒绝被改为允许均不能
 
 test('缺少计划输出、确认前执行或未进入计划模式均不能通过', () => {
   const rows = fixture()
-  const output = rows.findIndex((entry) => entry.message.params?.item?.type === 'agentMessage')
-  assert.throws(() => mobileWireSemantics('claude-code', rows.filter((_, index) => index !== output)), /没有输出计划/)
+  const output = rows.findIndex((entry) => entry.message.method === 'item/plan/delta')
+  assert.throws(() => mobileWireSemantics('claude-code', rows.filter((entry) =>
+    entry.message.method !== 'item/plan/delta')), /没有输出计划/)
   const early = structuredClone(rows)
   early.splice(output, 0, early.pop())
   assert.throws(() => mobileWireSemantics('claude-code', early), /确认前已修改/)
