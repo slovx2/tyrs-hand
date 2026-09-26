@@ -62,6 +62,30 @@ test('正式 Worker 共用密钥双 SSH：计划提问、退出执行、完全�
         const history = await client.request('thread/read', { threadId: thread.id, includeTurns: true })
         assert.match(JSON.stringify(history), new RegExp(marker + '_OK'))
       }
+      // GUI 会同时生成 Worker 标题和客户端摘要；必须经真实 SSH/SDK 返回指定 JSON。
+      for (const includeDescription of [false, true]) {
+        const properties = { title: { type: 'string' } }
+        if (includeDescription) properties.description = { type: 'string' }
+        const outputSchema = { type: 'object', additionalProperties: false,
+          properties, required: Object.keys(properties) }
+        const { thread } = await client.request('thread/start', { cwd: worker.workspace,
+          approvalPolicy: 'never', sandbox: 'read-only' })
+        threads[engine].push(thread.id)
+        const { turn } = await client.request('turn/start', { threadId: thread.id, outputSchema,
+          input: [{ type: 'text', text: engine === 'codex' ? 'MOBILE_CODEX_CHAT' : 'MOBILE_CLAUDE_APPROVAL',
+            text_elements: [] }] })
+        const event = await client.waitFor('turn/completed',
+          (value) => value.threadId === thread.id && value.turn.id === turn.id)
+        assert.equal(event.params.turn.status, 'completed', JSON.stringify(event.params.turn.error))
+        const history = await client.request('thread/read', { threadId: thread.id, includeTurns: true })
+        const items = history.thread.turns.find((entry) => entry.id === turn.id).items
+        const answers = items.filter((item) => item.type === 'agentMessage').map((item) => item.text)
+        const expectedTitle = { title: 'Mobile runtime acceptance' }
+        if (includeDescription) expectedTitle.description = '真实 SSH 双引擎移动验收'
+        assert.ok(answers.some((answer) => {
+          try { assert.deepEqual(JSON.parse(answer), expectedTitle); return true } catch { return false }
+        }), '只读辅助任务必须保留模型真实结构化结果，不能从输入合成标题')
+      }
     }
     for (const client of clients) {
       const other = client.engine === 'codex' ? 'claude-code' : 'codex'

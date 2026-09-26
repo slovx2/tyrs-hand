@@ -108,7 +108,7 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	if t.Name() == "TestWorkerControlRealSSHBothEngines" {
 		cases = []string{"CHANNELS-002"}
 		if engine == runtimeidentity.Claude {
-			cases = append(cases, "AUTOMATION-002", "APPROVAL-006")
+			cases = append(cases, "AUTOMATION-001", "AUTOMATION-002", "APPROVAL-006")
 		}
 	}
 	data, err := json.MarshalIndent(map[string]any{"formatVersion": 1,

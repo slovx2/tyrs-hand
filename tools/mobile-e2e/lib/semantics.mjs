@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { isTitleOutputSchema } from './title-schema.mjs'
 
 export const mobileScenarios = ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
   'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']
@@ -11,6 +12,8 @@ export function mobileWireSemantics(engine, messages) {
     const { connection, direction, message } = entry
     const params = message.params ?? {}
     if (direction === 'request' && message.method === 'turn/start') {
+      // 辅助标题线程会携带原始用户文本，但不属于六个业务执行回合。
+      if (isTitleOutputSchema(params.outputSchema)) continue
       const marker = params.input?.find((item) => item.type === 'text' &&
         mobileScenarios.includes(item.text))?.text
       if (marker) {

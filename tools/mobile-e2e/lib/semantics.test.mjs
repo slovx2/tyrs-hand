@@ -64,3 +64,19 @@ test('缺少计划输出、确认前执行或未进入计划模式均不能通�
     entry.message.params.threadId === 'MOBILE_CLAUDE_PLAN').message.params.collaborationMode.mode = 'default'
   assert.throws(() => mobileWireSemantics('claude-code', rows), /没有进入计划模式/)
 })
+
+test('标题辅助回合不能覆盖真实业务场景，真正重复提交仍被拒绝', () => {
+  const rows = fixture()
+  const auxiliary = structuredClone(rows[0])
+  auxiliary.message.id = 'title-call'
+  auxiliary.message.params.threadId = 'title-thread'
+  auxiliary.message.params.outputSchema = { type: 'object',
+    properties: { title: { type: 'string' } }, required: ['title'] }
+  rows.push(auxiliary)
+  assert.equal(mobileWireSemantics('claude-code', rows).passed, true)
+  delete auxiliary.message.params.outputSchema
+  assert.throws(() => mobileWireSemantics('claude-code', rows), /重复提交/)
+  auxiliary.message.params.outputSchema = { type: 'object',
+    properties: { title: { type: 'string' }, result: { type: 'string' } } }
+  assert.throws(() => mobileWireSemantics('claude-code', rows), /重复提交/)
+})

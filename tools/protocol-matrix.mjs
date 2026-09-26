@@ -43,7 +43,7 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
 const suites = controlOnly ? [
   { name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
-    cases: ['CHANNELS-002', 'AUTOMATION-002', 'APPROVAL-006'] },
+    cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
 ] : [
   { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
     cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'EVENTS-003'] },
@@ -74,7 +74,7 @@ const suites = controlOnly ? [
 ]
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
   suites.push({ name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
-    cases: ['CHANNELS-002', 'AUTOMATION-002', 'APPROVAL-006'] })
+    cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] })
 }
 for (const suite of suites) {
   suite.binary = resolve(artifacts, `${suite.name}.test`)
@@ -108,7 +108,7 @@ for (const suite of suites) {
   }
   runtimeExecutions += (suite.engines ?? ['codex', 'claude-code']).map(engine => JSON.stringify({
     runId: env.PROTOCOL_RUN_ID, engine, caseName: suite.test,
-    caseIds: [...suite.cases.filter(id => !['AUTOMATION-002', 'APPROVAL-006'].includes(id) || engine === 'claude-code'),
+    caseIds: [...suite.cases.filter(id => !['AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'].includes(id) || engine === 'claude-code'),
       ...(suite.name === 'runtime' && engine === 'claude-code' ? ['CONFIG-001', 'CAPABILITY-002', 'HISTORY-003'] : [])], status: 'passed',
   })).join('\n') + '\n'
 }

@@ -2,19 +2,22 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { isTitleOutputSchema } from './title-schema.mjs'
 
 const text = (value) => [{ type: 'text', text: value }]
 const tool = (name, id, input) => ({ type: 'tool_use', name, id, input })
 const title = { title: 'Mobile runtime acceptance', description: '真实 SSH 双引擎移动验收' }
+const titleForSchema = (schema) => Object.fromEntries(
+  Object.keys(schema.properties).map((key) => [key, title[key]]))
 
 export function structuredTitleResponse(request) {
   const schema = request.text?.format?.schema ?? request.output_config?.format?.schema
-  if (schema?.properties?.title && schema?.properties?.description) return text(JSON.stringify(title))
+  if (isTitleOutputSchema(schema)) return text(JSON.stringify(titleForSchema(schema)))
   // 固定 Claude CLI 通过真实 StructuredOutput 工具完成 outputSchema，
   // 标题提示词也包含用户的场景标识，不能把它当作待执行任务。
   const output = request.tools?.find((entry) => entry.name === 'StructuredOutput' &&
-    entry.input_schema?.properties?.title && entry.input_schema?.properties?.description)
-  if (output) return [tool(output.name, 'toolu_mobile_title', title)]
+    isTitleOutputSchema(entry.input_schema))
+  if (output) return [tool(output.name, 'toolu_mobile_title', titleForSchema(output.input_schema))]
   return undefined
 }
 

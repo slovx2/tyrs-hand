@@ -32,6 +32,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	var mu sync.Mutex
 	requests := map[runtimeidentity.Engine][]json.RawMessage{}
 	approvals := newControlApprovalScenario()
+	automation := &controlAutomationScenario{}
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.Contains(req.URL.Path, "count_tokens") {
 			_, _ = io.WriteString(w, `{"input_tokens":10}`)
@@ -58,6 +59,9 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 		requests[engine] = append(requests[engine], body)
 		mu.Unlock()
 		if engine == runtimeidentity.Claude {
+			if automation.respond(t, w, body) {
+				return
+			}
 			if approvals.respond(t, w, body) {
 				return
 			}
@@ -160,7 +164,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	require.Equal(t, runtimeidentity.Claude, scheduleEngine)
 	workerID := app.Runner.WorkerID()
 	stopWorker()
-	app, _ = startWorker()
+	app, stopWorker = startWorker()
 	require.Equal(t, workerID, app.Runner.WorkerID(), "重启不能注册第二个 Worker")
 	require.Eventually(t, func() bool {
 		var count int
@@ -188,6 +192,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r
 		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='codex'`).Scan(&codexRuns))
 	require.Equal(t, 1, codexRuns, "Claude 审批不得产生 Codex 回合")
+	automation.run(t, ctx, app, stopWorker, startWorker, f, threads[runtimeidentity.Claude], sessionID, scheduleID)
 	mu.Lock()
 	defer mu.Unlock()
 	for engine, payloads := range requests {
