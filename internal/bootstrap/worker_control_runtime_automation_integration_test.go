@@ -29,6 +29,8 @@ type controlAutomationCall struct {
 	sent, resultSeen bool
 	result           json.RawMessage
 	scheduled        chan struct{}
+	replyReady       chan struct{}
+	releaseReply     chan struct{}
 }
 
 type controlAutomationScenario struct {
@@ -80,6 +82,16 @@ func (s *controlAutomationScenario) respond(t *testing.T, w http.ResponseWriter,
 			active.result = result
 			if failed {
 				t.Errorf("调度生命周期工具 %s 返回错误", active.id)
+			}
+			if active.replyReady != nil {
+				ready, release := active.replyReady, active.releaseReply
+				active.replyReady = nil
+				close(ready)
+				// 保持真实模型 HTTP 响应未结束，让 Worker 确实处于原工具回合内。
+				// 等待时释放场景锁，避免测试栅栏自己阻止调度模型请求。
+				s.mu.Unlock()
+				<-release
+				s.mu.Lock()
 			}
 		}
 		bootstrapModelText(w, true)
@@ -208,9 +220,16 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 	call := func(action string, args map[string]any) map[string]any {
 		active := &controlAutomationCall{id: "toolu_automation_" + action, args: args}
 		var scheduled <-chan struct{}
+		var replyReady <-chan struct{}
+		var releaseReply func()
 		if action == "retry" {
 			active.scheduled = make(chan struct{})
 			scheduled = active.scheduled
+			active.replyReady, active.releaseReply = make(chan struct{}), make(chan struct{})
+			replyReady = active.replyReady
+			var once sync.Once
+			releaseReply = func() { once.Do(func() { close(active.releaseReply) }) }
+			t.Cleanup(releaseReply)
 		}
 		s.mu.Lock()
 		s.active = active
@@ -218,6 +237,15 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 		require.NoError(t, client.Call(ctx, "turn/start", map[string]any{"threadId": thread,
 			"approvalPolicy": "never", "sandboxPolicy": map[string]any{"type": "dangerFullAccess"},
 			"input": []map[string]any{{"type": "text", "text": active.id, "text_elements": []any{}}}}, nil))
+		if replyReady != nil {
+			select {
+			case <-replyReady:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			verifyAutomationWaitsForIdle(t, ctx, f, thread)
+			releaseReply()
+		}
 		awaitBootstrapTurn(t, ctx, events)
 		require.Eventually(t, func() bool {
 			var completed int
@@ -233,7 +261,8 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 			select {
 			case <-scheduled:
 			case <-deadline.C:
-				t.Fatal("手动重试未在前一工具回合清理前进入真实模型")
+				logAutomationRetryState(t, ctx, f, thread)
+				t.Fatal("手动重试未在原工具回合结束后进入真实模型")
 			case <-ctx.Done():
 				t.Fatal(ctx.Err())
 			}
@@ -352,6 +381,14 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 		require.Equal(t, string(runtimeidentity.Claude), engine)
 	}
 	require.Equal(t, "run_now", trigger)
+	var retryTurn, toolTurn, resolvedAction string
+	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT i.confirmed_codex_turn_id,i.resolved_action,tool.turn_id
+		FROM scheduled_task_runs r JOIN codex_turn_intents i ON i.id=r.intent_id
+		JOIN tool_calls tool ON tool.thread_id=$2 AND tool.call_id='toolu_automation_retry'
+		WHERE r.id=$1`, retryID, thread).Scan(&retryTurn, &resolvedAction, &toolTurn))
+	require.Equal(t, "start", resolvedAction, "等待空闲的重试必须实际启动新回合")
+	require.NotEmpty(t, retryTurn)
+	require.NotEqual(t, toolTurn, retryTurn, "调度执行不得与发起 run_now 的工具回合合并")
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM scheduled_task_runs WHERE scheduled_task_id=$1`, taskID).Scan(&runCount))
 	require.Equal(t, 2, runCount, "一个自然失败和一个手动重试，不能重复物化")
 	var codexRuns int
@@ -367,7 +404,9 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 		"taskID": taskID, "scheduledFailedRunID": failedID, "manualRetryRunID": retryID, "engine": sessionEngine,
 		"threadPreserved": external == thread, "workerIDPreserved": workerID == app.Runner.WorkerID(),
 		"pausedAcrossOriginalDue": true, "workerOfflineAcrossDue": true, "naturalDueAfterRestart": true, "modelFailureRequests": s.failureRequests,
-		"manualRetryCompleted": true, "nativeBashResultSeen": s.bashResultSeen, "fileContent": string(content), "taskRunCount": runCount})
+		"manualRetryCompleted": true, "nativeBashResultSeen": s.bashResultSeen, "fileContent": string(content), "taskRunCount": runCount,
+		"queuedWhileOriginalTurnActive": true, "manualRetryResolvedAction": resolvedAction,
+		"manualRetryNativeTurn": retryTurn, "runNowToolNativeTurn": toolTurn})
 }
 
 func automationResultObject(t *testing.T, raw json.RawMessage) map[string]any {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -69,9 +70,19 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	caseName := t.Name()
+	caseIDs := []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeClaudeEventsRealSSH" {
+		// 子场景共享根用例执行记录；Codex 仅初始化，不能声称完成 Claude 语义。
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"EVENTS-009"}
+		}
+	}
 	data, err := json.MarshalIndent(map[string]any{
 		"formatVersion": 1, "runId": os.Getenv("PROTOCOL_RUN_ID"), "engine": engine,
-		"caseName": t.Name(), "caseIds": []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"},
+		"caseName": caseName, "caseIds": caseIDs,
 		"kind": "wire", "payload": map[string]any{"messages": p.messages, "protocolErrors": []string{}},
 	}, "", "  ")
 	require.NoError(t, err)

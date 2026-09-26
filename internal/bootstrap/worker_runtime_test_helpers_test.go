@@ -117,6 +117,9 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	if t.Name() == "TestWorkerControlMcpRealSSH" {
 		cases = []string{"MCP-014"}
 	}
+	if t.Name() == "TestWorkerControlLiveCodexRealSSH" {
+		cases = []string{"MIGRATION-004"}
+	}
 	data, err := json.MarshalIndent(map[string]any{"formatVersion": 1,
 		"runId": os.Getenv("PROTOCOL_RUN_ID"), "engine": engine, "caseName": t.Name(),
 		"caseIds": cases, "kind": kind, "payload": payload}, "", "  ")

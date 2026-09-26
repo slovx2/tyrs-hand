@@ -274,7 +274,9 @@ func (r *Hub) forwardEvents() {
 				}
 				continue
 			}
-			if threadID == "" || (event.Method == "thread/started" && !ephemeral) ||
+			// 普通会话的创建与删除都影响列表，即使客户端已退出正文订阅也要通知。
+			listChanged := event.Method == "thread/started" || event.Method == "thread/deleted"
+			if threadID == "" || (listChanged && !ephemeral) ||
 				item.subscribed(threadID) {
 				sessions = append(sessions, item)
 			}

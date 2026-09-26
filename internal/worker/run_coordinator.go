@@ -102,6 +102,11 @@ func (c *runCoordinator) route(task *workerprotocol.Task) (*workerprotocol.Task,
 		if active.applied[task.Claimed.ID] {
 			return result, true, true
 		}
+		// 定时任务等显式等待空闲的输入不能被改成 steer，也不能并行启动。
+		// 不建立 reservation；当前回合注销后，Runner 会再次领取并正式 start。
+		if task.Claimed.Operation == "turn_input" && task.Claimed.Behavior == "start_when_idle" {
+			return result, true, false
+		}
 		if active.reserved[task.Claimed.ID] {
 			return result, true, false
 		}

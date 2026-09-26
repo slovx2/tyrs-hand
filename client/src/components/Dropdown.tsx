@@ -35,9 +35,9 @@ export function Dropdown({ label, value, options, placeholder, emptyLabel = "无
       <Text style={[styles.chevron, { color: theme.colors.textMuted }]}>⌄</Text>
     </Pressable>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={() => setVisible(false)}>
-      <Pressable style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
+      <Pressable accessible={false} style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
         onPress={() => setVisible(false)}>
-        <Pressable style={[styles.sheet, { backgroundColor: theme.colors.surface }]}
+        <Pressable accessible={false} style={[styles.sheet, { backgroundColor: theme.colors.surface }]}
           onPress={(event) => event.stopPropagation()}>
           <View style={styles.sheetHeader}><Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
             {label}</Text><Pressable testID={`${testID}:close`} onPress={() => setVisible(false)}>

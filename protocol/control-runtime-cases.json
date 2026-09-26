@@ -2,6 +2,12 @@
   "scope": "control-database",
   "cases": [
     {
+      "id": "CONTROL-DISPATCH-003",
+      "package": "./internal/httpapi",
+      "test": "TestWorkerPendingInputSkipsBusyStartWhenIdle",
+      "engines": ["codex", "claude-code"]
+    },
+    {
       "id": "CONTROL-APPROVAL-002",
       "package": "./internal/httpapi",
       "test": "TestWorkerNativeApprovalsPersistIdentityAndArbitrateAnswers",

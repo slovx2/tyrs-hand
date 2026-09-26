@@ -84,6 +84,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	codexEvents := mode == "codex-events"
+	claudeEvents := mode == "claude-events"
 	hooksOnly := mode == "hooks"
 	catalogOnly := mode == "catalog"
 	configOnly := mode == "config"
@@ -113,6 +114,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	plan := &runtimePlanFixture{root: root}
 	approval := &runtimeApprovalFixture{root: root}
 	nativeEvents := &runtimeCodexEventsFixture{root: root}
+	claudeEventsFixture := &runtimeClaudeEventsFixture{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -131,6 +133,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if claudeEvents {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				claudeEventsFixture.model(t, w, body)
+				return
+			}
 			if codexEvents {
 				require.Equal(t, runtimeidentity.Codex, engine, "Codex 事件验收不能调用 Claude 模型")
 				nativeEvents.model(t, w, body)
@@ -318,7 +325,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || hooksOnly {
+		if codexNative || codexEvents || claudeEvents || hooksOnly {
 			continue
 		}
 		if configOnly {
@@ -354,6 +361,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if claudeEvents {
+		verifyRuntimeClaudeEvents(t, ctx, registry, signer, claudeEventsFixture, root)
+		require.Equal(t, int64(3), modelCalls.Load(), "仅三个显式 Turn 可以请求模型")
+		return
 	}
 	if hooksOnly {
 		verifyRuntimeHooks(t, ctx, registry, clients, protocol, root)

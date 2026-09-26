@@ -107,6 +107,27 @@ func TestRunCoordinatorRejectLeavesInputForNextAttempt(t *testing.T) {
 	require.Equal(t, input.Claimed.ID, (<-commands).ID)
 }
 
+func TestRunCoordinatorKeepsStartWhenIdleQueuedUntilActiveTurnFinishes(t *testing.T) {
+	coordinator := newRunCoordinator(nil)
+	active := coordinatorTask(uuid.New(), uuid.New(), uuid.New(), "same-thread", 2)
+	commands := make(chan workerprotocol.RunCommand, 2)
+	coordinator.register(&runJournal{Task: active}, commands)
+	input := coordinatorTask(uuid.New(), active.Claimed.ControlID,
+		active.Snapshot.Session.Project.WorkspaceID, "same-thread", 2)
+	input.Claimed.Behavior = "start_when_idle"
+	for range 2 {
+		owner, routed, applied := coordinator.route(&input)
+		require.True(t, routed, "待空闲输入仍属于活动会话，Runner 不能并行启动")
+		require.False(t, applied)
+		require.Equal(t, active.Claimed.RunID, owner.Claimed.RunID)
+		require.Empty(t, commands, "start_when_idle 不能被转成 steer")
+	}
+	coordinator.unregister(active.Claimed.RunID)
+	_, routed, applied := coordinator.route(&input)
+	require.False(t, routed, "旧回合结束后允许 Runner 正式启动原排队输入")
+	require.False(t, applied)
+}
+
 func TestRunCoordinatorEnforcesSteerLimitAndThreadIsolation(t *testing.T) {
 	coordinator := newRunCoordinator(nil)
 	workspaceID, controlID := uuid.New(), uuid.New()

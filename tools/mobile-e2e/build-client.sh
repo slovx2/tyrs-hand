@@ -44,14 +44,69 @@ if [[ "${platform}" == "android" ]]; then
     exit 1
   fi
   export ANDROID_SERIAL="${android_serial}"
+  # 只按实际模拟器 ABI 构建，避免无关架构的 native debug metadata 合并耗尽堆。
+  android_abi="$(adb -s "${android_serial}" shell getprop ro.product.cpu.abi)"
+  android_abi="${android_abi//$'\r'/}"
+  case "${android_abi}" in
+    arm64-v8a|armeabi-v7a|x86|x86_64) ;;
+    *) echo "模拟器返回空或不支持的 Android ABI" >&2; exit 1 ;;
+  esac
   (
     cd "${client}/android"
-    ./gradlew --no-daemon --stacktrace assembleRelease
+    ./gradlew --no-daemon --stacktrace "-PreactNativeArchitectures=${android_abi}" assembleRelease
   )
   apk="${client}/android/app/build/outputs/apk/release/app-release.apk"
   test -f "${apk}"
-  adb install -r "${apk}"
-  adb shell pm path "${app_id}" >/dev/null
+  # Gradle 准备完 SDK 后，使用固定 React Native 0.81.5 对应的 buildTools 检查产物。
+  android_aapt="${android_sdk_root}/build-tools/36.0.0/aapt"
+  test -x "${android_aapt}"
+  # 检查最终 APK，不能仅凭 Gradle 接受参数认定没有混入其他 ABI。
+  node - "${android_aapt}" "${apk}" "${android_abi}" <<'JS'
+const { execFileSync, spawn } = require('node:child_process');
+const [aapt, apk, expected] = process.argv.slice(2);
+const badging = execFileSync(aapt, ['dump', 'badging', apk], { encoding: 'utf8' });
+const nativeLines = badging.split(/\r?\n/).filter(line => line.startsWith('native-code:'));
+if (nativeLines.length !== 1 || nativeLines[0] !== `native-code: '${expected}'`) {
+  throw new Error('APK native-code 必须且只能包含目标模拟器 ABI');
+}
+const entries = execFileSync('unzip', ['-Z1', apk], { encoding: 'utf8' }).split(/\r?\n/);
+const libraries = entries.filter(entry => entry.startsWith('lib/') && entry.endsWith('.so'));
+if (!libraries.length || libraries.some(entry => {
+  const match = entry.match(/^lib\/([^/]+)\/[^/]+\.so$/);
+  return !match || match[1] !== expected;
+})) {
+  throw new Error('APK 原生 .so 目录必须且只能包含目标模拟器 ABI');
+}
+// 流式检查每个库的 ELF 头，避免只改目录名的错误产物通过，也不将整库载入堆。
+const elfIdentity = { 'arm64-v8a': [2, 183], 'armeabi-v7a': [1, 40], x86: [1, 3], x86_64: [2, 62] };
+async function verifyLibrary(library) {
+  const header = await new Promise((resolve, reject) => {
+    const child = spawn('unzip', ['-p', apk, library], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const prefix = Buffer.alloc(20);
+    let length = 0;
+    child.stdout.on('data', chunk => {
+      if (length < prefix.length) length += chunk.copy(prefix, length, 0, prefix.length - length);
+    });
+    child.on('error', reject);
+    child.on('close', code => {
+      if (code !== 0 || length !== prefix.length) reject(new Error('APK 原生库读取失败或 ELF 头不完整'));
+      else resolve(prefix);
+    });
+  });
+  const [elfClass, machine] = elfIdentity[expected];
+  if (header.subarray(0, 4).toString('hex') !== '7f454c46' || header[4] !== elfClass ||
+    header[5] !== 1 || header.readUInt16LE(18) !== machine) {
+    throw new Error('APK 原生 .so 的实际 ELF 架构与目标模拟器 ABI 不一致');
+  }
+}
+(async () => {
+  for (const library of libraries) await verifyLibrary(library);
+  console.log(JSON.stringify({ emulatorABI: expected, apkNativeCode: expected,
+    nativeLibraries: libraries.length, passed: true }));
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS
+  adb -s "${android_serial}" install -r "${apk}"
+  adb -s "${android_serial}" shell pm path "${app_id}" >/dev/null
   exit 0
 fi
 

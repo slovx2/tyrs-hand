@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/httpapi"
@@ -44,7 +45,12 @@ type controlRuntimeFixture struct {
 	discordIDBase int64
 }
 
-func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string, firstToolRequested <-chan struct{}) controlRuntimeFixture {
+type controlRuntimeFixtureOptions struct {
+	ConfigureServer func(*sql.DB, *security.SecretBox, *config.Config) *auth.Service
+	Background      bool
+}
+
+func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string, firstToolRequested <-chan struct{}, options ...controlRuntimeFixtureOptions) controlRuntimeFixture {
 	t.Helper()
 	bin, adapter := os.Getenv("TYRS_HAND_TEST_CODEX_BIN"), os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN")
 	require.NotEmpty(t, bin, "必须使用固定 Codex CLI")
@@ -62,7 +68,12 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	box, err := security.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
 	controlConfig := config.Config{LeaseDuration: time.Minute, CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}
-	control, err := httpapi.NewServer(controlConfig, db, cache, nil, nil, nil,
+	require.LessOrEqual(t, len(options), 1)
+	var authService *auth.Service
+	if len(options) == 1 && options[0].ConfigureServer != nil {
+		authService = options[0].ConfigureServer(db, box, &controlConfig)
+	}
+	control, err := httpapi.NewServer(controlConfig, db, cache, authService, nil, nil,
 		platformsettings.NewService(db), nil, nil, secrets.NewStore(db, box), zap.NewExample())
 	require.NoError(t, err)
 	router := control.Router()
@@ -86,6 +97,12 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 		router.ServeHTTP(w, r)
 	}))
 	t.Cleanup(server.Close)
+	if len(options) == 1 && options[0].Background {
+		backgroundCtx, stopBackground := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() { defer close(done); _ = control.RunBackground(backgroundCtx) }()
+		t.Cleanup(func() { stopBackground(); <-done })
+	}
 	registry := workerregistry.NewService(db)
 	// 多个真实专项共享临时数据库；身份唯一化，不清库或复用前一专项的授权。
 	fixtureID := uuid.New()

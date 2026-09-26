@@ -1535,7 +1535,9 @@
         "codex": [
           "EVENTS-008"
         ],
-        "claude-code": []
+        "claude-code": [
+          "EVENTS-009"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ReasoningTextDeltaNotification",
@@ -2390,6 +2392,27 @@
       ]
     },
     {
+      "method": "remoteControl/status/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "MIGRATION-005",
+          "MIGRATION-006"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/RemoteControlStatusChangedNotification",
+        "response": null
+      }
+    },
+    {
       "method": "review/start",
       "engines": {
         "codex": "required",
@@ -2651,7 +2674,8 @@
         "codex": [],
         "claude-code": [
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "EVENTS-009"
         ]
       },
       "callers": [
@@ -2738,7 +2762,9 @@
         "codex": [
           "SESSION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "EVENTS-009"
+        ]
       },
       "callers": [
         "wire:codex"
@@ -3083,7 +3109,8 @@
           "SUBMIT-004",
           "SESSION-003",
           "ISOLATION-004",
-          "FILES-007"
+          "FILES-007",
+          "MIGRATION-004"
         ],
         "claude-code": [
           "HISTORY-002",
@@ -3299,7 +3326,8 @@
           "SESSION-003",
           "ISOLATION-004",
           "FILES-007",
-          "PERMISSION-009"
+          "PERMISSION-009",
+          "MIGRATION-004"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3325,7 +3353,8 @@
           "SKILLS-001",
           "SKILLS-002",
           "SKILLS-003",
-          "SKILLS-005"
+          "SKILLS-005",
+          "MIGRATION-004"
         ]
       },
       "callers": [
@@ -3644,7 +3673,8 @@
           "EVENTS-003",
           "EVENTS-005",
           "PERMISSION-009",
-          "EVENTS-008"
+          "EVENTS-008",
+          "MIGRATION-004"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3747,7 +3777,8 @@
           "SESSION-003",
           "ISOLATION-004",
           "FILES-007",
-          "PERMISSION-009"
+          "PERMISSION-009",
+          "MIGRATION-004"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3800,7 +3831,8 @@
         "codex": [
           "EVENTS-003",
           "EVENTS-005",
-          "EVENTS-008"
+          "EVENTS-008",
+          "MIGRATION-004"
         ],
         "claude-code": [
           "CONTEXT-001",

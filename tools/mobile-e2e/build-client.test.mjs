@@ -8,6 +8,110 @@ import test from 'node:test'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
+// 命令替身只验证构建与安装门禁；不连接真实模拟器，不替代 APK 构建和 GUI 验收。
+async function androidBuildFixture(options = {}) {
+  const directory = await mkdtemp(resolve(tmpdir(), 'mobile-abi-gate-'))
+  const bin = resolve(directory, 'bin')
+  const sdk = resolve(directory, 'sdk')
+  const script = resolve(directory, 'tools/mobile-e2e/build-client.sh')
+  const trace = resolve(directory, 'commands.jsonl')
+  await mkdir(bin, { recursive: true })
+  await mkdir(dirname(script), { recursive: true })
+  await mkdir(resolve(directory, 'client/android'), { recursive: true })
+  await mkdir(resolve(sdk, 'platform-tools'), { recursive: true })
+  await mkdir(resolve(sdk, 'build-tools/36.0.0'), { recursive: true })
+  await writeFile(script, await readFile(resolve(root, 'tools/mobile-e2e/build-client.sh')))
+  const stub = [
+    '#!/usr/bin/env node',
+    "const fs = require('node:fs'); const path = require('node:path');",
+    'const name = path.basename(process.argv[1]); const args = process.argv.slice(2);',
+    "fs.appendFileSync(process.env.BUILD_GATE_TRACE, JSON.stringify({ name, args }) + '\\n');",
+    "if (name === 'pnpm' && args[0] === '--version') console.log('11.14.0');",
+    "if (name === 'adb' && args[0] === 'devices') console.log('emulator-5554\\tdevice');",
+    "if (name === 'adb' && args.includes('getprop')) {",
+    "  process.stdout.write(process.env.BUILD_GATE_ABI + '\\r\\n');",
+    '  process.exit(Number(process.env.BUILD_GATE_QUERY_STATUS || 0));',
+    '}',
+    "if (name === 'gradlew') {",
+    "  const apk = path.join(process.cwd(), 'app/build/outputs/apk/release/app-release.apk');",
+    "  fs.mkdirSync(path.dirname(apk), { recursive: true }); fs.writeFileSync(apk, 'fixture');",
+    '}',
+    "if (name === 'aapt') { console.log(process.env.BUILD_GATE_NATIVE_CODE); process.exit(Number(process.env.BUILD_GATE_AAPT_STATUS || 0)); }",
+    "if (name === 'unzip') {",
+    "  if (args[0] === '-Z1') console.log(process.env.BUILD_GATE_LIBRARIES);",
+    '  else {',
+    "    const identity = { 'arm64-v8a': [2, 183], 'armeabi-v7a': [1, 40], x86: [1, 3], x86_64: [2, 62] }[process.env.BUILD_GATE_ABI];",
+    "    const header = Buffer.alloc(20); header.write('ELF', 1); header[0] = 0x7f; header[4] = identity[0]; header[5] = 1;",
+    '    header.writeUInt16LE(Number(process.env.BUILD_GATE_ELF_MACHINE || identity[1]), 18);',
+    "    process.stdout.write(process.env.BUILD_GATE_ELF_TRUNCATED ? header.subarray(0, 10) : header);",
+    '  }',
+    '  process.exit(Number(process.env.BUILD_GATE_UNZIP_STATUS || 0));',
+    '}',
+  ].join('\n')
+  for (const path of [resolve(bin, 'pnpm'), resolve(bin, 'adb'), resolve(bin, 'unzip'),
+    resolve(sdk, 'build-tools/36.0.0/aapt'), resolve(directory, 'client/android/gradlew')]) {
+    await writeFile(path, stub, { mode: 0o755 })
+  }
+  const abi = options.abi ?? 'x86_64'
+  const result = spawnSync('bash', [script, 'android'], { encoding: 'utf8', env: { ...process.env,
+    PATH: bin + ':' + process.env.PATH, ANDROID_HOME: sdk, ANDROID_SERIAL: 'emulator-5554',
+    BUILD_GATE_TRACE: trace, BUILD_GATE_ABI: abi,
+    BUILD_GATE_QUERY_STATUS: String(options.queryStatus ?? 0),
+    BUILD_GATE_AAPT_STATUS: String(options.aaptStatus ?? 0),
+    BUILD_GATE_UNZIP_STATUS: String(options.unzipStatus ?? 0),
+    BUILD_GATE_ELF_MACHINE: options.elfMachine ? String(options.elfMachine) : '',
+    BUILD_GATE_ELF_TRUNCATED: options.elfTruncated ? '1' : '',
+    BUILD_GATE_NATIVE_CODE: options.nativeCode ?? `native-code: '${abi}'`,
+    BUILD_GATE_LIBRARIES: options.libraries ?? `AndroidManifest.xml\nlib/${abi}/libreactnative.so\nlib/${abi}/libtyrs.so`,
+  } })
+  const commands = (await readFile(trace, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+  await rm(directory, { recursive: true, force: true })
+  return { result, commands }
+}
+
+test('Android 按实际目标 ABI 构建并验证 APK 后才向同一模拟器安装', async () => {
+  for (const abi of ['x86_64', 'arm64-v8a', 'x86', 'armeabi-v7a']) {
+    const { result, commands } = await androidBuildFixture({ abi })
+    assert.equal(result.status, 0, result.stderr)
+    const query = commands.findIndex(command => command.name === 'adb' && command.args.includes('getprop'))
+    const build = commands.findIndex(command => command.name === 'gradlew')
+    const inspection = commands.findIndex(command => command.name === 'unzip')
+    const install = commands.findIndex(command => command.name === 'adb' && command.args.includes('install'))
+    assert.deepEqual(commands[query].args, ['-s', 'emulator-5554', 'shell', 'getprop', 'ro.product.cpu.abi'])
+    assert.ok(query < build && build < inspection && inspection < install)
+    assert.deepEqual(commands[build].args,
+      ['--no-daemon', '--stacktrace', `-PreactNativeArchitectures=${abi}`, 'assembleRelease'])
+    assert.deepEqual(commands[install].args.slice(0, 4), ['-s', 'emulator-5554', 'install', '-r'])
+    assert.match(result.stdout, /"nativeLibraries":2,"passed":true/)
+  }
+})
+
+test('Android ABI 查询失败、为空或不支持时不能启动 Gradle 或安装', async () => {
+  for (const options of [{ queryStatus: 1 }, { abi: '' }, { abi: 'riscv64' }, { abi: 'x86_64 arm64-v8a' }]) {
+    const { result, commands } = await androidBuildFixture(options)
+    assert.notEqual(result.status, 0)
+    assert.equal(commands.some(command => command.name === 'gradlew'), false)
+    assert.equal(commands.some(command => command.name === 'adb' && command.args.includes('install')), false)
+  }
+})
+
+test('Android APK native-code 和全部 so 必须与目标 ABI 一致', async () => {
+  for (const options of [
+    { nativeCode: '' }, { nativeCode: "native-code: 'arm64-v8a'" },
+    { nativeCode: "native-code: 'x86_64' 'arm64-v8a'" },
+    { nativeCode: "native-code: 'x86_64'\nnative-code: 'x86_64'" },
+    { libraries: 'AndroidManifest.xml' },
+    { libraries: 'lib/x86_64/libok.so\nlib/arm64-v8a/libwrong.so' },
+    { libraries: 'lib/x86_64/nested/libwrong.so' },
+    { elfMachine: 183 }, { elfTruncated: true },
+    { aaptStatus: 1 }, { unzipStatus: 1 },
+  ]) {
+    const { result, commands } = await androidBuildFixture(options)
+    assert.notEqual(result.status, 0, JSON.stringify(options))
+    assert.equal(commands.some(command => command.name === 'adb' && command.args.includes('install')), false)
+  }
+})
+
 // 只验证构建脚本的安装门禁；替身命令不能作为真实 iOS GUI 或 Keychain 验收。
 async function buildFixture(options = {}) {
   const directory = await mkdtemp(resolve(tmpdir(), 'mobile-signing-gate-'))

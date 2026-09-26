@@ -90,7 +90,9 @@ jobs:
           npm ci --prefix tools/protocol-inventory
           go mod download
       - name: Verify coverage gate itself
-        run: npm test --prefix tools/protocol-inventory
+        run: |
+          npm test --prefix tools/protocol-inventory
+          node --test tools/protocol-migration-matrix.test.mjs
       - name: Prepare Linux sandbox dependencies
         if: runner.os == 'Linux'
         run: |

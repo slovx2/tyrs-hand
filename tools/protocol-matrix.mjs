@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { startControlInfrastructure } from './protocol-control-infra.mjs'
+import { runMigrationMatrix } from './protocol-migration-matrix.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
@@ -46,6 +47,8 @@ const controlSuites = [
     cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
   { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',
     cases: ['MCP-014'], engines: ['claude-code'] },
+  { name: 'bootstrap-live', pkg: './internal/bootstrap', test: 'TestWorkerControlLiveCodexRealSSH',
+    cases: ['MIGRATION-004'] },
 ]
 // 权限授权必须使用 CLI 自身 OS 沙箱；macOS 不能嵌套 seatbelt，不能豁免含模型的外层隔离。
 // 正式权限链只在 Linux 仅回环的 network namespace 中执行。
@@ -84,6 +87,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['HISTORY-005'], engines: ['codex'] },
   { name: 'codex-events', pkg: './internal/hostworker', test: 'TestRuntimeCodexEventsRealSSH',
     cases: ['EVENTS-008'], engines: ['codex'] },
+  { name: 'claude-events', pkg: './internal/hostworker', test: 'TestRuntimeClaudeEventsRealSSH',
+    cases: ['EVENTS-009'], engines: ['claude-code'] },
   { name: 'goal-execution', pkg: './internal/hostworker', test: 'TestRuntimeGoalExecutionRealSSH',
     cases: ['GOAL-005'], engines: ['claude-code'] },
   { name: 'turn-control', pkg: './internal/hostworker', test: 'TestRuntimeTurnControlRealSSHBothEngines',
@@ -142,6 +147,11 @@ for (const suite of suites) {
   writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 }
 } finally { infrastructure?.close() }
+if (!controlOnly && !process.argv.includes('--runtime-only')) {
+  const migration = await runMigrationMatrix({ root, artifacts, runId, env })
+  runtimeFailures.push(...migration.failures)
+  runtimeExecutions += migration.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
+}
 if (!runtimeFailures.length) console.log(controlOnly ? '真实 Control、双 SSH、SDK、Discord 审批与重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
   '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
 writeFileSync(resolve(artifacts, 'runtime-failures.json'), JSON.stringify({ runId, failures: runtimeFailures }, null, 2))

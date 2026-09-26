@@ -18,6 +18,7 @@ type WorkerInputSelection struct {
 }
 
 // PendingWorkerInput 优先返回本机活动会话的输入；满载时排除新会话，停止命令优先。
+// 活动会话的待空闲输入保留排队，避免挡住可追加输入和其他会话。
 // 查询不创建 Run 或改变 Control 状态。start/steer 仍由 Worker 根据本地状态决定。
 func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID, engine runtimeidentity.Engine, selection WorkerInputSelection) (*ClaimedControl, error) {
 	if err := engine.Validate(); err != nil {
@@ -46,6 +47,7 @@ func (r *Repository) PendingWorkerInput(ctx context.Context, workerID uuid.UUID,
 	  AND i.available_at<=now() AND i.resolved_action IS NULL
 	  AND c.lifecycle_state='active'
 	  AND COALESCE(session.lifecycle_state,'active')='active'
+ AND (i.operation<>'turn_input' OR i.behavior<>'start_when_idle' OR NOT COALESCE(c.id=ANY($3::uuid[]),false))
  AND (NOT $4 OR c.id=ANY($3::uuid[]))
  ORDER BY COALESCE(c.id=ANY($3::uuid[]),false) DESC,
  COALESCE(c.id=ANY($3::uuid[]) AND i.operation IN ('interrupt','replace_last_turn'),false) DESC,
