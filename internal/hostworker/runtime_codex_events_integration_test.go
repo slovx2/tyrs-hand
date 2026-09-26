@@ -190,13 +190,22 @@ func verifyNativeEventTurn(t *testing.T, ctx context.Context, client *codex.Sock
 				ThreadID, TurnID, ItemID, Delta, Diff string
 				SummaryIndex, ContentIndex            int
 				Item                                  nativeEventItem
+				Thread                                struct{ ID string }
 				Turn                                  struct {
 					ID, Status string
 					Error      any
 				}
 			}
 			require.NoError(t, json.Unmarshal(event.Params, &params))
-			require.Equal(t, threadID, params.ThreadID)
+			// thread/start 的响应与 thread/started 通知异步到达，通知可能在订阅
+			// 建立之后才被读取。固定协议将此方法的会话身份放在 thread.id，
+			// 它不是全局事件；真正无会话的账号通知已由 ThreadFilter 排除。
+			if event.Method == "thread/started" {
+				require.Equal(t, threadID, params.Thread.ID, "thread/started 必须属于当前会话")
+				sequence = append(sequence, event.Method)
+				continue
+			}
+			require.Equal(t, threadID, params.ThreadID, "%s 必须携带当前会话的顶层 threadId", event.Method)
 			if params.TurnID != "" {
 				require.Equal(t, turnID, params.TurnID)
 			}

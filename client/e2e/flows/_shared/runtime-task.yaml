@@ -48,7 +48,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - runFlow: dismiss-ios-keyboard-tutorial.yaml
 - inputText: ${TASK_TEXT}
 - runFlow: dismiss-ios-keyboard-tutorial.yaml
-- hideKeyboard
+# 发送按钮在键盘上方，生产 onPress 会收起键盘并发送。
 - tapOn:
     id: "composer:send"
 - waitForAnimationToEnd

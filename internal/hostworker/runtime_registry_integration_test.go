@@ -83,6 +83,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	approvalOnly := mode == "approval-lifecycle"
 	permissionGrants := mode == "permission-grants"
 	experimentalFeatures := mode == "experimental-features"
+	shellCommands := mode == "shell-commands"
+	contextInjection := mode == "context-injection"
+	codexAccount := mode == "codex-account"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	codexEvents := mode == "codex-events"
@@ -122,6 +125,8 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	nativeApprovals := &runtimeCodexApprovalFixture{root: root}
 	claudeEventsFixture := &runtimeClaudeEventsFixture{}
 	claudeEventGapsFixture := &runtimeClaudeEventGapsFixture{root: root}
+	contextInjectionFixture := &runtimeContextInjectionFixture{}
+	accountFixture := &runtimeCodexAccountFixture{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -143,6 +148,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if codexAccount {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				accountFixture.model(t, w, request, body)
+				return
+			}
+			if contextInjection {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				contextInjectionFixture.model(t, w, request, body)
+				return
+			}
 			if claudeEventGaps {
 				require.Equal(t, runtimeidentity.Claude, engine)
 				claudeEventGapsFixture.model(t, w, request, body)
@@ -265,6 +280,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			require.NoError(t, os.WriteFile(filepath.Join(claudeConfig, "CLAUDE.md"), []byte("CLAUDE_RUNTIME_INSTRUCTIONS_7319"), 0o600))
 		} else {
 			configuration := fmt.Sprintf("model = \"mock-model\"\nmodel_provider = \"mock\"\napproval_policy = \"never\"\n[model_providers.mock]\nname = \"Mock\"\nbase_url = %q\nwire_api = \"responses\"\nrequest_max_retries = 0\nstream_max_retries = 0\nsupports_websockets = false\n", upstream.URL+"/v1")
+			if codexAccount {
+				configuration = accountFixture.configuration(upstream.URL)
+			}
 			if isolationOnly {
 				configuration += "env_key = \"TYRS_HAND_MODEL_API_KEY\"\n"
 				require.NoError(t, os.WriteFile(envFile, []byte("TYRS_HAND_MODEL_API_KEY=isolation-codex-key\n"), 0o600))
@@ -356,7 +374,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount {
 			continue
 		}
 		if configOnly {
@@ -392,6 +410,21 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if codexAccount {
+		verifyRuntimeCodexAccount(t, ctx, registry, clients[runtimeidentity.Codex], accountFixture, root)
+		require.Equal(t, int64(2), modelCalls.Load(), "仅两次业务 Turn 可以请求模型")
+		return
+	}
+	if contextInjection {
+		verifyRuntimeContextInjection(t, ctx, registry, clients[runtimeidentity.Claude], contextInjectionFixture, root)
+		require.Equal(t, int64(2), modelCalls.Load(), "注入和恢复不能额外请求模型")
+		return
+	}
+	if shellCommands {
+		verifyRuntimeShellCommands(t, ctx, protocol, root)
+		require.Zero(t, modelCalls.Load(), "手动 shell 不得调用模型")
+		return
 	}
 	if claudeEventGaps {
 		verifyRuntimeClaudeEventGaps(t, ctx, protocol[runtimeidentity.Claude], claudeEventGapsFixture)

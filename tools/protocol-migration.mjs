@@ -228,6 +228,16 @@ try {
   if (report.cleanupErrors.length) { report.passed = false; process.exitCode = 1 }
   report.finishedAt = new Date().toISOString()
   report.instrumentationCleanups = worker?.instrumentationCleanups ?? []
+  report.nativeSideShutdown = { limitation: '关闭客户端后的真实 model/list 响应仅证明原生侧收尾，不算客户端成功响应', engines: {} }
+  for (const engine of ['codex', 'claude-code']) {
+    try {
+      const rows = (await readFile(resolve(evidence, `wire-${engine}.jsonl.lifecycle.jsonl`), 'utf8'))
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+      report.nativeSideShutdown.engines[engine] = rows.filter(row => row.pending?.length || row.delivered === false)
+    } catch (error) {
+      if (error.code !== 'ENOENT') { report.cleanupErrors.push(error.message); report.passed = false; process.exitCode = 1 }
+    }
+  }
   try { report.workerDiagnostics = await worker?.diagnostics() }
   catch { report.workerDiagnostics = [{ error: '无法读取已关闭的测试 Worker 诊断摘要' }] }
   await writeFile(resolve(evidence, 'migration-report.json'), JSON.stringify(report, null, 2))

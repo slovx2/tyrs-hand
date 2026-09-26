@@ -104,6 +104,9 @@ jobs:
         if: runner.os == 'Linux'
         run: make test-protocol-matrix
       # 托管 macOS 没有 Docker；保留必须通过的原生 SSH/SDK 验收，完整数据库矩阵由 Linux 执行。
+      - name: Diagnose macOS loopback sandbox behavior
+        if: runner.os == 'macOS'
+        run: node tools/protocol-macos-loopback.mjs
       - name: macOS native SSH and command permissions
         if: runner.os == 'macOS'
         run: make test-runtime-e2e

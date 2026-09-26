@@ -28,13 +28,38 @@
       }
     },
     {
+      "method": "account/login/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [
+          "ACCOUNT-001"
+        ],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/AccountLoginCompletedNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 专属登录的完成通知；Claude 使用独立 provider 凭据且拒绝 account/login/start，不产生 OpenAI 登录完成事件"
+      }
+    },
+    {
       "method": "account/login/start",
       "engines": {
         "codex": "required",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ACCOUNT-001"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -59,7 +84,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ACCOUNT-001"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -71,7 +98,7 @@
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/LogoutAccountResponse.json"
       },
       "reasons": {
         "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
@@ -134,7 +161,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ACCOUNT-001"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -152,7 +181,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ACCOUNT-001"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -199,7 +230,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ACCOUNT-001"
+        ],
         "claude-code": [
           "PERMISSION-005",
           "PERMISSION-006",
@@ -2957,7 +2990,11 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CONTEXT-004",
+          "CONTEXT-005",
+          "CONTEXT-006"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -3335,8 +3372,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "SHELL-002"
+        ],
+        "claude-code": [
+          "SHELL-001",
+          "SHELL-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"

@@ -84,6 +84,24 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 	defer p.mu.Unlock()
 	caseName := t.Name()
 	caseIDs := []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexAccountRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"ACCOUNT-001"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeContextInjectionRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"CONTEXT-006"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeShellCommandsRealSSHBothEngines" {
+		caseName = rootName
+		caseIDs = []string{"SHELL-002"}
+	}
 	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeClaudeEventsRealSSH" {
 		// 子场景共享根用例执行记录；Codex 仅初始化，不能声称完成 Claude 语义。
 		caseName = rootName

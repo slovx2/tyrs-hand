@@ -1,6 +1,8 @@
 {
   "formatVersion": 1,
   "groups": [
+    {"id": "ACCOUNT", "description": "Codex API-key 原生登录通知、真实模型鉴权与限额事件、重启持久和退出清理，Claude 状态隔离", "cases": ["ACCOUNT-001"], "caseEngines": {"ACCOUNT-001": ["codex"]}},
+    {"id": "SHELL", "description": "真实手动 shell 保留协议规定的完全访问并绑定有效所属会话，无效参数和跨引擎会话零副作用", "cases": ["SHELL-001", "SHELL-002"], "caseEngines": {"SHELL-001": ["claude-code"]}},
     {"id": "FEATURE", "description": "真实实验目录、合法空操作、参数错误与未实现开关拒绝；配置和模型调用无副作用", "cases": ["FEATURE-001", "FEATURE-002"], "caseEngines": {"FEATURE-001": ["claude-code"], "FEATURE-002": ["claude-code"]}},
     {"id": "HOOKS", "description": "原生用户及当前项目Hook目录、禁用与真实副作用、生命周期同ID和累计进度、失败中断超时及崩溃唯一终态；004真实SSH目录执行及重启历史对账", "cases": ["HOOKS-001", "HOOKS-002", "HOOKS-003", "HOOKS-004"], "caseEngines": {"HOOKS-001": ["claude-code"], "HOOKS-002": ["claude-code"], "HOOKS-003": ["claude-code"], "HOOKS-004": ["claude-code"]}},
     {"id": "SKILLS", "description": "真实CLI技能开关及持久化、临时目录加载与崩溃清理、内联命令权限边界、变更通知、配置原子失败及祖先目录继承", "cases": ["SKILLS-001", "SKILLS-002", "SKILLS-003", "SKILLS-004", "SKILLS-005"], "caseEngines": {"SKILLS-001": ["claude-code"], "SKILLS-002": ["claude-code"], "SKILLS-003": ["claude-code"], "SKILLS-004": ["claude-code"], "SKILLS-005": ["claude-code"]}},
@@ -11,7 +13,7 @@
     {"id": "SESSION", "description": "真实 SSH 离线继续执行、会话生命周期及原生元数据重启持久化；004 分组分页、重排和删除保持原生上下文", "cases": ["SESSION-001", "SESSION-002", "SESSION-003", "SESSION-004", "SESSION-005"], "caseEngines": {"SESSION-003": ["codex"], "SESSION-005": ["codex"]}},
     {"id": "GOAL", "description": "001 原生目标持久化；002 自动续跑、上下文、软预算、用量及故障控制；003 真实 SSH 元数据；005 真 SSH 自动工具执行与软预算", "cases": ["GOAL-001", "GOAL-002", "GOAL-003", "GOAL-004", "GOAL-005"], "caseEngines": {"GOAL-004": ["codex"], "GOAL-005": ["claude-code"]}},
     {"id": "HISTORY", "description": "双向分页、各 itemsView、超大工具输出和无模型读取", "cases": ["HISTORY-001", "HISTORY-002", "HISTORY-003", "HISTORY-004", "HISTORY-005"], "caseEngines": {"HISTORY-004": ["codex"], "HISTORY-005": ["codex"]}},
-    {"id": "CONTEXT", "description": "真实 SDK 恢复、分叉、回退、压缩及 SQLite 事务失败", "cases": ["CONTEXT-001", "CONTEXT-002", "CONTEXT-003"]},
+    {"id":"CONTEXT","description":"真实 SDK 恢复、分叉、回退、压缩及 SQLite 事务失败；004/005原生上下文即时追加、零模型持久化与事务失败去重；006真SSH追加及重启实际入模","cases":["CONTEXT-001","CONTEXT-002","CONTEXT-003","CONTEXT-004","CONTEXT-005","CONTEXT-006"],"caseEngines":{"CONTEXT-004":["claude-code"],"CONTEXT-005":["claude-code"],"CONTEXT-006":["claude-code"]}},
     {"id": "SUBMIT", "description": "提交去重、重启重试、工具不确定状态及并发操纵；004 双 SSH 追加指令进入原生上下文", "cases": ["SUBMIT-001", "SUBMIT-002", "SUBMIT-003", "SUBMIT-004"]},
     {"id": "EVENTS", "description": "001 完整事件种类及故障终态；002 原生流式、持久用量及历史；003 双 SSH 成功事件顺序及对账；004 原生工具取消与终态；005 双 SSH 中断和重启恢复；006 真实120秒提问和计划确认超时的唯一条目终态；008 原生Codex真SSH文本推理计划命令流、补丁副作用及完整历史对账；009 原生Claude真SSH推理增量与历史及三种加载状态删除通知；010 Claude真SSH原生限额警告去重、真实Git diff及只读无副作用", "cases": ["EVENTS-001", "EVENTS-002", "EVENTS-003", "EVENTS-004", "EVENTS-005", "EVENTS-006", "EVENTS-008", "EVENTS-009", "EVENTS-010"], "caseEngines": {"EVENTS-006": ["claude-code"], "EVENTS-008": ["codex"], "EVENTS-009": ["claude-code"], "EVENTS-010": ["claude-code"]}},
     {"id": "APPROVAL", "description": "多端仲裁、取消、超时、重启失效与真实用户回答；005 真 SSH 提问和审批重连、取消、重启失效及完全访问；006 真 Control/Discord 审批、早到回调补投、实际文件副作用；007 默认120秒超时、迟到回答及计划权限不扩大；008 Codex真SSH完全访问审批允许、只读拒绝/取消、计划提问与真实补丁增量", "cases": ["APPROVAL-001", "APPROVAL-002", "APPROVAL-003", "APPROVAL-004", "APPROVAL-005", "APPROVAL-006", "APPROVAL-007", "APPROVAL-008"], "caseEngines": {"APPROVAL-007": ["claude-code"], "APPROVAL-008": ["codex"]}},

@@ -1,9 +1,12 @@
 appId: ${TYRS_HAND_E2E_APP_ID}
 ---
+# 原生 MCP 表单按字段名展示；逐个滚动定位，不能假定整张表单同时可见。
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:color:option:0"
+    direction: DOWN
 - tapOn:
-    id: "interactive:.*:field:value"
-- inputText: "mobile-approved"
-- hideKeyboard
+    id: "interactive:.*:field:color:option:0"
 - scrollUntilVisible:
     element:
       id: "interactive:.*:field:count"
@@ -11,6 +14,21 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "interactive:.*:field:count"
 - inputText: "0"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:enabled:option:1"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:enabled:option:1"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:note"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:note"
+- inputText: "remove-me"
+- eraseText
 - hideKeyboard
 - scrollUntilVisible:
     element:
@@ -22,24 +40,11 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - hideKeyboard
 - scrollUntilVisible:
     element:
-      id: "interactive:.*:field:enabled:option:1"
+      id: "interactive:.*:field:value"
     direction: DOWN
 - tapOn:
-    id: "interactive:.*:field:enabled:option:1"
-- scrollUntilVisible:
-    element:
-      id: "interactive:.*:field:color:option:0"
-    direction: DOWN
-- tapOn:
-    id: "interactive:.*:field:color:option:0"
-- scrollUntilVisible:
-    element:
-      id: "interactive:.*:field:note"
-    direction: DOWN
-- tapOn:
-    id: "interactive:.*:field:note"
-- inputText: "remove-me"
-- eraseText
+    id: "interactive:.*:field:value"
+- inputText: "mobile-approved"
 - hideKeyboard
 - scrollUntilVisible:
     element:
