@@ -60,7 +60,7 @@ func verifyControlInteractionRestart(t *testing.T, ctx context.Context, f contro
 	var httpErr *workerprotocol.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	require.Equal(t, http.StatusNotFound, httpErr.StatusCode)
-	lateDiscord, err := discordintegration.NewManager(f.db, nil).AnswerInteractive(ctx, "protocol", id, 0, 0, "")
+	lateDiscord, err := discordintegration.NewManager(f.db, nil).AnswerInteractive(ctx, f.guildID, id, 0, 0, "")
 	require.NoError(t, err)
 	require.False(t, lateDiscord.Complete)
 	client, _ := connectBootstrapSSH(t, ctx, entry, f.signer)

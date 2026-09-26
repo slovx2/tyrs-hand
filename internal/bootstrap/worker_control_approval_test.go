@@ -149,13 +149,13 @@ func (s *controlApprovalScenario) run(t *testing.T, ctx context.Context, app *Wo
 		if test.decision == "decline" {
 			option = 1
 		}
-		answer, err := manager.AnswerInteractive(ctx, "protocol", requestID, 0, option, "")
+		answer, err := manager.AnswerInteractive(ctx, f.guildID, requestID, 0, option, "")
 		require.NoError(t, err)
 		require.True(t, answer.Complete)
 		require.Contains(t, answer.Card.Header, "Claude Code")
 		require.NoError(t, discordintegration.ProjectInteractiveRequest(ctx, f.db, requestID))
 		awaitBootstrapTurn(t, ctx, events)
-		awaitControlRunCount(t, ctx, f.db, runtimeidentity.Claude, 3+index)
+		awaitControlRunCount(t, ctx, f, runtimeidentity.Claude, 3+index)
 		if test.decision == "accept" {
 			content, err := os.ReadFile(path)
 			require.NoError(t, err)

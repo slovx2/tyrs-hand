@@ -94,7 +94,7 @@ func TestWorkerControlMcpRealSSH(t *testing.T) {
 	ready := make(chan struct{})
 	close(ready)
 	f := newControlRuntimeFixture(t, ctx, model.URL, ready)
-	discord := startControlDiscordFixture(t, ctx, f.db)
+	discord := startControlDiscordFixture(t, ctx, f)
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	app, cleanup, err := InitializeWorker(workerCtx, f.cfg)
 	require.NoError(t, err)
@@ -163,19 +163,19 @@ func TestWorkerControlMcpRealSSH(t *testing.T) {
 			continue
 		}
 		option := map[string]int{"accept": 0, "decline": 1, "cancel": 2}[test.action]
-		answered, err := manager.AnswerInteractive(ctx, "protocol", controlID, 0, option, "")
+		answered, err := manager.AnswerInteractive(ctx, f.guildID, controlID, 0, option, "")
 		require.NoError(t, err)
 		value := fmt.Sprintf("DISCORD_MCP_%d", index)
 		if test.action == "accept" && test.mode == "form" {
 			require.False(t, answered.Complete)
-			answered, err = manager.AnswerInteractive(ctx, "protocol", controlID, 1, -1, value)
+			answered, err = manager.AnswerInteractive(ctx, f.guildID, controlID, 1, -1, value)
 			require.NoError(t, err)
 		}
 		require.True(t, answered.Complete, "拒绝和取消不应继续索取表单字段")
 		var nativeAnswer json.RawMessage
 		require.NoError(t, f.db.QueryRowContext(ctx, "SELECT answer FROM codex_interactive_requests WHERE id=$1 AND status='resolved'", controlID).Scan(&nativeAnswer))
 		awaitBootstrapTurn(t, ctx, events)
-		awaitControlRunCount(t, ctx, f.db, runtimeidentity.Claude, index+1)
+		awaitControlRunCount(t, ctx, f, runtimeidentity.Claude, index+1)
 		if test.action == "accept" {
 			if test.mode == "url" {
 				value = "URL_CONFIRMED"
@@ -193,7 +193,7 @@ func TestWorkerControlMcpRealSSH(t *testing.T) {
 			"method": interactiveprotocol.MCPElicitation, "nativeParams": request.Params, "nativeAnswer": nativeAnswer})
 	}
 	var codexInteractions int
-	require.NoError(t, f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.engine='codex'").Scan(&codexInteractions))
+	require.NoError(t, f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.worker_id=$1 AND c.engine='codex'", f.workerID).Scan(&codexInteractions))
 	require.Zero(t, codexInteractions)
 	saveBootstrapArtifact(t, "mcp-effects", runtimeidentity.Claude, map[string]any{"cases": evidence})
 }

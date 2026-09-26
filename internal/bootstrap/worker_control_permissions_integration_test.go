@@ -42,7 +42,7 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	home, err := filepath.EvalSymlinks(f.cfg.WorkerHome)
 	require.NoError(t, err)
 	scenario.path = filepath.Join(home, "permission-effect.txt")
-	discord := startControlDiscordFixture(t, ctx, f.db)
+	discord := startControlDiscordFixture(t, ctx, f)
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	app, cleanup, err := InitializeWorker(workerCtx, f.cfg)
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	}
 	startTurn("PERMISSION_CONTROL_SETUP")
 	awaitBootstrapTurn(t, ctx, events)
-	awaitControlRunCount(t, ctx, f.db, runtimeidentity.Codex, 1)
+	awaitControlRunCount(t, ctx, f, runtimeidentity.Codex, 1)
 	manager := discordintegration.NewManager(f.db, nil)
 	var expected string
 	var evidence []map[string]any
@@ -121,16 +121,16 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 			} else if active.scope == "session" {
 				option = 2
 			}
-			answer, answerErr := manager.AnswerInteractive(ctx, "protocol", controlID, 0, option, "")
+			answer, answerErr := manager.AnswerInteractive(ctx, f.guildID, controlID, 0, option, "")
 			require.NoError(t, answerErr)
 			require.True(t, answer.Complete)
 			// 已决议后的冲突答案不能改变持久化赢家。
-			_, answerErr = manager.AnswerInteractive(ctx, "protocol", controlID, 0, 1, "")
+			_, answerErr = manager.AnswerInteractive(ctx, f.guildID, controlID, 0, 1, "")
 			require.NoError(t, answerErr)
 			require.NoError(t, f.db.QueryRowContext(ctx, "SELECT answer FROM codex_interactive_requests WHERE id=$1 AND status='resolved'", controlID).Scan(&nativeAnswer))
 		}
 		awaitBootstrapTurn(t, ctx, events)
-		awaitControlRunCount(t, ctx, f.db, runtimeidentity.Codex, 2+index)
+		awaitControlRunCount(t, ctx, f, runtimeidentity.Codex, 2+index)
 		if active.allowed {
 			expected += active.id + "\n"
 		}
@@ -169,7 +169,7 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	restart := verifyControlInteractionRestart(t, ctx, f, app, runtimeidentity.Codex, restartID, pending, json.RawMessage(`{"permissions":{},"scope":"turn"}`))
 	require.NoFileExists(t, restartPath, "旧回答不得造成文件副作用")
 	var claudeInteractions int
-	require.NoError(t, f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.engine='claude-code'").Scan(&claudeInteractions))
+	require.NoError(t, f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.worker_id=$1 AND c.engine='claude-code'", f.workerID).Scan(&claudeInteractions))
 	require.Zero(t, claudeInteractions)
 	saveBootstrapArtifact(t, "permission-effects", runtimeidentity.Codex, map[string]any{"cases": evidence, "content": expected, "restart": restart})
 }

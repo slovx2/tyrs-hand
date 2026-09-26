@@ -4,7 +4,6 @@ package bootstrap
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,13 +26,17 @@ type controlDiscordFixture struct {
 }
 
 // 只替换 Discord 网络，Outbox、REST 序列化、会话绑定及审批业务均使用真实实现。
-func startControlDiscordFixture(t *testing.T, ctx context.Context, db *sql.DB) *controlDiscordFixture {
+func startControlDiscordFixture(t *testing.T, ctx context.Context, fixture controlRuntimeFixture) *controlDiscordFixture {
 	t.Helper()
+	db := fixture.db
+	forumID := fmt.Sprint(fixture.discordIDBase + 1)
 	_, err := db.ExecContext(ctx, `INSERT INTO discord_resources(guild_id,resource_key,discord_id,kind,name,managed_marker)
-		VALUES ('protocol','forum.protocol','3000','forum','Protocol','protocol');
-		INSERT INTO discord_forums(guild_id,resource_id,forum_type,owner_discord_user_id,workspace_id,workspace_project_id)
-		SELECT 'protocol',resource.id,'workspace','1001',project.workspace_id,project.id
-		FROM discord_resources resource CROSS JOIN workspace_projects project WHERE resource.resource_key='forum.protocol'`)
+		VALUES ($1,'forum.protocol',$2,'forum','Protocol','protocol')`, fixture.guildID, forumID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forums(guild_id,resource_id,forum_type,owner_discord_user_id,workspace_id,workspace_project_id)
+		SELECT $1,resource.id,'workspace','1001',project.workspace_id,project.id
+		FROM discord_resources resource CROSS JOIN workspace_projects project
+		WHERE resource.guild_id=$1 AND resource.resource_key='forum.protocol' AND project.workspace_id=$2`, fixture.guildID, fixture.workspaceID)
 	require.NoError(t, err)
 	f := &controlDiscordFixture{}
 	t.Cleanup(func() {
@@ -60,7 +63,7 @@ func startControlDiscordFixture(t *testing.T, ctx context.Context, db *sql.DB) *
 		}
 	})
 	var sequence atomic.Int64
-	sequence.Store(10000)
+	sequence.Store(fixture.discordIDBase + 10000)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		body, readErr := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -77,9 +80,9 @@ func startControlDiscordFixture(t *testing.T, ctx context.Context, db *sql.DB) *
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		id := fmt.Sprint(sequence.Add(1))
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/channels/3000/threads":
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "type": 11, "guild_id": "100",
-				"parent_id": "3000", "owner_id": "1001", "name": "Protocol",
+		case r.Method == http.MethodPost && r.URL.Path == "/channels/"+forumID+"/threads":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "type": 11, "guild_id": fixture.guildID,
+				"parent_id": forumID, "owner_id": "1001", "name": "Protocol",
 				"message": map[string]any{"id": id, "channel_id": id, "content": ""}})
 		case len(parts) >= 3 && parts[0] == "channels" && parts[2] == "messages" &&
 			(r.Method == http.MethodPost || r.Method == http.MethodPatch):
@@ -95,8 +98,8 @@ func startControlDiscordFixture(t *testing.T, ctx context.Context, db *sql.DB) *
 		case len(parts) == 4 && parts[0] == "channels" && parts[2] == "thread-members" && r.Method == http.MethodPut:
 			w.WriteHeader(http.StatusNoContent)
 		case len(parts) == 2 && parts[0] == "channels" && (r.Method == http.MethodPatch || r.Method == http.MethodGet):
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": parts[1], "type": 11, "parent_id": "3000",
-				"guild_id": "100", "name": "Protocol", "applied_tags": []string{}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": parts[1], "type": 11, "parent_id": forumID,
+				"guild_id": fixture.guildID, "name": "Protocol", "applied_tags": []string{}})
 		default:
 			t.Errorf("未登记的 Discord 测试请求：%s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)

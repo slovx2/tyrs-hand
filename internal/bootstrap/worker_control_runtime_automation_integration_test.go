@@ -356,7 +356,7 @@ func (s *controlAutomationScenario) run(t *testing.T, ctx context.Context, app *
 	require.Equal(t, 2, runCount, "一个自然失败和一个手动重试，不能重复物化")
 	var codexRuns int
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs run
-		JOIN codex_thread_controls control ON control.id=run.control_id WHERE control.engine='codex'`).Scan(&codexRuns))
+		JOIN codex_thread_controls control ON control.id=run.control_id WHERE control.worker_id=$1 AND control.engine='codex'`, f.workerID).Scan(&codexRuns))
 	require.Equal(t, 1, codexRuns)
 	s.mu.Lock()
 	defer s.mu.Unlock()

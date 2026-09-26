@@ -120,7 +120,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	}))
 	t.Cleanup(model.Close)
 	f := newControlRuntimeFixture(t, ctx, model.URL, firstToolRequested)
-	discord := startControlDiscordFixture(t, ctx, f.db)
+	discord := startControlDiscordFixture(t, ctx, f)
 	startWorker := func() (*WorkerApp, func()) {
 		workerCtx, cancelWorker := context.WithCancel(ctx)
 		app, cleanup, err := InitializeWorker(workerCtx, f.cfg)
@@ -152,7 +152,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 		require.NoError(t, client.Call(ctx, "turn/start", map[string]any{"threadId": result.Thread.ID,
 			"input": []map[string]any{{"type": "text", "text": "CONTROL_SSH_FIRST", "text_elements": []any{}}}}, &turn))
 		awaitBootstrapTurn(t, ctx, subscription)
-		awaitControlRunCount(t, ctx, f.db, engine, 1)
+		awaitControlRunCount(t, ctx, f, engine, 1)
 	}
 	require.True(t, requestedTool.Load(), "Claude 必须真正看到平台工具")
 	require.True(t, toolResultSeen.Load(), "真实调度工具结果必须回到 SDK 下一轮请求")
@@ -160,7 +160,7 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 	var scheduleEngine runtimeidentity.Engine
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT id,target_session_id,workspace_project_id,
 		(SELECT agent_profile_id FROM workspace_sessions WHERE id=target_session_id),engine
-		FROM scheduled_tasks WHERE name='CONTROL_AUTOMATION'`).Scan(&scheduleID, &sessionID, &projectID, &profileID, &scheduleEngine))
+		FROM scheduled_tasks WHERE workspace_id=$1 AND name='CONTROL_AUTOMATION'`, f.workspaceID).Scan(&scheduleID, &sessionID, &projectID, &profileID, &scheduleEngine))
 	require.Equal(t, runtimeidentity.Claude, scheduleEngine)
 	workerID := app.Runner.WorkerID()
 	stopWorker()
@@ -176,21 +176,21 @@ func TestWorkerControlRealSSHBothEngines(t *testing.T) {
 		scheduledtasks.ToolContext{SessionID: sessionID, ProjectID: projectID, AgentProfileID: profileID}, scheduleID)
 	require.NoError(t, err)
 	app.Runner.NotifyControlWake([]string{"claim"})
-	awaitControlRunCount(t, ctx, f.db, runtimeidentity.Claude, 2)
+	awaitControlRunCount(t, ctx, f, runtimeidentity.Claude, 2)
 	require.True(t, followupSeen.Load(), "定时任务必须到达 Claude 的真实模型上下文")
 	var recordedThread string
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT external_thread_id FROM codex_thread_controls WHERE session_id=$1`, sessionID).Scan(&recordedThread))
 	require.Equal(t, threads[runtimeidentity.Claude], recordedThread)
 	var codexRuns int
-	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='codex'`).Scan(&codexRuns))
+	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.worker_id=$1 AND c.engine='codex'`, f.workerID).Scan(&codexRuns))
 	require.Equal(t, 1, codexRuns, "Claude 定时任务不能派发至 Codex")
 	approvals.run(t, ctx, app, f, threads[runtimeidentity.Claude], discord)
 	var claudeRuns int
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r
-		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='claude-code' AND r.status='completed'`).Scan(&claudeRuns))
+		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.worker_id=$1 AND c.engine='claude-code' AND r.status='completed'`, f.workerID).Scan(&claudeRuns))
 	require.Equal(t, 5, claudeRuns)
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r
-		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.engine='codex'`).Scan(&codexRuns))
+		JOIN codex_thread_controls c ON c.id=r.control_id WHERE c.worker_id=$1 AND c.engine='codex'`, f.workerID).Scan(&codexRuns))
 	require.Equal(t, 1, codexRuns, "Claude 审批不得产生 Codex 回合")
 	automation.run(t, ctx, app, stopWorker, startWorker, f, threads[runtimeidentity.Claude], sessionID, scheduleID)
 	mu.Lock()

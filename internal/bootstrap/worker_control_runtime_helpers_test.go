@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,9 +35,13 @@ import (
 )
 
 type controlRuntimeFixture struct {
-	cfg    config.Config
-	db     *sql.DB
-	signer ssh.Signer
+	cfg           config.Config
+	db            *sql.DB
+	signer        ssh.Signer
+	workerID      uuid.UUID
+	workspaceID   uuid.UUID
+	guildID       string
+	discordIDBase int64
 }
 
 func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string, firstToolRequested <-chan struct{}) controlRuntimeFixture {
@@ -82,7 +87,11 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	}))
 	t.Cleanup(server.Close)
 	registry := workerregistry.NewService(db)
-	registered, enrollment, err := registry.Create(ctx, "protocol-worker", []string{"discord"}, 2)
+	// 多个真实专项共享临时数据库；身份唯一化，不清库或复用前一专项的授权。
+	fixtureID := uuid.New()
+	discordIDBase := int64(binary.BigEndian.Uint64(fixtureID[:8]) & ((1 << 62) - 1))
+	guildID := fmt.Sprint(discordIDBase)
+	registered, enrollment, err := registry.Create(ctx, "protocol-worker-"+fixtureID.String(), []string{"discord"}, 2)
 	require.NoError(t, err)
 	_, credential, err := registry.Enroll(ctx, enrollment)
 	require.NoError(t, err)
@@ -126,24 +135,26 @@ stream_max_retries=0
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(cfg.ClaudeConfigDir(), "settings.json"), settings, 0o600))
-	_, err = db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,enabled) VALUES ('protocol',true);
-		INSERT INTO discord_members(guild_id,discord_user_id,username) VALUES ('protocol','1001','owner')`)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,enabled) VALUES ($1,true)`, guildID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_members(guild_id,discord_user_id,username) VALUES ($1,'1001','owner')`, guildID)
 	require.NoError(t, err)
 	var workspaceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO worker_workspaces(worker_id,guild_id,owner_discord_user_id)
-		VALUES ($1,'protocol','1001') RETURNING id`, registered.ID).Scan(&workspaceID))
+		VALUES ($1,$2,'1001') RETURNING id`, registered.ID, guildID).Scan(&workspaceID))
 	_, err = db.ExecContext(ctx, `INSERT INTO workspace_projects(workspace_id,relative_path,name,project_kind,
 		availability_status,project_source,host_path) VALUES ($1,'workspaces','Workspace','directory','available','workspace_root',$2)`, workspaceID, cfg.WorkerWorkspaceRoot)
 	require.NoError(t, err)
-	return controlRuntimeFixture{cfg: cfg, db: db, signer: signer}
+	return controlRuntimeFixture{cfg: cfg, db: db, signer: signer, workerID: registered.ID,
+		workspaceID: workspaceID, guildID: guildID, discordIDBase: discordIDBase}
 }
 
-func awaitControlRunCount(t *testing.T, ctx context.Context, db *sql.DB, engine runtimeidentity.Engine, want int) {
+func awaitControlRunCount(t *testing.T, ctx context.Context, f controlRuntimeFixture, engine runtimeidentity.Engine, want int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		var count int
-		err := db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r JOIN codex_thread_controls c
-			ON c.id=r.control_id WHERE c.engine=$1 AND r.status='completed'`, engine).Scan(&count)
+		err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r JOIN codex_thread_controls c
+			ON c.id=r.control_id WHERE c.worker_id=$1 AND c.engine=$2 AND r.status='completed'`, f.workerID, engine).Scan(&count)
 		return err == nil && count >= want
 	}, 40*time.Second, 100*time.Millisecond, "Control 需要收到 %s 的 %d 个终态", engine, want)
 }
