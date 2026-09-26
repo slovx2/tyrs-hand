@@ -68,8 +68,17 @@ test -n "${workspace}"
 scheme="$(basename "${workspace}" .xcworkspace)"
 derived="${client}/.e2e-build/ios"
 xcodebuild -workspace "${workspace}" -scheme "${scheme}" -configuration Release \
-  -sdk iphonesimulator -derivedDataPath "${derived}" CODE_SIGNING_ALLOWED=NO build
+  -sdk iphonesimulator -derivedDataPath "${derived}" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 app="$(find "${derived}/Build/Products" -path '*Release-iphonesimulator/*.app' -print -quit)"
 test -n "${app}"
+# 模拟器也需要签名中的应用身份才能使用 Keychain；安装前拒绝缺失或错误的身份。
+codesign --verify --deep --strict "${app}"
+entitlements="${derived}/simulator-entitlements.plist"
+codesign --display --entitlements - --xml "${app}" > "${entitlements}"
+application_identifier="$(plutil -extract application-identifier raw -o - "${entitlements}")"
+if [[ "${application_identifier}" != "${app_id}" && "${application_identifier}" != *."${app_id}" ]]; then
+  echo "iOS 模拟器签名缺少与应用匹配的 application-identifier" >&2
+  exit 1
+fi
 xcrun simctl install booted "${app}"
 xcrun simctl get_app_container booted "${app_id}" app >/dev/null

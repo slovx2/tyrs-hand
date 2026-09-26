@@ -78,7 +78,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	oauthOnly := mode == "mcp-oauth"
 	goalExecution := mode == "goal-execution"
 	isolationOnly := mode == "isolation"
-	sftpOnly := mode == "mobile-sftp"
+	sftpOnly := mode == "mobile-sftp" || mode == "files-acceptance"
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
 	threadPermissions := mode == "thread-permissions"
@@ -390,6 +390,17 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		return
 	}
 	if sftpOnly {
+		if mode == "files-acceptance" {
+			for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude} {
+				client, engineRoot := protocol[engine], filepath.Join(root, string(engine))
+				verifyRuntimeFilesystem(t, ctx, client, engineRoot)
+				second := connectRuntimeSSH(t, ctx, clients[engine], engine)
+				verifyRuntimeWatchIsolation(t, ctx, client, second, engineRoot)
+				verifyRuntimeProcessIsolation(t, ctx, second, client, engineRoot)
+				verifyRuntimeProcesses(t, ctx, client, engineRoot)
+			}
+			require.Zero(t, modelCalls.Load(), "文件和进程 RPC 不得触发模型调用")
+		}
 		verifyRuntimeMobileSFTP(t, ctx, registry, protocol, private, sftpFixture)
 		require.Equal(t, int64(4), modelCalls.Load(), "两个引擎各执行一次原生文件工具及一次模型续写")
 		return

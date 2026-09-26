@@ -183,6 +183,17 @@ func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid
 		return InteractiveAnswerResult{}, err
 	}
 	complete := nextInteractiveQuestion(request) < 0
+	var elicitationAnswer json.RawMessage
+	if request.Method == interactiveprotocol.MCPElicitation {
+		envelope, marshalErr := json.Marshal(map[string]any{"answers": request.Draft})
+		if marshalErr != nil {
+			return InteractiveAnswerResult{}, marshalErr
+		}
+		elicitationAnswer, complete, err = interactiveprotocol.NormalizeElicitationDraft(request.Params, envelope)
+		if err != nil {
+			return InteractiveAnswerResult{}, err
+		}
+	}
 	if complete {
 		finalAnswer, marshalErr := json.Marshal(map[string]any{"answers": request.Draft})
 		if marshalErr != nil {
@@ -193,6 +204,9 @@ func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid
 			if err != nil {
 				return InteractiveAnswerResult{}, err
 			}
+		}
+		if request.Method == interactiveprotocol.MCPElicitation {
+			finalAnswer = elicitationAnswer
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
 			draft_answers=$2, answer=$3, status='resolved', answer_surface='discord',

@@ -222,7 +222,6 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 		return
 	}
 	if request.WorkspaceID == uuid.Nil || strings.TrimSpace(request.ThreadID) == "" ||
-		strings.TrimSpace(request.TurnID) == "" || strings.TrimSpace(request.ItemID) == "" ||
 		request.AppServerGeneration < 1 || !interactiveprotocol.ValidRequestID(request.RequestID) ||
 		(request.Surface != "desktop" && request.Surface != "discord" && request.Surface != "auto") {
 		badRequest(c, errors.New("交互回答参数无效"))
@@ -356,12 +355,12 @@ func parseInteractiveRequest(method string, raw json.RawMessage) (interactivePar
 	if method == interactiveprotocol.UserInput {
 		return parseInteractiveParams(raw)
 	}
-	if !interactiveprotocol.IsApproval(method) {
+	if !interactiveprotocol.IsApproval(method) && method != interactiveprotocol.MCPElicitation {
 		return interactiveParams{}, false, errors.New("不支持的交互请求类型")
 	}
 	var value interactiveParams
 	if json.Unmarshal(raw, &value) != nil || strings.TrimSpace(value.ThreadID) == "" ||
-		strings.TrimSpace(value.TurnID) == "" || strings.TrimSpace(value.ItemID) == "" {
+		(method != interactiveprotocol.MCPElicitation && (strings.TrimSpace(value.TurnID) == "" || strings.TrimSpace(value.ItemID) == "")) {
 		return interactiveParams{}, false, errors.New("审批请求缺少会话、回合或条目标识")
 	}
 	questions, err := interactiveprotocol.Questions(method, raw)
@@ -369,9 +368,13 @@ func parseInteractiveRequest(method string, raw json.RawMessage) (interactivePar
 		return interactiveParams{}, false, err
 	}
 	err = json.Unmarshal(questions, &value.Questions)
-	// 原生命令/文件审批没有自动允许，超时只可取消。
+	// 原生审批和 MCP 都不能自动允许；保留真实的可空 MCP 回合与缺省条目标识。
 	value.AutoResolutionMS = 0
-	return value, false, err
+	secret := false
+	for _, question := range value.Questions {
+		secret = secret || question.IsSecret
+	}
+	return value, secret, err
 }
 
 func normalizeInteractiveAnswer(method string, params, answer json.RawMessage) (json.RawMessage, error) {
@@ -464,7 +467,10 @@ func (s *Server) loadInteractiveState(ctx context.Context, id, workerID uuid.UUI
 func (s *Server) expireInteractive(ctx context.Context, id, workerID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE codex_interactive_requests q SET
 		status='expired', answer=CASE WHEN q.request_method='item/tool/requestUserInput'
-		THEN '{"answers":{}}'::jsonb ELSE '{"decision":"cancel"}'::jsonb END, answer_surface='auto',
+		THEN '{"answers":{}}'::jsonb
+		WHEN q.request_method='item/permissions/requestApproval' THEN '{"permissions":{},"scope":"turn"}'::jsonb
+		WHEN q.request_method='mcpServer/elicitation/request' THEN '{"action":"cancel","content":null,"_meta":null}'::jsonb
+		ELSE '{"decision":"cancel"}'::jsonb END, answer_surface='auto',
 		resolved_at=now(), updated_at=now()
 		FROM codex_turn_runs r WHERE q.id=$1 AND q.run_id=r.id AND r.worker_id=$2
 		AND q.status='pending' AND q.deadline_at IS NOT NULL AND q.deadline_at <= now()`, id, workerID)

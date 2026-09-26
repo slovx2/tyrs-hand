@@ -9,14 +9,20 @@ import (
 )
 
 const (
-	UserInput       = "item/tool/requestUserInput"
-	CommandApproval = "item/commandExecution/requestApproval"
-	FileApproval    = "item/fileChange/requestApproval"
+	UserInput          = "item/tool/requestUserInput"
+	CommandApproval    = "item/commandExecution/requestApproval"
+	FileApproval       = "item/fileChange/requestApproval"
+	PermissionApproval = "item/permissions/requestApproval"
+	MCPElicitation     = "mcpServer/elicitation/request"
 )
 
-func IsApproval(method string) bool { return method == CommandApproval || method == FileApproval }
+func IsApproval(method string) bool {
+	return method == CommandApproval || method == FileApproval || method == PermissionApproval
+}
 
-func Supported(method string) bool { return method == UserInput || IsApproval(method) }
+func Supported(method string) bool {
+	return method == UserInput || IsApproval(method) || method == MCPElicitation
+}
 
 // JSON-RPC 请求 ID 必须保留字符串/整数类型，null 不能作为可回答的请求。
 func ValidRequestID(raw json.RawMessage) bool {
@@ -58,6 +64,12 @@ type approvalParams struct {
 
 // 展示问题沿用现有多端交互卡片；真正保存及回传的仍是原生审批响应。
 func Questions(method string, params json.RawMessage) (json.RawMessage, error) {
+	if method == MCPElicitation {
+		return elicitationQuestions(params)
+	}
+	if method == PermissionApproval {
+		return permissionQuestions(params)
+	}
 	if !IsApproval(method) {
 		return nil, errors.New("不支持的审批请求")
 	}
@@ -95,6 +107,12 @@ func Questions(method string, params json.RawMessage) (json.RawMessage, error) {
 
 // Discord/手机的选项回答统一转换为原生响应；自由文本不能扩大授权。
 func NormalizeAnswer(method string, params, answer json.RawMessage) (json.RawMessage, error) {
+	if method == MCPElicitation {
+		return normalizeElicitationAnswer(params, answer)
+	}
+	if method == PermissionApproval {
+		return normalizePermissionAnswer(params, answer)
+	}
 	if !IsApproval(method) {
 		return nil, errors.New("不支持的审批请求")
 	}
@@ -175,6 +193,24 @@ func equalJSON(a, b json.RawMessage) bool {
 }
 
 func AnswerLabel(answer json.RawMessage) string {
+	var elicitation struct{ Action string }
+	if json.Unmarshal(answer, &elicitation) == nil && elicitation.Action != "" {
+		return map[string]string{"accept": "已确认", "decline": "已拒绝", "cancel": "已取消"}[elicitation.Action]
+	}
+	var permission map[string]json.RawMessage
+	if json.Unmarshal(answer, &permission) == nil && permission["permissions"] != nil {
+		var value permissionAnswer
+		if json.Unmarshal(answer, &value) != nil {
+			return "无效权限答案"
+		}
+		if value.Permissions.Network == nil && value.Permissions.FileSystem == nil {
+			return "拒绝"
+		}
+		if value.Scope == "session" {
+			return "允许本会话"
+		}
+		return "允许本轮"
+	}
 	var value struct {
 		Decision any `json:"decision"`
 	}

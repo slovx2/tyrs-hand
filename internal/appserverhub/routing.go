@@ -510,10 +510,10 @@ func (r *Hub) handleServerRequest(ctx context.Context,
 	switch request.Method {
 	case "item/tool/call":
 		return r.routeToolCall(ctx, request)
-	case "item/tool/requestUserInput", "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
+	case "item/tool/requestUserInput", "item/commandExecution/requestApproval", "item/fileChange/requestApproval",
+		"item/permissions/requestApproval", "mcpServer/elicitation/request":
 		return r.firstInteractiveAnswer(ctx, request, threadID)
-	case "item/permissions/requestApproval", "mcpServer/elicitation/request",
-		"execCommandApproval", "applyPatchApproval":
+	case "execCommandApproval", "applyPatchApproval":
 		return r.waitInteractiveAnswer(ctx, request, threadID, false)
 	default:
 		// 其他原生能力保持 Desktop 行为；共享配置仍由客户端方法分类控制。

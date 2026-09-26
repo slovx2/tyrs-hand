@@ -2033,7 +2033,7 @@ export interface components {
     schemas: {
         NativeRequestID: string | number;
         /** @enum {string} */
-        InteractiveMethod: "item/tool/requestUserInput" | "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
+        InteractiveMethod: "item/tool/requestUserInput" | "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" | "item/permissions/requestApproval" | "mcpServer/elicitation/request";
         InteractiveQuestion: {
             id: string;
             header: string;
@@ -2052,8 +2052,10 @@ export interface components {
             /** @description 对应原生方法的完整参数，审批选项和策略提案不能省略 */
             params: {
                 threadId: string;
-                turnId: string;
-                itemId: string;
+                /** @description MCP 可为空，其余方法必须为非空原生回合标识 */
+                turnId?: string | null;
+                /** @description MCP 不提供此字段，其余方法必须为非空原生条目标识 */
+                itemId?: string;
             } & {
                 [key: string]: unknown;
             };
@@ -2062,14 +2064,16 @@ export interface components {
             /** Format: uuid */
             workspaceId: string;
             threadId: string;
+            /** @description MCP 未关联回合时为空字符串，必须匹配原始请求 */
             turnId: string;
+            /** @description MCP 为真实缺省值空字符串，不合成条目标识 */
             itemId: string;
             requestId: components["schemas"]["NativeRequestID"];
             /** Format: int64 */
             appServerGeneration: number;
             /** @enum {string} */
             surface: "desktop" | "discord" | "auto";
-            /** @description 原生 answers 或 decision，按已保存请求校验 */
+            /** @description 原生 answers、decision、permissions 或 MCP action，按已保存提案及表单 schema 校验 */
             answer: {
                 [key: string]: unknown;
             };

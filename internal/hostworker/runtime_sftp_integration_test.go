@@ -29,6 +29,12 @@ func TestRuntimeMobileSFTPRealSSHBothEngines(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "mobile-sftp")
 }
 
+// FILES-001 在同一双引擎运行中验证文件 RPC、watch、进程和真实手机传输。
+// 复用的专项逐项检查宿主副作用；传输还必须经过真实 CLI 工具和结果续写。
+func TestRuntimeFilesRealSSHBothEngines(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "files-acceptance")
+}
+
 type runtimeSFTPFixture struct {
 	root    string
 	content []byte
@@ -228,8 +234,8 @@ func waitSFTPTurn(t *testing.T, ctx context.Context, events *codex.EventSubscrip
 			if params.Turn.ID != id {
 				continue
 			}
-			require.Equal(t, "completed", params.Turn.Status)
 			require.Nil(t, params.Turn.Error)
+			require.Equal(t, "completed", params.Turn.Status)
 			return
 		case <-ctx.Done():
 			t.Fatal("真实文件工具未完成")

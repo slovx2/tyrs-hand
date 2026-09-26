@@ -541,7 +541,8 @@
           "CONFIG-004",
           "CONFIG-005",
           "CONFIG-006",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -1195,7 +1196,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -1268,7 +1270,8 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "PERMISSION-009"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1281,7 +1284,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -1357,7 +1361,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PERMISSION-009"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -1458,7 +1464,8 @@
       },
       "cases": {
         "codex": [
-          "EVENTS-003"
+          "EVENTS-003",
+          "PERMISSION-009"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1471,7 +1478,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -1633,7 +1641,8 @@
         "codex": [],
         "claude-code": [
           "MCP-004",
-          "MCP-005"
+          "MCP-005",
+          "MCP-014"
         ]
       },
       "schema": {
@@ -2302,7 +2311,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PERMISSION-009"
+        ],
         "claude-code": [
           "APPROVAL-003",
           "EVENTS-004",
@@ -2314,7 +2325,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "APPROVAL-005",
-          "APPROVAL-006"
+          "APPROVAL-006",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -3056,7 +3068,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "PERMISSION-009"
+        ],
         "claude-code": [
           "PLAN-001",
           "PLAN-002",
@@ -3110,7 +3124,8 @@
           "PERMISSION-007",
           "SESSION-003",
           "ISOLATION-004",
-          "FILES-007"
+          "FILES-007",
+          "PERMISSION-009"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3131,7 +3146,8 @@
           "SUBMIT-002",
           "CONTEXT-003",
           "ISOLATION-004",
-          "FILES-007"
+          "FILES-007",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -3166,7 +3182,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -3200,7 +3217,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "schema": {
@@ -3228,7 +3246,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "schema": {
@@ -3444,7 +3463,8 @@
       "cases": {
         "codex": [
           "EVENTS-003",
-          "EVENTS-005"
+          "EVENTS-005",
+          "PERMISSION-009"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3460,7 +3480,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -3524,7 +3545,8 @@
           "PERMISSION-007",
           "SESSION-003",
           "ISOLATION-004",
-          "FILES-007"
+          "FILES-007",
+          "PERMISSION-009"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3544,7 +3566,8 @@
           "SUBMIT-002",
           "CONTEXT-003",
           "ISOLATION-004",
-          "FILES-007"
+          "FILES-007",
+          "MCP-014"
         ]
       },
       "callers": [
@@ -3584,7 +3607,8 @@
           "PERMISSION-005",
           "PERMISSION-006",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "MCP-014"
         ]
       },
       "callers": [

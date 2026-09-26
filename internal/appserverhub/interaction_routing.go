@@ -2,8 +2,10 @@ package appserverhub
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/interactiveprotocol"
 )
 
 // 只重新发送待回答的交互，绝不重新派发已执行或结果不确定的动态工具。
@@ -52,6 +54,18 @@ func (r *Hub) waitInteractiveAnswer(ctx context.Context, request codex.ServerReq
 			}
 			if outcome.err != nil {
 				continue
+			}
+			if request.Method == interactiveprotocol.PermissionApproval || request.Method == interactiveprotocol.MCPElicitation {
+				raw, err := json.Marshal(outcome.result)
+				if err != nil {
+					continue
+				}
+				normalized, err := interactiveprotocol.NormalizeAnswer(request.Method, request.Params, raw)
+				if err != nil {
+					continue
+				}
+				// Control 离线时也必须先拒绝扩权，不能依赖远端补偿来校验答案。
+				outcome.result = normalized
 			}
 			r.mu.Lock()
 			available := r.sessions[outcome.target.id] == outcome.target

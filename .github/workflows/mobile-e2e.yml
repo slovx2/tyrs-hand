@@ -79,7 +79,7 @@ jobs:
             test -z "$(ip route show)"
             test -z "$(ip -6 route show default)"
           '
-          make test-mobile-runtime-e2e > mobile-runtime-junit.xml
+          make test-mobile-runtime-e2e > .artifacts/mobile-runtime/runtime-junit.xml
       - name: 创建 Android 35 手机模拟器
         timeout-minutes: 15
         run: |
@@ -130,7 +130,6 @@ jobs:
           path: |
             .local/e2e/evidence/
             .artifacts/mobile-runtime/
-            mobile-runtime-junit.xml
             ${{ runner.temp }}/android-emulator.log
             !**/bin/**
             !**/worker/tyrs-hand-worker
@@ -168,9 +167,10 @@ jobs:
           path: .local/mobile-adapter
       - name: 安装SDK并执行真实运行时预检
         run: |
+          mkdir -p .artifacts/mobile-runtime
           npm ci --prefix .local/mobile-adapter
           npm ci --prefix tools/protocol-inventory
-          make test-mobile-runtime-e2e > mobile-runtime-junit.xml
+          make test-mobile-runtime-e2e > .artifacts/mobile-runtime/runtime-junit.xml
       - name: 启动 iPhone 模拟器
         run: |
           runtime="$(xcrun simctl list runtimes available -j | \
@@ -194,7 +194,6 @@ jobs:
           path: |
             .local/e2e/evidence/
             .artifacts/mobile-runtime/
-            mobile-runtime-junit.xml
             !**/bin/**
             !**/worker/tyrs-hand-worker
             !**/postgres/**

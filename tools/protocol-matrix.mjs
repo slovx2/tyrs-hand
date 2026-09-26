@@ -41,16 +41,23 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 }, null, 2))
 
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
-const suites = controlOnly ? [
+const controlSuites = [
   { name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
     cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
-] : [
+  { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',
+    cases: ['MCP-014'], engines: ['claude-code'] },
+]
+// 权限授权必须使用 CLI 自身 OS 沙箱；macOS 不能嵌套 seatbelt，不能豁免含模型的外层隔离。
+// 正式权限链只在 Linux 仅回环的 network namespace 中执行。
+if (process.platform === 'linux') controlSuites.push({ name: 'bootstrap-permissions', pkg: './internal/bootstrap',
+  test: 'TestWorkerControlPermissionsRealSSH', cases: ['PERMISSION-009'], engines: ['codex'] })
+const suites = controlOnly ? controlSuites : [
   { name: 'runtime', pkg: './internal/hostworker', test: 'TestRuntimeRegistryRealSSHBothEngines',
     cases: ['ENTRY-001', 'ISOLATION-001', 'ISOLATION-003', 'FAILURE-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'EVENTS-003'] },
   { name: 'isolation', pkg: './internal/hostworker', test: 'TestRuntimeIsolationRealSSHBothEngines',
     cases: ['ISOLATION-004'], engines: ['codex', 'claude-code'] },
-  { name: 'mobile-sftp', pkg: './internal/hostworker', test: 'TestRuntimeMobileSFTPRealSSHBothEngines',
-    cases: ['FILES-007'], engines: ['codex', 'claude-code'] },
+  { name: 'files-acceptance', pkg: './internal/hostworker', test: 'TestRuntimeFilesRealSSHBothEngines',
+    cases: ['FILES-001', 'FILES-002', 'FILES-003', 'FILES-004', 'FILES-006', 'FILES-007'], engines: ['codex', 'claude-code'] },
   { name: 'command-permissions', pkg: './internal/hostworker', test: 'TestRuntimeCommandPermissionsRealSSHBothEngines',
     cases: ['PERMISSION-command'] },
   { name: 'thread-permissions', pkg: './internal/hostworker', test: 'TestRuntimeThreadPermissionsRealSSHBothEngines',
@@ -89,8 +96,7 @@ const suites = controlOnly ? [
     cases: ['ENTRY-002', 'TOOLS-002'] },
 ]
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
-  suites.push({ name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
-    cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] })
+  suites.push(...controlSuites)
 }
 for (const suite of suites) {
   suite.binary = resolve(artifacts, `${suite.name}.test`)

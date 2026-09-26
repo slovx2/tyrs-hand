@@ -1707,7 +1707,7 @@ components:
         - { type: integer, format: int64 }
     InteractiveMethod:
       type: string
-      enum: [item/tool/requestUserInput, item/commandExecution/requestApproval, item/fileChange/requestApproval]
+      enum: [item/tool/requestUserInput, item/commandExecution/requestApproval, item/fileChange/requestApproval, item/permissions/requestApproval, mcpServer/elicitation/request]
     InteractiveQuestion:
       type: object
       required: [id, header, question]
@@ -1734,24 +1734,24 @@ components:
         params:
           type: object
           description: 对应原生方法的完整参数，审批选项和策略提案不能省略
-          required: [threadId, turnId, itemId]
+          required: [threadId]
           additionalProperties: true
           properties:
             threadId: { type: string, minLength: 1 }
-            turnId: { type: string, minLength: 1 }
-            itemId: { type: string, minLength: 1 }
+            turnId: { type: string, nullable: true, description: MCP 可为空，其余方法必须为非空原生回合标识 }
+            itemId: { type: string, description: MCP 不提供此字段，其余方法必须为非空原生条目标识 }
     WorkerInteractiveAnswer:
       type: object
       required: [workspaceId, threadId, turnId, itemId, requestId, appServerGeneration, surface, answer]
       properties:
         workspaceId: { type: string, format: uuid }
         threadId: { type: string, minLength: 1 }
-        turnId: { type: string, minLength: 1 }
-        itemId: { type: string, minLength: 1 }
+        turnId: { type: string, description: MCP 未关联回合时为空字符串，必须匹配原始请求 }
+        itemId: { type: string, description: MCP 为真实缺省值空字符串，不合成条目标识 }
         requestId: { $ref: "#/components/schemas/NativeRequestID" }
         appServerGeneration: { type: integer, format: int64, minimum: 1 }
         surface: { type: string, enum: [desktop, discord, auto] }
-        answer: { type: object, additionalProperties: true, description: 原生 answers 或 decision，按已保存请求校验 }
+        answer: { type: object, additionalProperties: true, description: 原生 answers、decision、permissions 或 MCP action，按已保存提案及表单 schema 校验 }
     WorkerInteractiveState:
       type: object
       required: [id, status, requestId, appServerGeneration, method, secret, ready]
