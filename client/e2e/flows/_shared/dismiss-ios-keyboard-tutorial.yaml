@@ -1,0 +1,12 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+# 只处理 iOS 系统首次键盘引导；必须识别说明正文，不能误点业务 Continue。
+- runFlow:
+    when:
+      platform: iOS
+      visible: "(?s)Speed up your typing by sliding your finger across the letters to compose a word\\."
+    commands:
+      - tapOn: "Continue"
+      - extendedWaitUntil:
+          notVisible: "(?s)Speed up your typing by sliding your finger across the letters to compose a word\\."
+          timeout: 5000

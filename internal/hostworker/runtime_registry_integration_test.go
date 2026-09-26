@@ -82,10 +82,13 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
 	permissionGrants := mode == "permission-grants"
+	experimentalFeatures := mode == "experimental-features"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	codexEvents := mode == "codex-events"
+	codexApprovals := mode == "codex-approvals"
 	claudeEvents := mode == "claude-events"
+	claudeEventGaps := mode == "claude-event-gaps"
 	hooksOnly := mode == "hooks"
 	catalogOnly := mode == "catalog"
 	configOnly := mode == "config"
@@ -116,7 +119,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	approval := &runtimeApprovalFixture{root: root}
 	grants := &runtimePermissionGrantsFixture{}
 	nativeEvents := &runtimeCodexEventsFixture{root: root}
+	nativeApprovals := &runtimeCodexApprovalFixture{root: root}
 	claudeEventsFixture := &runtimeClaudeEventsFixture{}
+	claudeEventGapsFixture := &runtimeClaudeEventGapsFixture{root: root}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
@@ -125,7 +130,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			engine := runtimeidentity.Codex
 			if request.URL.Path == "/v1/messages" {
 				engine = runtimeidentity.Claude
-				if strings.Contains(string(body), "hello from phone") {
+				if claudeEventGaps {
+					require.Equal(t, "Bearer sk-ant-oat01-test-not-a-secret", request.Header.Get("Authorization"))
+					require.Empty(t, request.Header.Get("x-api-key"), "事件专项只允许虚拟 OAuth 凭据")
+				} else if strings.Contains(string(body), "hello from phone") {
 					require.Equal(t, "Bearer test-token", request.Header.Get("Authorization"))
 					require.Empty(t, request.Header.Get("x-api-key"), "切换认证方式后不能继续发送旧密钥")
 				} else {
@@ -135,6 +143,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if claudeEventGaps {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				claudeEventGapsFixture.model(t, w, request, body)
+				return
+			}
+			if codexApprovals {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				nativeApprovals.model(t, w, body)
+				return
+			}
 			if permissionGrants {
 				require.Equal(t, runtimeidentity.Claude, engine)
 				grants.model(t, w, body)
@@ -230,12 +248,18 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		command := bin
 		if engine == runtimeidentity.Claude {
 			command = claudeExecutable
-			require.NoError(t, os.WriteFile(envFile, []byte("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n"), 0o600))
+			runtimeEnv := "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n"
+			model := "claude-config-model"
+			modelEnv := map[string]string{"ANTHROPIC_API_KEY": "test-not-a-secret", "ANTHROPIC_BASE_URL": upstream.URL}
+			if claudeEventGaps {
+				modelEnv["CLAUDE_CODE_OAUTH_TOKEN"] = "sk-ant-oat01-test-not-a-secret"
+				model = "claude-sonnet-4-6"
+				delete(modelEnv, "ANTHROPIC_API_KEY")
+			}
+			require.NoError(t, os.WriteFile(envFile, []byte(runtimeEnv), 0o600))
 			claudeConfig := filepath.Join(configHome, "claude")
 			require.NoError(t, os.MkdirAll(claudeConfig, 0o700))
-			settings, err := json.Marshal(map[string]any{"model": "claude-config-model", "env": map[string]string{
-				"ANTHROPIC_API_KEY": "test-not-a-secret", "ANTHROPIC_BASE_URL": upstream.URL,
-			}})
+			settings, err := json.Marshal(map[string]any{"model": model, "env": modelEnv})
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(claudeConfig, "settings.json"), settings, 0o600))
 			require.NoError(t, os.WriteFile(filepath.Join(claudeConfig, "CLAUDE.md"), []byte("CLAUDE_RUNTIME_INSTRUCTIONS_7319"), 0o600))
@@ -332,7 +356,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps {
 			continue
 		}
 		if configOnly {
@@ -368,6 +392,21 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if claudeEventGaps {
+		verifyRuntimeClaudeEventGaps(t, ctx, protocol[runtimeidentity.Claude], claudeEventGapsFixture)
+		require.Equal(t, int64(7), modelCalls.Load(), "仅业务工具及显式纯文本 Turn 可以调用模型")
+		return
+	}
+	if experimentalFeatures {
+		verifyRuntimeExperimentalFeatures(t, ctx, clients[runtimeidentity.Claude], root)
+		require.Zero(t, modelCalls.Load(), "目录、空操作及错误不得请求模型")
+		return
+	}
+	if codexApprovals {
+		verifyRuntimeCodexApprovals(t, ctx, clients[runtimeidentity.Codex], nativeApprovals)
+		require.Equal(t, int64(13), modelCalls.Load(), "取消不能续写，工具结果不能重放")
+		return
 	}
 	if permissionGrants {
 		verifyRuntimePermissionGrants(t, ctx, registry, clients[runtimeidentity.Claude], grants, root)

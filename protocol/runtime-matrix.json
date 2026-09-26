@@ -705,7 +705,10 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "FEATURE-001",
+          "FEATURE-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -725,7 +728,10 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "FEATURE-001",
+          "FEATURE-002"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -1298,7 +1304,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "APPROVAL-008"
+        ],
         "claude-code": [
           "PLAN-003",
           "PERMISSION-006",
@@ -1332,7 +1340,8 @@
         "codex": [
           "EVENTS-003",
           "PERMISSION-009",
-          "EVENTS-008"
+          "EVENTS-008",
+          "APPROVAL-008"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1382,7 +1391,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "APPROVAL-008"
+        ],
         "claude-code": [
           "PERMISSION-005",
           "PERMISSION-011",
@@ -1404,7 +1415,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "APPROVAL-008"
+        ],
         "claude-code": [
           "APPROVAL-004",
           "PLAN-003",
@@ -1569,7 +1582,8 @@
         "codex": [
           "EVENTS-003",
           "PERMISSION-009",
-          "EVENTS-008"
+          "EVENTS-008",
+          "APPROVAL-008"
         ],
         "claude-code": [
           "TOOLS-001",
@@ -1643,7 +1657,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "APPROVAL-008"
+        ],
         "claude-code": [
           "APPROVAL-003",
           "PLAN-001",
@@ -2479,7 +2495,8 @@
       },
       "cases": {
         "codex": [
-          "PERMISSION-009"
+          "PERMISSION-009",
+          "APPROVAL-008"
         ],
         "claude-code": [
           "APPROVAL-003",
@@ -3344,7 +3361,8 @@
           "ISOLATION-004",
           "FILES-007",
           "PERMISSION-009",
-          "MIGRATION-004"
+          "MIGRATION-004",
+          "APPROVAL-008"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3693,7 +3711,8 @@
           "EVENTS-005",
           "PERMISSION-009",
           "EVENTS-008",
-          "MIGRATION-004"
+          "MIGRATION-004",
+          "APPROVAL-008"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3745,7 +3764,9 @@
         "codex": [
           "EVENTS-008"
         ],
-        "claude-code": []
+        "claude-code": [
+          "EVENTS-010"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/TurnDiffUpdatedNotification",
@@ -3799,7 +3820,8 @@
           "ISOLATION-004",
           "FILES-007",
           "PERMISSION-009",
-          "MIGRATION-004"
+          "MIGRATION-004",
+          "APPROVAL-008"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3925,7 +3947,9 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "EVENTS-010"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/WarningNotification",

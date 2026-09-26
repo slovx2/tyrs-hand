@@ -18,9 +18,17 @@ import (
 
 type protocolTraceTransport struct {
 	codex.MessageTransport
-	mu            sync.Mutex
-	messages      []map[string]any
-	expectedClose string
+	mu                   sync.Mutex
+	messages             []map[string]any
+	expectedClose        string
+	parameterErrorMethod string
+}
+
+// 负例保留原始报文，仅声明预期参数错误；inventory 仍必须验证实际 -32602 答案。
+func (p *protocolTraceTransport) expectParameterError(method string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.parameterErrorMethod = method
 }
 
 func (p *protocolTraceTransport) expectClose(reason string) {
@@ -36,6 +44,10 @@ func (p *protocolTraceTransport) record(direction string, payload []byte) {
 	}
 	message["direction"] = direction
 	p.mu.Lock()
+	if direction == "client" && message["method"] == p.parameterErrorMethod && p.parameterErrorMethod != "" {
+		message["expectedErrorCode"] = -32602
+		p.parameterErrorMethod = ""
+	}
 	p.messages = append(p.messages, message)
 	p.mu.Unlock()
 }
@@ -85,6 +97,27 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 		caseIDs = []string{}
 		if engine == runtimeidentity.Claude {
 			caseIDs = []string{"PERMISSION-011"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexApprovalsRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"APPROVAL-008"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeExperimentalFeaturesRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"FEATURE-002"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeClaudeEventGapsRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"EVENTS-010"}
 		}
 	}
 	data, err := json.MarshalIndent(map[string]any{

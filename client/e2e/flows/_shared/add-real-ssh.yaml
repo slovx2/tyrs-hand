@@ -10,6 +10,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "connection:add-ssh"
 - tapOn:
     id: "connection:ssh:name"
+- runFlow: dismiss-ios-keyboard-tutorial.yaml
 - eraseText: 100
 - inputText: ${SSH_NAME}
 - tapOn:
@@ -24,6 +25,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "connection:ssh:user"
 - eraseText: 100
 - inputText: "developer"
+- runFlow: dismiss-ios-keyboard-tutorial.yaml
 - hideKeyboard
 - scrollUntilVisible:
     element:
@@ -31,11 +33,13 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     direction: DOWN
 - tapOn:
     id: "connection:ssh:private-key"
+- runFlow: dismiss-ios-keyboard-tutorial.yaml
 # 双入口共用本轮临时密钥，表单保留密钥时直接复用并由真实 SSH 认证核验。
 - runFlow:
     when:
       notVisible: "(?s).*BEGIN OPENSSH PRIVATE KEY.*"
     file: private-key.yaml
+- runFlow: dismiss-ios-keyboard-tutorial.yaml
 - hideKeyboard
 - scrollUntilVisible:
     element:

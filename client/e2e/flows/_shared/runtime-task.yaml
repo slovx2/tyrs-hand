@@ -45,7 +45,9 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "parameters:done"
 - tapOn:
     id: "composer:input"
+- runFlow: dismiss-ios-keyboard-tutorial.yaml
 - inputText: ${TASK_TEXT}
+- runFlow: dismiss-ios-keyboard-tutorial.yaml
 - hideKeyboard
 - tapOn:
     id: "composer:send"
