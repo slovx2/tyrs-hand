@@ -4037,7 +4037,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CONTEXT-007"
+        ],
         "claude-code": [
           "EVENTS-010"
         ]

@@ -184,6 +184,27 @@ func (r *runtimeExecutor) syncRunState(ctx context.Context, journal *runJournal,
 		if err != nil {
 			return err
 		}
+	} else {
+		// 原生执行可以先于 Control 登记完成；只重报 Journal 中实际观测到的身份，
+		// 不从提交 ID 或最终结果推断确认 ID。任一阶段失败都保留 Journal 重试。
+		for _, identity := range []struct {
+			id     string
+			report func(context.Context, *workerprotocol.Task, string) error
+		}{
+			{task.Claimed.ExternalThreadID, r.client.SetThread},
+			{task.Claimed.SubmissionID, r.client.RecordSubmission},
+			{task.Claimed.ConfirmedTurnID, r.client.ConfirmTurn},
+		} {
+			if identity.id == "" {
+				continue
+			}
+			requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
+			err = identity.report(requestCtx, &task, identity.id)
+			cancel()
+			if err != nil {
+				return err
+			}
+		}
 	}
 	for _, decision := range decisions {
 		decisionTask := task
@@ -294,12 +315,12 @@ func (r *runtimeExecutor) deliverTerminal(ctx context.Context, journal *runJourn
 			// Run 可能在 Control 全程离线期间已经结束；先幂等补登记，
 			// 再提交事件和终态，避免未登记的终态永久 404。
 			syncErr = r.syncRunState(ctx, journal, nil, logger)
-			if journal.DesktopRequest != nil && syncErr != nil && !retryableControlError(syncErr) {
-				logger.Warn("Desktop Run 补登记被 Control 永久拒绝，停止补报", zap.Error(syncErr))
+			if syncErr != nil && !retryableControlError(syncErr) {
+				logger.Warn("Run 补登记或身份确认被 Control 永久拒绝，保留 Journal 并停止补报", zap.Error(syncErr))
 				abandonRunJournal(r.journals, journal)
 				return
 			}
-			if journal.DesktopRequest != nil && syncErr != nil {
+			if syncErr != nil {
 				if !waitScheduledControlRetry(ctx, r.journals, journal, logger, syncErr) {
 					return
 				}

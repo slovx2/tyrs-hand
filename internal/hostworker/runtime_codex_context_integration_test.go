@@ -156,6 +156,7 @@ func runCodexNativeCompaction(t *testing.T, ctx context.Context, client *codex.S
 	turnID := ""
 	started, completed, boundaryStarts, boundaries, legacy := 0, 0, 0, 0, 0
 	boundaryID := ""
+	warnings := 0
 	var quiet <-chan time.Time
 	for {
 		select {
@@ -164,6 +165,7 @@ func runCodexNativeCompaction(t *testing.T, ctx context.Context, client *codex.S
 			require.Equal(t, 1, completed)
 			require.Equal(t, 1, boundaryStarts)
 			require.Equal(t, 1, boundaries)
+			require.Equal(t, 1, warnings, "原生压缩风险提示必须恰好送达一次")
 			t.Logf("CONTEXT-007 native contextCompaction=1 legacy thread/compacted=%d", legacy)
 			return turnID
 		case <-ctx.Done():
@@ -172,6 +174,7 @@ func runCodexNativeCompaction(t *testing.T, ctx context.Context, client *codex.S
 			require.True(t, ok)
 			var params struct {
 				ThreadID, TurnID string
+				Message          string
 				Turn             struct{ ID, Status string }
 				Item             struct{ Type, ID string }
 			}
@@ -182,6 +185,7 @@ func runCodexNativeCompaction(t *testing.T, ctx context.Context, client *codex.S
 				turnID = params.Turn.ID
 				require.NotEmpty(t, turnID)
 			case "turn/completed":
+				require.Equal(t, 1, warnings, "压缩风险提示必须在回合结束前送达")
 				completed++
 				require.Equal(t, turnID, params.Turn.ID)
 				require.Equal(t, "completed", params.Turn.Status)
@@ -202,6 +206,12 @@ func runCodexNativeCompaction(t *testing.T, ctx context.Context, client *codex.S
 				require.Equal(t, threadID, params.ThreadID)
 				require.Equal(t, turnID, params.TurnID)
 				legacy++
+			case "warning":
+				if strings.HasPrefix(params.Message, "Heads up: Long threads and multiple compactions") {
+					require.Equal(t, threadID, params.ThreadID, "风险提示必须关联真实压缩会话")
+					require.Equal(t, 1, boundaries, "风险提示必须来自已完成的原生压缩")
+					warnings++
+				}
 			}
 			if completed > 0 && boundaries > 0 && quiet == nil {
 				quiet = time.After(100 * time.Millisecond)
