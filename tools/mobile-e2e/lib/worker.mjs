@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { freePort, output, run, startProcess } from './process.mjs'
@@ -34,7 +34,8 @@ export class WorkerHarness {
     this.binary = resolve(this.runDir, 'tyrs-hand-worker')
     run('go', ['build', '-o', this.binary, './cmd/tyrs-hand-worker'], { cwd: this.repoRoot })
     // 短路径避免 macOS Unix Socket 的路径长度上限。
-    this.root = await mkdtemp('/tmp/000-tyrs-mobile-')
+    // 手机目录选择返回真实路径，Control 的项目登记必须使用同一身份。
+    this.root = await realpath(await mkdtemp('/tmp/000-tyrs-mobile-'))
     this.workspace = resolve(this.root, 'project')
     this.home = resolve(this.root, 'home')
     this.state = resolve(this.root, 'state')

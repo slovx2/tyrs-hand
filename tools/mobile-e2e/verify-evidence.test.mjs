@@ -21,7 +21,8 @@ async function fixture(directory, platform, override = {}) {
     ...override,
   })
   await save(resolve(root, 'model-assertions.json'), { passed: true, expected: markers, completed: markers })
-  const engine = { messages: 1, pendingRequests: [], pendingCallbacks: [] }
+  const engine = { messages: 1, pendingRequests: [], pendingCallbacks: [],
+    semantics: { passed: true, scenarios: Object.fromEntries(markers.map((marker) => [marker, {}])) } }
   await save(resolve(root, 'worker/schema-report.json'), {
     passed: true, errors: [], engines: { codex: engine, 'claude-code': engine },
   })

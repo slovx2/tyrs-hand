@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { schemaIndex, payloadValidator } from '../../protocol-inventory/schema.mjs'
+import { mobileWireSemantics } from './semantics.mjs'
 
-export async function validateRuntimeWire(repoRoot, runDir) {
+export async function validateRuntimeWire(repoRoot, runDir, { requireMobileScenarios = false } = {}) {
   const index = schemaIndex(resolve(repoRoot, 'protocol/codex-app-server/0.147.0/json-schema'),
     resolve(repoRoot, 'protocol/extensions'))
   const validate = payloadValidator(index)
@@ -56,6 +57,13 @@ export async function validateRuntimeWire(repoRoot, runDir) {
     report.engines[engine] = { messages: messages.length, checkedResponses,
       methods: Object.fromEntries(methods), pendingRequests: [...pending.request.values()],
       pendingCallbacks: [...pending.response.values()] }
+    if (requireMobileScenarios) {
+      try {
+        report.engines[engine].semantics = mobileWireSemantics(engine, messages)
+      } catch (error) {
+        report.errors.push({ engine, error: error.message })
+      }
+    }
     if (pending.response.size) report.errors.push({ engine, error: '仍有未回答的服务端回调' })
     if (pending.request.size) report.errors.push({ engine, error: '仍有未完成的客户端请求' })
   }

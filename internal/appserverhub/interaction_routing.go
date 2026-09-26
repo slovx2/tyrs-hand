@@ -63,7 +63,11 @@ func (r *Hub) waitInteractiveAnswer(ctx context.Context, request codex.ServerReq
 				return outcome.result, nil
 			}
 			won, resolved, err := r.options.Controller.ResolveInteractive(answerCtx, request, outcome.result, outcome.role)
-			if err == nil && won {
+			if err != nil {
+				// Controller 已处理暂时不可用的补偿；明确失败必须传回引擎，不能静默丢弃答案。
+				return nil, err
+			}
+			if won {
 				return resolved, nil
 			}
 		}

@@ -76,10 +76,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     visible:
       id: "interactive:.*:accept"
     timeout: 120000
-- takeScreenshot: claude-approval-pending
+- takeScreenshot: ${TYRS_HAND_E2E_SCREENSHOT_DIR}/claude-approval-pending
 - tapOn:
     id: "interactive:.*:accept"
-- takeScreenshot: claude-approval-answered
+- takeScreenshot: ${TYRS_HAND_E2E_SCREENSHOT_DIR}/claude-approval-answered
 - extendedWaitUntil:
     visible: "MOBILE_CLAUDE_APPROVAL_OK"
     timeout: 120000

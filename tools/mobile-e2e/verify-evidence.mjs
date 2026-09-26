@@ -43,6 +43,10 @@ export async function verifyMobileEvidence(directory, commit) {
       assert.ok(schema.engines[engine].messages > 0)
       assert.deepEqual(schema.engines[engine].pendingRequests, [])
       assert.deepEqual(schema.engines[engine].pendingCallbacks, [])
+      assert.equal(schema.engines[engine].semantics?.passed, true, '缺少真实审批回答和计划执行顺序断言')
+      for (const marker of required.filter((value) => value.includes('CODEX') === (engine === 'codex'))) {
+        assert.ok(schema.engines[engine].semantics.scenarios[marker], '缺少真实 wire 场景：' + marker)
+      }
       assert.ok((await readFile(resolve(root, 'worker/wire-' + engine + '.jsonl'), 'utf8')).trim())
       const requests = await json(resolve(root, 'model-' + engine + '.json'))
       assert.ok(requests.requests.length > 0)

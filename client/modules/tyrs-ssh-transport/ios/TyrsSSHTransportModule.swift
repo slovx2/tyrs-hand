@@ -6,12 +6,12 @@ public final class TyrsSSHTransportModule: Module {
     Name("TyrsSSHTransport")
 
     AsyncFunction("openAppServer") { (options: [String: Any]) -> [String: Any] in
-      try parseObject(SshtransportOpenAppServer(
-        string(options, "profileId"), string(options, "host"), int64(options, "port"),
+      try parseObject(goString { error in try SshtransportOpenAppServer(
+        string(options, "profileId"), string(options, "host"), integer(options, "port"),
         string(options, "user"), string(options, "privateKey"),
         optionalString(options, "passphrase"),
-        optionalString(options, "expectedHostFingerprint")
-      ))
+        optionalString(options, "expectedHostFingerprint"), error
+      ) })
     }
 
     AsyncFunction("close") { (profileId: String) in
@@ -19,51 +19,51 @@ public final class TyrsSSHTransportModule: Module {
     }
 
     AsyncFunction("inspectRuntime") { (options: [String: Any]) -> [String: Any] in
-      try parseObject(SshtransportInspectRuntime(
-        string(options, "host"), int64(options, "port"), string(options, "user"),
+      try parseObject(goString { error in try SshtransportInspectRuntime(
+        string(options, "host"), integer(options, "port"), string(options, "user"),
         string(options, "privateKey"), optionalString(options, "passphrase"),
-        string(options, "expectedHostFingerprint")
-      ))
+        string(options, "expectedHostFingerprint"), error
+      ) })
     }
 
     AsyncFunction("generateEd25519Key") { () -> [String: Any] in
-      try parseObject(SshtransportGenerateEd25519Key())
+      try parseObject(goString { SshtransportGenerateEd25519Key($0) })
     }
 
     AsyncFunction("inspectPrivateKey") { (privateKey: String, passphrase: String?) -> [String: Any] in
-      try parseObject(SshtransportInspectPrivateKey(privateKey, passphrase ?? ""))
+      try parseObject(goString { SshtransportInspectPrivateKey(privateKey, passphrase ?? "", $0) })
     }
 
     AsyncFunction("probeHost") { (options: [String: Any]) -> [String: Any] in
-      ["fingerprint": try SshtransportProbeHost(
-        string(options, "host"), int64(options, "port"), string(options, "user")
-      )]
+      ["fingerprint": try goString { error in try SshtransportProbeHost(
+        string(options, "host"), integer(options, "port"), string(options, "user"), error
+      ) }]
     }
 
     AsyncFunction("listDirectory") { (options: [String: Any]) -> [Any] in
-      try parseArray(SshtransportListDirectory(
-        string(options, "host"), int64(options, "port"), string(options, "user"),
+      try parseArray(goString { error in try SshtransportListDirectory(
+        string(options, "host"), integer(options, "port"), string(options, "user"),
         string(options, "privateKey"), optionalString(options, "passphrase"),
-        optionalString(options, "expectedHostFingerprint"), string(options, "path")
-      ))
+        optionalString(options, "expectedHostFingerprint"), string(options, "path"), error
+      ) })
     }
 
     AsyncFunction("uploadAttachment") { (options: [String: Any]) -> [String: Any] in
-      try parseObject(SshtransportUploadAttachment(
-        string(options, "host"), int64(options, "port"), string(options, "user"),
+      try parseObject(goString { error in try SshtransportUploadAttachment(
+        string(options, "host"), integer(options, "port"), string(options, "user"),
         string(options, "privateKey"), optionalString(options, "passphrase"),
         optionalString(options, "expectedHostFingerprint"), string(options, "localPath"),
-        string(options, "filename"), optionalString(options, "mimeType")
-      ))
+        string(options, "filename"), optionalString(options, "mimeType"), error
+      ) })
     }
 
     AsyncFunction("downloadFile") { (options: [String: Any]) -> [String: Any] in
-      try parseObject(SshtransportDownloadFile(
-        string(options, "host"), int64(options, "port"), string(options, "user"),
+      try parseObject(goString { error in try SshtransportDownloadFile(
+        string(options, "host"), integer(options, "port"), string(options, "user"),
         string(options, "privateKey"), optionalString(options, "passphrase"),
         optionalString(options, "expectedHostFingerprint"), string(options, "remotePath"),
-        string(options, "localPath")
-      ))
+        string(options, "localPath"), error
+      ) })
     }
   }
 }
@@ -84,11 +84,19 @@ private func optionalString(_ options: [String: Any], _ name: String) -> String 
   options[name] as? String ?? ""
 }
 
-private func int64(_ options: [String: Any], _ name: String) throws -> Int64 {
+private func integer(_ options: [String: Any], _ name: String) throws -> Int {
   guard let value = options[name] as? NSNumber else {
     throw SSHTransportError.missingOption(name)
   }
-  return value.int64Value
+  return value.intValue
+}
+
+// gomobile 返回非空 NSString，Swift 不会自动把 NSError 指针转换为 throws。
+private func goString(_ call: (NSErrorPointer) throws -> String) throws -> String {
+  var error: NSError?
+  let value = try call(&error)
+  if let error { throw error }
+  return value
 }
 
 private func parseObject(_ encoded: String) throws -> [String: Any] {

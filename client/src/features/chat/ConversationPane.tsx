@@ -441,9 +441,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
-        if (!answerRequest(sessionId, item.request.id, result)) {
-          Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
-          void loadThread(sessionId);
+        try {
+          if (!answerRequest(sessionId, item.request.id, result)) {
+            Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
+            void loadThread(sessionId);
+          }
+        } catch (cause) {
+          Alert.alert("回答发送失败", cause instanceof Error ? cause.message : "请检查连接后重试");
         }
       }} />
       : <ConversationContentRow row={item} profileId={profileId ?? "unavailable"}

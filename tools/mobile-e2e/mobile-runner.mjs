@@ -152,6 +152,7 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
 async function main() {
   checkVersions()
   await mkdir(`${runDir}/logs`, { recursive: true })
+  await mkdir(`${runDir}/screenshots`, { recursive: true })
   if (platform === 'android') run('adb', ['-s', deviceID, 'logcat', '-b', 'crash', '-c'])
   const primary = new ControlHarness({
     repoRoot, runDir: `${runDir}/primary`, label: 'primary',
@@ -199,6 +200,7 @@ async function main() {
     return `- scrollUntilVisible:\n    element:\n      id: "connection:ssh:directory:${encodeURIComponent(path)}"\n    direction: DOWN\n    timeout: 15000\n- tapOn:\n    id: "connection:ssh:directory:${encodeURIComponent(path)}"\n`
   }).join(''))
   const maestroEnvironment = { TYRS_HAND_E2E_PLATFORM: platform,
+    TYRS_HAND_E2E_SCREENSHOT_DIR: resolve(runDir, 'screenshots'),
     TYRS_HAND_E2E_APP_ID: appID, TYRS_HAND_E2E_PAIRING_URI: firstPairing.pairingUri,
     TYRS_HAND_E2E_SECOND_PAIRING_URI: secondPairing.pairingUri,
     TYRS_HAND_E2E_PRIMARY_SERVER_ID: firstPairing.serverId,
@@ -209,7 +211,8 @@ async function main() {
   await Promise.all([runMaestro(maestroEnvironment, 'suite', resolve(stagedFlows, relativeFlow)), ...approvals])
   await models.verify(['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
     'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN'])
-  const schemaReport = await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'))
+  const schemaReport = await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'),
+    { requireMobileScenarios: true })
   const snapshots = controls.map((control) => JSON.parse(output('go', [
     'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))

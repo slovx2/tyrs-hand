@@ -423,8 +423,9 @@ export class OfficialAppServerClient {
   }
 
   answerRequest(id: RequestId, result: unknown): boolean {
-    if (!this.pendingServerRequests.delete(String(id))) return false;
+    if (!this.pendingServerRequests.has(String(id))) return false;
     this.rpc.respond(id, result);
+    this.pendingServerRequests.delete(String(id));
     return true;
   }
 

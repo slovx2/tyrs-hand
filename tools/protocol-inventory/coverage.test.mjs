@@ -34,6 +34,22 @@ test('MCP reload 的 null 参数与官方响应均进行真实 schema 校验', (
   assert.throws(() => validate('config/mcpServer/reload', 'response', null))
 })
 
+test('配置写入共用响应及要求查询的 null 参数使用官方 schema', () => {
+  const root = resolve(import.meta.dirname, '../..')
+  const index = schemaIndex(resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'))
+  const validate = payloadValidator(index)
+  for (const method of ['config/value/write', 'config/batchWrite']) {
+    assert.equal(index.get(method).references.response, 'v2/ConfigWriteResponse.json')
+    validate(method, 'response', { status: 'ok', version: 'v1', filePath: '/tmp/config.json', overriddenMetadata: null })
+    assert.throws(() => validate(method, 'response', {}))
+  }
+  assert.equal(index.get('configRequirements/read').references.response, 'v2/ConfigRequirementsReadResponse.json')
+  validate('configRequirements/read', 'params', null)
+  validate('configRequirements/read', 'response', { requirements: null })
+  assert.throws(() => validate('configRequirements/read', 'params', {}))
+  assert.throws(() => validate('configRequirements/read', 'response', { requirements: false }))
+})
+
 test('运行时扩展必须校验真实身份字段与版本，不能仅凭方法名计覆盖', () => {
   const root = resolve(import.meta.dirname, '../..')
   const validate = payloadValidator(schemaIndex(

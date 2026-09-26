@@ -13,8 +13,13 @@ export function schemaIndex(root, extensionsRoot) {
   }
   walk(root)
   const index = new Map()
-  // null 参数没有 Params 类型，必须显式关联官方生成的响应类型。
-  const responseNames = { 'config/mcpServer/reload': 'McpServerRefreshResponse' }
+  // null 参数或共用响应的请求，必须显式关联官方生成的响应类型。
+  const responseNames = {
+    'config/mcpServer/reload': 'McpServerRefreshResponse',
+    'configRequirements/read': 'ConfigRequirementsReadResponse',
+    'config/value/write': 'ConfigWriteResponse',
+    'config/batchWrite': 'ConfigWriteResponse',
+  }
   for (const kind of ['ClientRequest', 'ServerRequest', 'ClientNotification', 'ServerNotification']) {
     const schema = JSON.parse(readFileSync(join(root, `${kind}.json`), 'utf8'))
     for (const variant of schema.oneOf) for (const method of variant.properties.method.enum) {

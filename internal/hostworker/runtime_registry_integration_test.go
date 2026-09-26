@@ -80,6 +80,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	catalogOnly := mode == "catalog"
+	configOnly := mode == "config"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -278,6 +279,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
+		if configOnly {
+			verifyRuntimeConfig(t, ctx, client, root)
+			continue
+		}
 		if threadPermissions {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
@@ -308,7 +313,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
 	}
-	if catalogOnly {
+	if catalogOnly || configOnly {
 		require.Zero(t, modelCalls.Load(), "目录读取不能触发任何模型请求")
 		return
 	}

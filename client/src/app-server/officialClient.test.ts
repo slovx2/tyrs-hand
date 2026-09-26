@@ -119,6 +119,25 @@ describe("OfficialAppServerClient", () => {
     expect(client.pendingRequests("thread-1").map((item) => String(item.id))).toEqual(["new"]);
   });
 
+  it.each(["codex", "claude-code"] as const)("%s 回答发送失败保留待回答请求，重试只发送一次", (engine) => {
+    const rpc = new FakeRpc(() => undefined);
+    const client = new OfficialAppServerClient("profile-1", engine, rpc, new MemoryJournal());
+    rpc.emitRequest({ id: "approval-retry", method: "item/fileChange/requestApproval", params: {
+      threadId: "thread-1", turnId: "turn-1", itemId: "item-1",
+      reason: null, grantRoot: null, startedAtMs: 1,
+    } });
+    const respond = rpc.respond.bind(rpc);
+    rpc.respond = () => { throw new Error("SSH 写入失败"); };
+    expect(() => client.answerRequest("approval-retry", { decision: "accept" })).toThrow("SSH 写入失败");
+    expect(client.pendingRequests("thread-1").map((request) => request.id)).toEqual(["approval-retry"]);
+    expect(rpc.responses).toHaveLength(0);
+    rpc.respond = respond;
+    expect(client.answerRequest("approval-retry", { decision: "accept" })).toBe(true);
+    expect(client.answerRequest("approval-retry", { decision: "accept" })).toBe(false);
+    expect(client.pendingRequests("thread-1")).toEqual([]);
+    expect(rpc.responses).toEqual([{ id: "approval-retry", result: { decision: "accept" } }]);
+  });
+
   it.each(["codex", "claude-code"] as const)("%s 使用所属引擎的受限临时线程生成标题", async (engine) => {
     let rpc!: FakeRpc;
     rpc = new FakeRpc((method, params) => {

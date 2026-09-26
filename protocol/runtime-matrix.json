@@ -337,7 +337,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["CATALOG-001"],
+        "codex": [
+          "CATALOG-001"
+        ],
         "claude-code": [
           "PLAN-002",
           "CATALOG-001"
@@ -484,15 +486,22 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CONFIG-007"
+        ],
+        "claude-code": [
+          "CONFIG-007",
+          "CONFIG-004",
+          "CONFIG-005",
+          "CONFIG-006"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ConfigBatchWriteParams",
-        "response": null
+        "response": "v2/ConfigWriteResponse.json"
       }
     },
     {
@@ -523,8 +532,15 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CONFIG-007"
+        ],
+        "claude-code": [
+          "CONFIG-007",
+          "CONFIG-004",
+          "CONFIG-005",
+          "CONFIG-006"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -542,15 +558,22 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CONFIG-007"
+        ],
+        "claude-code": [
+          "CONFIG-007",
+          "CONFIG-004",
+          "CONFIG-005",
+          "CONFIG-006"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ConfigValueWriteParams",
-        "response": null
+        "response": "v2/ConfigWriteResponse.json"
       }
     },
     {
@@ -560,15 +583,19 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CONFIG-007"
+        ],
+        "claude-code": [
+          "CONFIG-007"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/ConfigRequirementsReadResponse.json"
       }
     },
     {
@@ -1706,8 +1733,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["CATALOG-001"],
-        "claude-code": ["CATALOG-001"]
+        "codex": [
+          "CATALOG-001"
+        ],
+        "claude-code": [
+          "CATALOG-001"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -1727,8 +1758,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["CATALOG-001"],
-        "claude-code": ["CATALOG-001"]
+        "codex": [
+          "CATALOG-001"
+        ],
+        "claude-code": [
+          "CATALOG-001"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -1745,8 +1780,12 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["CATALOG-001"],
-        "claude-code": ["CATALOG-001"]
+        "codex": [
+          "CATALOG-001"
+        ],
+        "claude-code": [
+          "CATALOG-001"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
