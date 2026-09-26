@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { mobileScenarios, mobileMcpScenarios } from './lib/mcp-scenarios.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -70,6 +71,7 @@ test('默认 suite 使用真实双引擎并验证计划、权限和审批', asyn
   const suite = await readFile(resolve(root, 'client/e2e/flows/suite.yaml'), 'utf8')
   const flow = await readFile(resolve(root, 'client/e2e/flows/dual-engine-suite.yaml'), 'utf8')
   const setup = await readFile(resolve(root, 'client/e2e/flows/_shared/dual-engine-ssh-setup.yaml'), 'utf8')
+  const mcpFlow = await readFile(resolve(root, 'client/e2e/flows/_shared/mcp-suite.yaml'), 'utf8')
   assert.match(suite, /dual-engine-suite\.yaml/)
   assert.match(runner, /new WorkerHarness/)
   assert.match(runner, /models\.verify/)
@@ -78,11 +80,15 @@ test('默认 suite 使用真实双引擎并验证计划、权限和审批', asyn
   assert.match(worker, /inheritEnv: false/)
   assert.match(worker, /sandbox-exec/)
   assert.match(worker, /--net/)
-  for (const marker of ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
-    'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']) {
-    assert.ok((setup + flow).includes(marker), marker + ' 必须经过 GUI')
-    assert.ok(runner.includes(marker), marker + ' 必须核对模型和副作用')
+  assert.equal(mobileScenarios.length, 12)
+  for (const marker of mobileScenarios) {
+    assert.ok((setup + flow + mcpFlow).includes(marker), marker + ' 必须经过 GUI')
   }
+  assert.match(runner, /import \{ mobileScenarios \} from '\.\/lib\/mcp-scenarios\.mjs'/)
+  assert.match(runner, /await models\.verify\(mobileScenarios\)/, '所有 GUI 场景必须核对模型和副作用')
+  assert.match(flow, /runFlow: _shared\/mcp-suite\.yaml/)
+  assert.deepEqual(Object.values(mobileMcpScenarios).map((entry) => entry.mode + ':' + entry.action),
+    ['form:accept', 'form:decline', 'form:cancel', 'url:accept', 'url:decline', 'url:cancel'])
   assert.match(flow, /interactive:.*:accept/)
   assert.match(flow, /interactive:.*:decline/)
   assert.match(flow, /MODE: "plan"/)

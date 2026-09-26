@@ -194,6 +194,7 @@ jobs:
           path: |
             .local/e2e/evidence/
             .artifacts/mobile-runtime/
+            client/.e2e-build/ios/signing-diagnostics/*.json
             !**/bin/**
             !**/worker/tyrs-hand-worker
             !**/postgres/**

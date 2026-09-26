@@ -1197,7 +1197,8 @@
           "PERMISSION-006",
           "SUBMIT-002",
           "CONTEXT-003",
-          "MCP-014"
+          "MCP-014",
+          "FAILURE-004"
         ]
       },
       "callers": [
@@ -1285,7 +1286,8 @@
           "PERMISSION-006",
           "SUBMIT-002",
           "CONTEXT-003",
-          "MCP-014"
+          "MCP-014",
+          "FAILURE-004"
         ]
       },
       "callers": [
@@ -1341,7 +1343,8 @@
           "PLAN-003",
           "PERMISSION-004",
           "PERMISSION-005",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "SKILLS-003"
         ]
       },
       "schema": {
@@ -1479,7 +1482,8 @@
           "PERMISSION-006",
           "SUBMIT-002",
           "CONTEXT-003",
-          "MCP-014"
+          "MCP-014",
+          "FAILURE-004"
         ]
       },
       "callers": [
@@ -2351,7 +2355,11 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "SKILLS-001",
+          "SKILLS-004",
+          "SKILLS-005"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2371,7 +2379,10 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "SKILLS-002",
+          "SKILLS-004"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -2391,7 +2402,12 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "SKILLS-001",
+          "SKILLS-002",
+          "SKILLS-004",
+          "SKILLS-005"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go",
@@ -2930,7 +2946,8 @@
           "SUBMIT-004",
           "FAILURE-003",
           "ISOLATION-004",
-          "FILES-007"
+          "FILES-007",
+          "FAILURE-004"
         ]
       },
       "callers": [
@@ -2972,7 +2989,9 @@
           "PERMISSION-007",
           "SUBMIT-002",
           "CONTEXT-003",
-          "ISOLATION-004"
+          "ISOLATION-004",
+          "FAILURE-004",
+          "SKILLS-001"
         ]
       },
       "callers": [
@@ -3147,7 +3166,11 @@
           "CONTEXT-003",
           "ISOLATION-004",
           "FILES-007",
-          "MCP-014"
+          "MCP-014",
+          "SKILLS-001",
+          "SKILLS-002",
+          "SKILLS-003",
+          "SKILLS-005"
         ]
       },
       "callers": [
@@ -3481,7 +3504,8 @@
           "PERMISSION-006",
           "SUBMIT-002",
           "CONTEXT-003",
-          "MCP-014"
+          "MCP-014",
+          "FAILURE-004"
         ]
       },
       "callers": [
@@ -3567,7 +3591,12 @@
           "CONTEXT-003",
           "ISOLATION-004",
           "FILES-007",
-          "MCP-014"
+          "MCP-014",
+          "FAILURE-004",
+          "SKILLS-001",
+          "SKILLS-002",
+          "SKILLS-003",
+          "SKILLS-005"
         ]
       },
       "callers": [
@@ -3762,7 +3791,9 @@
         "codex": [
           "CATALOG-002"
         ],
-        "claude-code": []
+        "claude-code": [
+          "SKILLS-004"
+        ]
       },
       "callers": [
         "wire:codex"

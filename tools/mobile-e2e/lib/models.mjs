@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { isTitleOutputSchema } from './title-schema.mjs'
+import { mobileMcpAnswer, mobileMcpScenarios, mobileMcpTool } from './mcp-scenarios.mjs'
 
 const text = (value) => [{ type: 'text', text: value }]
 const tool = (name, id, input) => ({ type: 'tool_use', name, id, input })
@@ -23,7 +24,7 @@ export function structuredTitleResponse(request) {
 
 export async function startModels(adapter, evidenceDir) {
   const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'dist/test/fixtures/mock-llm.mjs')))
-  const models = {}, urls = {}, completed = new Set()
+  const models = {}, urls = {}, completed = new Set(), mcpResults = {}
   let workspace
   for (const engine of ['codex', 'claude-code']) {
     const model = new MockLLM()
@@ -44,6 +45,23 @@ export async function startModels(adapter, evidenceDir) {
       if (marker.endsWith('_CHAT')) return finish(marker + '_OK')
       assert.equal(engine, 'claude-code')
       assert.ok(workspace, '真实项目路径尚未就绪')
+      if (mobileMcpScenarios[marker]) {
+        const id = 'toolu_' + marker.toLowerCase()
+        const found = result(id)
+        if (!found) {
+          assert.ok(request.tools?.some((entry) => entry.name === mobileMcpTool), '真实 SDK 未声明手机 MCP 工具')
+          return [tool(mobileMcpTool, id, { scenario: marker })]
+        }
+        assert.ok(!found.is_error, 'MCP 结果必须成功回到真实模型上下文')
+        const blocks = Array.isArray(found.content) ? found.content : [{ text: found.content }]
+        const raw = blocks.map((entry) => entry.text ?? '').find((value) => value.startsWith('MCP_RESULT '))
+        assert.ok(raw, '缺少真实 MCP 工具结果')
+        const actual = JSON.parse(raw.slice('MCP_RESULT '.length))
+        const { action, content } = mobileMcpAnswer(marker)
+        assert.deepEqual(actual, { action, content }, 'MCP 类型或决策在回模型时失真')
+        mcpResults[marker] = actual
+        return finish(marker + '_OK')
+      }
       if (marker === 'MOBILE_CLAUDE_FULL' || marker === 'MOBILE_CLAUDE_APPROVAL' || marker === 'MOBILE_CLAUDE_DENY') {
         const id = 'toolu_' + marker.toLowerCase()
         const found = result(id)
@@ -78,6 +96,18 @@ export async function startModels(adapter, evidenceDir) {
       for (const model of Object.values(models)) assert.deepEqual(model.unexpected, [])
       for (const marker of expected) {
         assert.ok(completed.has(marker), '缺少真实模型终态：' + marker)
+        if (mobileMcpScenarios[marker]) {
+          const { action, content } = mobileMcpAnswer(marker)
+          assert.deepEqual(mcpResults[marker], { action, content }, '缺少真实 MCP 入模结果')
+          const effect = resolve(workspace, marker + '.jsonl')
+          if (action === 'accept') {
+            const lines = (await readFile(effect, 'utf8')).split('\n')
+            assert.equal(lines.length, 2, 'MCP 接受必须且只能产生一次真实文件副作用')
+            assert.equal(lines[1], '', 'MCP 副作用记录必须完整写入')
+            assert.deepEqual(JSON.parse(lines[0]), { action, content },
+              'MCP 副作用必须保留完整回答及原始类型')
+          } else await assert.rejects(readFile(effect), { code: 'ENOENT' })
+        }
         if (['_FULL', '_APPROVAL', '_PLAN'].some((suffix) => marker.endsWith(suffix))) {
           assert.equal(await readFile(resolve(workspace, marker + '.txt'), 'utf8'),
             marker.endsWith('_PLAN') ? 'Blue' : marker)
@@ -87,7 +117,7 @@ export async function startModels(adapter, evidenceDir) {
         }
       }
       await writeFile(resolve(evidenceDir, 'model-assertions.json'), JSON.stringify({
-        expected, completed: [...completed], passed: true,
+        expected, completed: [...completed], mcpResults, passed: true,
       }, null, 2))
     },
     async close() {

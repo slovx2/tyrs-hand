@@ -106,13 +106,14 @@ describe("OfficialAppServerClient", () => {
         questions: [], isBlocking: true, autoResolutionMs: null,
       } });
 
-    rpc.emitRequest(request("old"));
+    const oldRequest = request("old");
+    rpc.emitRequest(oldRequest);
     expect(client.pendingRequests("thread-1")).toHaveLength(1);
 
     rpc.emitClose(new Error("SSH App Server 连接已断开"));
 
     expect(client.pendingRequests("thread-1")).toEqual([]);
-    expect(client.answerRequest("old", { answers: {} })).toBe(false);
+    expect(client.answerRequest(oldRequest, { answers: {} })).toBe(false);
     expect(closeErrors).toEqual(["SSH App Server 连接已断开"]);
 
     rpc.emitRequest(request("new"));
@@ -127,13 +128,14 @@ describe("OfficialAppServerClient", () => {
       reason: null, grantRoot: null, startedAtMs: 1,
     } });
     const respond = rpc.respond.bind(rpc);
+    const request = client.pendingRequests("thread-1")[0]!;
     rpc.respond = () => { throw new Error("SSH 写入失败"); };
-    expect(() => client.answerRequest("approval-retry", { decision: "accept" })).toThrow("SSH 写入失败");
+    expect(() => client.answerRequest(request, { decision: "accept" })).toThrow("SSH 写入失败");
     expect(client.pendingRequests("thread-1").map((request) => request.id)).toEqual(["approval-retry"]);
     expect(rpc.responses).toHaveLength(0);
     rpc.respond = respond;
-    expect(client.answerRequest("approval-retry", { decision: "accept" })).toBe(true);
-    expect(client.answerRequest("approval-retry", { decision: "accept" })).toBe(false);
+    expect(client.answerRequest(request, { decision: "accept" })).toBe(true);
+    expect(client.answerRequest(request, { decision: "accept" })).toBe(false);
     expect(client.pendingRequests("thread-1")).toEqual([]);
     expect(rpc.responses).toEqual([{ id: "approval-retry", result: { decision: "accept" } }]);
   });
@@ -700,10 +702,11 @@ describe("OfficialAppServerClient", () => {
       threadId: "thread-1", turnId: "turn-1", itemId: "item-1", reason: null,
       grantRoot: null, startedAtMs: 1,
     } });
+    const request = client.pendingRequests("thread-1")[0]!;
     rpc.emitNotification({ method: "serverRequest/resolved", params: {
       threadId: "thread-1", requestId: 9,
     } });
-    expect(client.answerRequest(9, { decision: "accept" })).toBe(false);
+    expect(client.answerRequest(request, { decision: "accept" })).toBe(false);
     expect(rpc.responses).toHaveLength(0);
   });
 

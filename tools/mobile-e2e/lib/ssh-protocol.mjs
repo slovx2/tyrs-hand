@@ -30,7 +30,7 @@ export class SSHProtocolClient {
       this.process.once('error', reject)
     })
     await this.request('initialize', { clientInfo: { name: 'mobile-runtime-preflight', version: '1.0.0' },
-      capabilities: { experimentalApi: true } })
+      capabilities: { experimentalApi: true }, extensions: { 'openai/form': {} } })
     this.send({ method: 'initialized', params: {} })
     return this
   }

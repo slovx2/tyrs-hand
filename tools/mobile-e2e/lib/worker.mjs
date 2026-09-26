@@ -95,6 +95,12 @@ stream_max_retries=0
       ANTHROPIC_API_KEY: 'mock-only', ANTHROPIC_BASE_URL: this.modelURLs['claude-code'],
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     } }), { mode: 0o600 })
+    // 使用真实适配器持久配置；Claude 的环境白名单仍保持不变。
+    await writeFile(resolve(this.state, 'claude-code/config.json'), JSON.stringify({ overrides: {
+      mcp_servers: { mobile_fixture: { command: process.execPath,
+        args: [resolve(this.repoRoot, 'tools/mobile-e2e/fixtures/mcp-server.mjs'), this.adapter, this.workspace],
+        startup_timeout_sec: 30, tool_timeout_sec: 120 } },
+    } }), { mode: 0o600 })
     const binaries = { codex: this.codex, 'claude-code': resolve(this.adapter, 'scripts/worker-runtime') }
     const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'"
     for (const engine of engines) {

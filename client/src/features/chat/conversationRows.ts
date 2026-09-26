@@ -120,7 +120,7 @@ function rowsForTurn(turn: MobileTurn, options: RowOptions,
 function requestRow(request: ServerRequest): Extract<ConversationRow, { kind: "request" }> {
   const cached = requestRows.get(request);
   if (cached) return cached;
-  const row = { kind: "request" as const, key: `request:${String(request.id)}`, request };
+  const row = { kind: "request" as const, key: `request:${typeof request.id}:${String(request.id)}`, request };
   requestRows.set(request, row);
   return row;
 }

@@ -229,7 +229,11 @@ describe("移动端 Outbox 新 Thread", () => {
         tailOlderCursor: null, hasLoadedOldest: true } }],
     pendingRequests: { [threadId]: [request] } });
 
-    expect(useAppStore.getState().answerRequest(threadId, request.id,
+    // 同 ID、同内容的旧卡片对象不能回答当前登记的请求。
+    expect(useAppStore.getState().answerRequest(threadId, { ...request },
+      { answers: { choice: { answers: ["继续"] } } })).toBe(false);
+    expect(client.answerRequest).not.toHaveBeenCalled();
+    expect(useAppStore.getState().answerRequest(threadId, request,
       { answers: { choice: { answers: ["继续"] } } })).toBe(true);
 
     expect(current.turns[0]?.items).toHaveLength(1);

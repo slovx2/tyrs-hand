@@ -9,6 +9,9 @@ import { output, run } from './lib/process.mjs'
 import { startModels } from './lib/models.mjs'
 import { WorkerHarness } from './lib/worker.mjs'
 import { validateRuntimeWire } from './lib/wire.mjs'
+import { mobileScenarios } from './lib/mcp-scenarios.mjs'
+import { AndroidTransportTrace } from './lib/android-transport-trace.mjs'
+import { cleanupManaged, completionError } from './lib/cleanup.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const argumentsMap = new Map()
@@ -29,6 +32,7 @@ const processes = []
 const maestroProcesses = []
 const pairingAbort = new AbortController()
 let failed = true
+let androidTransportTrace
 const redactableExtensions = new Set(['.html', '.json', '.log', '.txt', '.xml', '.yaml', '.yml'])
 
 function resolveDeviceID() {
@@ -107,6 +111,7 @@ async function redactEvidenceSecrets(directory, secrets) {
 }
 
 async function runMaestro(environment, label = 'suite', flowPath = flow) {
+  await androidTransportTrace?.capture(`maestro-${label}-before`)
   const maestro = process.env.TYRS_HAND_E2E_MAESTRO_BIN ?? 'maestro'
   const args = ['--device', deviceID, 'test', flowPath, '--debug-output', `${runDir}/maestro-debug-${label}`,
     '--format', 'JUNIT', '--output', `${runDir}/junit-${label}.xml`,
@@ -137,6 +142,7 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
   const heartbeat = setInterval(() => process.stderr.write('[mobile-e2e] Maestro 仍在运行\n'), 30_000)
   const result = await childExit
   clearInterval(heartbeat)
+  await androidTransportTrace?.capture(`maestro-${label}-after`)
   await writeFile(`${runDir}/logs/maestro-${label}.log`, Buffer.concat(log))
   if (platform === 'android') {
     // 保留真实 JS/原生崩溃栈，不能只留下启动器画面和“找不到按钮”。
@@ -174,8 +180,13 @@ async function main() {
   if (platform === 'android') {
     for (const port of [primary.port, ...Object.values(worker.ports)]) {
       run('adb', ['-s', deviceID, 'reverse', `tcp:${port}`, `tcp:${port}`])
-      processes.push({ stop: async () => run('adb', ['-s', deviceID, 'reverse', '--remove', `tcp:${port}`]) })
+      processes.push({ name: `adb-reverse-${port}`,
+        stop: async () => run('adb', ['-s', deviceID, 'reverse', '--remove', `tcp:${port}`]) })
     }
+    androidTransportTrace = await new AndroidTransportTrace({ deviceID,
+      ports: [primary.port, ...Object.values(worker.ports)],
+      path: resolve(runDir, 'logs/android-transport.jsonl') }).start()
+    processes.push(androidTransportTrace)
   }
   await assertInstalled()
   isolateAndroidAppLinks()
@@ -215,8 +226,7 @@ async function main() {
   const approvals = [primary.admin.approveWhenClaimed(firstPairing.id, 600_000, pairingAbort.signal),
     primary.admin.approveWhenClaimed(secondPairing.id, 600_000, pairingAbort.signal)]
   await Promise.all([runMaestro(maestroEnvironment, 'suite', resolve(stagedFlows, relativeFlow)), ...approvals])
-  await models.verify(['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
-    'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN'])
+  await models.verify(mobileScenarios)
   const schemaReport = await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'),
     { requireMobileScenarios: true })
   const commit = output('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
@@ -250,12 +260,19 @@ async function main() {
   failed = false
 }
 
+let primaryError
 try {
   await main()
+} catch (error) {
+  primaryError = error
 } finally {
   pairingAbort.abort()
-  for (const managed of maestroProcesses.reverse()) await managed.stop()
-  for (const managed of processes.reverse()) await managed.stop()
-  for (const control of controls.reverse()) await control.stop()
+  const cleanupErrors = await cleanupManaged({ maestro: maestroProcesses, resources: processes, controls })
+  await writeFile(resolve(runDir, 'cleanup-report.json'), JSON.stringify({
+    primaryError: primaryError?.message ?? null, cleanupErrors,
+  }, null, 2)).catch((error) => { cleanupErrors.push({ name: 'cleanup-report', error: error.message }) })
+  primaryError = completionError(primaryError, cleanupErrors)
+  if (cleanupErrors.length) process.stderr.write(`[mobile-e2e] 清理异常 ${cleanupErrors.length} 项，详见 cleanup-report.json\n`)
   process.stderr.write(`[mobile-e2e] ${failed ? '失败证据' : '证据'}：${runDir}\n`)
 }
+if (primaryError) throw primaryError

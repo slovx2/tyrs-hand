@@ -71,7 +71,7 @@ type AppState = {
   executePlan: (threadId: string, preferences: TurnPreferences,
     loadedPlan?: NonNullable<ReturnType<typeof latestExecutablePlan>>) => Promise<void>;
   interruptThread: (threadId: string) => Promise<void>;
-  answerRequest: (threadId: string, requestId: string | number, result: unknown) => boolean;
+  answerRequest: (threadId: string, request: ServerRequest, result: unknown) => boolean;
   setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
   renameThread: (threadId: string, name: string) => Promise<void>;
   confirmPendingMessage: (clientMessageId: string) => Promise<void>;
@@ -302,15 +302,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
   },
 
-  answerRequest: (threadId, requestId, result) => {
+  answerRequest: (threadId, request, result) => {
     const connection = get().activeConnection;
     const record = get().threads.find((item) => item.thread.id === threadId);
     if (!connection || !record) return false;
-    const request = get().pendingRequests[threadId]?.find((item) =>
-      String(item.id) === String(requestId));
+    if (!get().pendingRequests[threadId]?.includes(request) || eventThreadId(request) !== threadId) return false;
     const client = bindClient(connection, record.workspaceId, set, get);
-    const answered = client.answerRequest(requestId, result);
-    if (answered && request?.method === "item/tool/requestUserInput") {
+    const answered = client.answerRequest(request, result);
+    if (answered && request.method === "item/tool/requestUserInput") {
       upsertUserInputResponse(connection.profileId, record, request, result, set, get);
     }
     syncPendingRequests(connection.profileId, client, threadId, set);

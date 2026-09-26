@@ -41,7 +41,10 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	// 真实权限路径在工作区外，并从默认 /tmp 可写范围中排除。
 	home, err := filepath.EvalSymlinks(f.cfg.WorkerHome)
 	require.NoError(t, err)
-	scenario.path = filepath.Join(home, "permission-effect.txt")
+	// 固定 CLI 的 Linux 沙箱按目录根挂载；原提案明确请求独立目录，绝不将单文件答案扩成父目录。
+	scenario.grantRoot = filepath.Join(home, "permission-scope")
+	require.NoError(t, os.Mkdir(scenario.grantRoot, 0o700))
+	scenario.path = filepath.Join(scenario.grantRoot, "permission-effect.txt")
 	discord := startControlDiscordFixture(t, ctx, f)
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	app, cleanup, err := InitializeWorker(workerCtx, f.cfg)
@@ -145,12 +148,16 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 		nativeReturned := active.commandSeen
 		scenario.mu.Unlock()
 		evidence = append(evidence, map[string]any{"case": active.id, "scope": active.scope,
+			"grantRoot": scenario.grantRoot, "effectPath": scenario.path,
 			"allowed": active.allowed, "nativeResultReturned": nativeReturned, "controlRequestId": controlID,
 			"method": interactiveprotocol.PermissionApproval, "nativeParams": nativeParams, "nativeAnswer": nativeAnswer})
 	}
-	// 已有 session 授权只覆盖旧文件；新路径必须产生真实的 pending 请求。
-	restartPath := filepath.Join(home, "permission-restart-forbidden.txt")
+	// 已有 session 授权只覆盖旧目录；新目录必须产生真实的 pending 请求。
+	restartRoot := filepath.Join(home, "permission-restart-scope")
+	require.NoError(t, os.Mkdir(restartRoot, 0o700))
+	restartPath := filepath.Join(restartRoot, "permission-restart-forbidden.txt")
 	scenario.mu.Lock()
+	scenario.grantRoot = restartRoot
 	scenario.path = restartPath
 	scenario.active = &nativePermissionCase{id: "PERMISSION_RESTART", scope: "turn"}
 	scenario.mu.Unlock()

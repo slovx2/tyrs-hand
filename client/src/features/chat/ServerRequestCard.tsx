@@ -6,13 +6,26 @@ import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { approvalActions } from "./approvalActions";
+import { McpElicitationCard } from "./McpElicitationCard";
 
 export function ServerRequestCard({ request, onAnswer }: {
   request: ServerRequest;
   onAnswer: (result: unknown) => void;
 }) {
+  const [active, setActive] = useState({ request, generation: 0 });
+  // 同一个列表位置收到新请求时，提问和表单都不能沿用旧输入。
+  if (active.request !== request) setActive({ request, generation: active.generation + 1 });
+  return <ActiveServerRequest key={active.generation} request={request} onAnswer={onAnswer} />;
+}
+
+function ActiveServerRequest({ request, onAnswer }: {
+  request: ServerRequest; onAnswer: (result: unknown) => void;
+}) {
   if (request.method === "item/tool/requestUserInput") {
     return <QuestionRequest request={request} onAnswer={onAnswer} />;
+  }
+  if (request.method === "mcpServer/elicitation/request") {
+    return <McpElicitationCard request={request} onAnswer={onAnswer} />;
   }
   const approval = request.method === "item/commandExecution/requestApproval" ||
     request.method === "item/fileChange/requestApproval";
@@ -46,13 +59,16 @@ export function ServerRequestCard({ request, onAnswer }: {
     };
     return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
       <Title>额外权限</Title>
-      <Muted>{request.params.reason ?? "AI 请求扩大本轮权限"}</Muted>
+      <Muted>{request.params.reason ?? "AI 请求额外权限"}</Muted>
       <Muted selectable>{JSON.stringify(permissions)}</Muted>
+      <Muted>“本会话允许”会将所列权限保留到当前会话的后续回合。</Muted>
       <View style={styles.actions}>
         <Button testID={`interactive:${String(request.id)}:decline`} title="拒绝" variant="secondary"
           onPress={() => onAnswer({ permissions: {}, scope: "turn" })} />
         <Button testID={`interactive:${String(request.id)}:accept`} title="本轮允许"
           onPress={() => onAnswer({ permissions, scope: "turn" })} />
+        <Button testID={`interactive:${String(request.id)}:accept-session`} title="本会话允许"
+          variant="secondary" onPress={() => onAnswer({ permissions, scope: "session" })} />
       </View>
     </Card>;
   }

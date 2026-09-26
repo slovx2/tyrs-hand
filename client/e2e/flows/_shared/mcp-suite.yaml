@@ -1,0 +1,38 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    file: mcp-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_MCP_FORM_ACCEPT"
+      MCP_MODE: "form"
+      MCP_ACTION: "accept"
+- runFlow:
+    file: mcp-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_MCP_FORM_DECLINE"
+      MCP_MODE: "form"
+      MCP_ACTION: "decline"
+- runFlow:
+    file: mcp-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_MCP_FORM_CANCEL"
+      MCP_MODE: "form"
+      MCP_ACTION: "cancel"
+- runFlow:
+    file: mcp-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_MCP_URL_ACCEPT"
+      MCP_MODE: "url"
+      MCP_ACTION: "accept"
+- runFlow:
+    file: mcp-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_MCP_URL_DECLINE"
+      MCP_MODE: "url"
+      MCP_ACTION: "decline"
+- runFlow:
+    file: mcp-task.yaml
+    env:
+      TASK_TEXT: "MOBILE_CLAUDE_MCP_URL_CANCEL"
+      MCP_MODE: "url"
+      MCP_ACTION: "cancel"

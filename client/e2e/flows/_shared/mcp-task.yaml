@@ -1,0 +1,33 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    file: runtime-task.yaml
+    env:
+      PERMISSIONS: "danger-full-access"
+      MODE: "default"
+- extendedWaitUntil:
+    visible: "MCP 需要你的确认"
+    timeout: 120000
+- takeScreenshot: ${TYRS_HAND_E2E_SCREENSHOT_DIR}/${TASK_TEXT}-pending
+- runFlow:
+    when:
+      true: ${MCP_MODE === "form" && MCP_ACTION === "accept"}
+    file: mcp-form-fill.yaml
+- runFlow:
+    when:
+      true: ${MCP_MODE === "url"}
+    commands:
+      - assertVisible:
+          id: "interactive:.*:open-url"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:${MCP_ACTION}"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "interactive:.*:${MCP_ACTION}"
+- extendedWaitUntil:
+    visible: ${TASK_TEXT}_OK
+    timeout: 120000
+- assertNotVisible: "MCP 需要你的确认"
+- takeScreenshot: ${TYRS_HAND_E2E_SCREENSHOT_DIR}/${TASK_TEXT}-answered

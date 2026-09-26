@@ -9,10 +9,11 @@ import { run } from './lib/process.mjs'
 import { SSHProtocolClient } from './lib/ssh-protocol.mjs'
 import { WorkerHarness } from './lib/worker.mjs'
 import { validateRuntimeWire } from './lib/wire.mjs'
+import { mobileMcpAnswer, mobileScenarios } from './lib/mcp-scenarios.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
-test('正式 Worker 共用密钥双 SSH：计划提问、退出执行、完全访问与允许/拒绝审批', { timeout: 240_000 }, async () => {
+test('正式 Worker 共用密钥双 SSH：计划、权限、审批与六个原生 MCP 场景', { timeout: 360_000 }, async () => {
   const runDir = resolve(repoRoot, '.artifacts/mobile-runtime', String(Date.now()))
   const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, '../claude-codex'))
   await mkdir(runDir, { recursive: true })
@@ -28,13 +29,13 @@ test('正式 Worker 共用密钥双 SSH：计划提问、退出执行、完全�
       registration, modelURLs: models.urls })
     await worker.start()
     models.setWorkspace(worker.workspace)
-    const expected = ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
-      'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']
+    const expected = mobileScenarios
     const threads = { codex: [], 'claude-code': [] }
     for (const engine of ['codex', 'claude-code']) {
       let currentMarker
       const client = new SSHProtocolClient(worker, engine, (request) => {
         approvals.push({ marker: currentMarker, method: request.method })
+        if (request.method === 'mcpServer/elicitation/request') return mobileMcpAnswer(currentMarker)
         if (request.method === 'item/tool/requestUserInput') return {
           answers: Object.fromEntries(request.params.questions.map((question) => [question.id, {
             answers: [question.id === 'execute_plan' ? '执行计划' : 'Blue'],
@@ -95,9 +96,10 @@ test('正式 Worker 共用密钥双 SSH：计划提问、退出执行、完全�
     }
     assert.equal(approvals.filter((item) => item.method === 'item/tool/requestUserInput').length, 2)
     assert.equal(approvals.filter((item) => item.method === 'item/fileChange/requestApproval').length, 2)
+    assert.equal(approvals.filter((item) => item.method === 'mcpServer/elicitation/request').length, 6)
     assert.ok(!approvals.some((item) => item.marker === 'MOBILE_CLAUDE_FULL'))
     await models.verify(expected)
-    await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'))
+    await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'), { requireMobileScenarios: true })
     await writeFile(resolve(runDir, 'approvals.json'), JSON.stringify(approvals, null, 2))
   } finally {
     for (const client of clients) {

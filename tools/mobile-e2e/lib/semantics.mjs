@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { isTitleOutputSchema } from './title-schema.mjs'
+import { mobileScenarios, mobileMcpScenarios, mobileMcpAnswer, mobileMcpSchema } from './mcp-scenarios.mjs'
 
-export const mobileScenarios = ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
-  'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']
+export { mobileScenarios } from './mcp-scenarios.mjs'
 
 // 仅从真实上游 wire 提取可公开的关联信息，不能以 GUI 点击代替审批回答。
 export function mobileWireSemantics(engine, messages) {
@@ -12,7 +12,7 @@ export function mobileWireSemantics(engine, messages) {
     const { connection, direction, message } = entry
     const params = message.params ?? {}
     if (direction === 'request' && message.method === 'turn/start') {
-      // 辅助标题线程会携带原始用户文本，但不属于六个业务执行回合。
+      // 辅助标题线程会携带原始用户文本，但不属于业务执行回合。
       if (isTitleOutputSchema(params.outputSchema)) continue
       const marker = params.input?.find((item) => item.type === 'text' &&
         mobileScenarios.includes(item.text))?.text
@@ -20,7 +20,7 @@ export function mobileWireSemantics(engine, messages) {
         assert.equal(marker.includes('CODEX'), engine === 'codex', '场景串入另一引擎')
         assert.ok(!scenarios.has(marker), '场景被重复提交：' + marker)
         const scenario = { marker, threadId: params.threadId, started: sequence,
-          mode: params.collaborationMode?.mode, callbacks: [], fileChanges: [], planOutput: [] }
+          mode: params.collaborationMode?.mode, callbacks: [], fileChanges: [], planOutput: [], mcpTools: [] }
         scenarios.set(marker, scenario)
         threads.set(params.threadId, scenario)
       }
@@ -29,6 +29,9 @@ export function mobileWireSemantics(engine, messages) {
     if (direction === 'response' && scenario) {
       if (message.method === 'item/completed' && params.item?.type === 'fileChange') {
         scenario.fileChanges.push(sequence)
+      }
+      if (message.method === 'item/completed' && params.item?.type === 'mcpToolCall') {
+        scenario.mcpTools.push({ sequence, status: params.item.status, error: params.item.error })
       }
       if (message.method === 'item/completed' && params.item?.type === 'plan' &&
           params.item.text?.includes('MOBILE_PLAN_OUTPUT:')) scenario.planOutput.push(sequence)
@@ -40,9 +43,12 @@ export function mobileWireSemantics(engine, messages) {
       }
       if (message.id !== undefined && ['item/fileChange/requestApproval',
         'item/commandExecution/requestApproval', 'item/tool/requestUserInput',
-        'item/permissions/requestApproval'].includes(message.method)) {
+        'item/permissions/requestApproval', 'mcpServer/elicitation/request'].includes(message.method)) {
         const callback = { id: message.id, method: message.method, requested: sequence,
-          questions: params.questions?.map((question) => question.id) }
+          questions: params.questions?.map((question) => question.id),
+          ...(message.method === 'mcpServer/elicitation/request' ? { mode: params.mode,
+            serverName: params.serverName, requestedSchema: params.requestedSchema,
+            url: params.url, elicitationId: params.elicitationId } : {}) }
         scenario.callbacks.push(callback)
         pending.set(JSON.stringify([connection, message.id]), callback)
       }
@@ -54,6 +60,7 @@ export function mobileWireSemantics(engine, messages) {
         callback.answered = sequence
         callback.decision = message.result?.decision
         callback.answers = callback.questions?.flatMap((id) => message.result?.answers?.[id]?.answers ?? [])
+        if (callback.method === 'mcpServer/elicitation/request') callback.result = message.result
         pending.delete(JSON.stringify([connection, message.id]))
       }
     }
@@ -62,6 +69,26 @@ export function mobileWireSemantics(engine, messages) {
   const required = mobileScenarios.filter((marker) => marker.includes('CODEX') === (engine === 'codex'))
   for (const marker of required) assert.ok(scenarios.has(marker), '缺少真实客户端场景：' + marker)
   if (engine === 'claude-code') {
+    for (const [marker, expected] of Object.entries(mobileMcpScenarios)) {
+      const scenario = scenarios.get(marker)
+      assert.equal(scenario.callbacks.length, 1, marker + ' 必须且只能回答一次 MCP 交互')
+      const callback = scenario.callbacks[0]
+      assert.equal(callback.method, 'mcpServer/elicitation/request')
+      assert.equal(callback.mode, expected.mode, '必须使用 CLI 真实协商的 MCP 模式')
+      assert.equal(callback.serverName, 'mobile_fixture')
+      if (expected.mode === 'form') assert.deepEqual(callback.requestedSchema, mobileMcpSchema,
+        'MCP 原生表单字段或约束发生变化')
+      else {
+        assert.equal(callback.elicitationId, marker.toLowerCase())
+        assert.equal(callback.url, 'http://127.0.0.1/mobile-mcp-confirmation')
+      }
+      assert.deepEqual(callback.result, mobileMcpAnswer(marker), 'MCP 真实回答类型或动作不符')
+      assert.ok(callback.answered > callback.requested, 'MCP 回答必须晚于请求')
+      assert.equal(scenario.mcpTools.length, 1, '缺少唯一真实 MCP 工具终态')
+      assert.equal(scenario.mcpTools[0].status, 'completed', 'MCP 工具执行失败')
+      assert.ok(!scenario.mcpTools[0].error, 'MCP 工具错误不能算成功')
+      assert.ok(scenario.mcpTools[0].sequence > callback.answered, 'MCP 工具必须在回答后结束')
+    }
     assert.deepEqual(scenarios.get('MOBILE_CLAUDE_FULL').callbacks, [], '完全访问不应产生审批')
     for (const [marker, decision] of [['MOBILE_CLAUDE_APPROVAL', 'accept'], ['MOBILE_CLAUDE_DENY', 'decline']]) {
       const scenario = scenarios.get(marker)

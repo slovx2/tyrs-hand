@@ -47,7 +47,7 @@ async function initialize(): Promise<{ client: CodexJsonRpcClient; socket: FakeS
   await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
   expect(socket.sent[0]).toMatchObject({ method: "initialize", params: {
     clientInfo: { name: "tyrs_hand_mobile" },
-    capabilities: { experimentalApi: true },
+    capabilities: { experimentalApi: true, extensions: { "openai/form": {} } },
   } });
   socket.receive({ id: socket.sent[0]!.id, result: {
     userAgent: "codex/0.147.0", codexHome: "/tmp/codex", platformFamily: "unix", platformOs: "linux",
@@ -96,6 +96,20 @@ describe("CodexJsonRpcClient", () => {
     await expect(second).resolves.toEqual({ value: "second" });
   });
 
+  it("字符串 ID 响应不能完成同值数字 ID 请求", async () => {
+    const { client, socket } = await initialize();
+    const response = client.request<{ value: string }>("thread/read", { threadId: "thread-typed" });
+    const request = socket.sent.at(-1)!;
+    const completed = vi.fn();
+    void response.then(completed);
+    expect(typeof request.id).toBe("number");
+    socket.receive({ id: String(request.id), result: { value: "wrong-type" } });
+    await Promise.resolve();
+    expect(completed).not.toHaveBeenCalled();
+    socket.receive({ id: request.id, result: { value: "correct-type" } });
+    await expect(response).resolves.toEqual({ value: "correct-type" });
+  });
+
   it("保留 Server Request 的原始 id 并直接回应", async () => {
     const { client, socket } = await initialize();
     client.onServerRequest((request) => client.respond(request.id, { answers: {} }));
@@ -123,6 +137,38 @@ describe("CodexJsonRpcClient", () => {
     expect(closeErrors).toEqual([]);
     expect(client.isOpen()).toBe(false);
     expect(socket.readyState).toBe(3);
+  });
+
+  it("重连后的旧传输事件不能登记交互或关闭新连接", async () => {
+    const previous = new FakeSocket();
+    const current = new FakeSocket();
+    const sockets = [previous, current];
+    const client = new CodexJsonRpcClient(() => sockets.shift()!, 1_000);
+    const requests = vi.fn();
+    const notifications = vi.fn();
+    const closes = vi.fn();
+    client.onServerRequest(requests);
+    client.onNotification(notifications);
+    client.onClose(closes);
+    const open = async (socket: FakeSocket) => {
+      const opening = client.open();
+      await Promise.resolve();
+      socket.open();
+      await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
+      socket.receive({ id: socket.sent[0]!.id, result: { userAgent: "fixture" } });
+      await opening;
+    };
+    await open(previous);
+    previous.close(1006, "network lost");
+    await open(current);
+    previous.receive({ id: "reused", method: "mcpServer/elicitation/request", params: {} });
+    previous.receive({ method: "serverRequest/resolved", params: { threadId: "thread", requestId: "reused" } });
+    previous.onclose?.({ code: 1006, reason: "late close" });
+    expect(requests).not.toHaveBeenCalled();
+    expect(notifications).not.toHaveBeenCalled();
+    expect(closes).toHaveBeenCalledTimes(1);
+    expect(client.isOpen()).toBe(true);
+    client.close();
   });
 
   it("连接失败时保留 close 原因并脱敏 loopback 路径", async () => {

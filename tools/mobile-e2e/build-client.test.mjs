@@ -27,13 +27,30 @@ async function buildFixture(options = {}) {
     "if (name === 'pod' && args.includes('--version')) console.log('1.16.2');",
     "if (name === 'xcodebuild') {",
     "  const derived = args[args.indexOf('-derivedDataPath') + 1];",
-    "  fs.mkdirSync(path.join(derived, 'Build/Products/Release-iphonesimulator/TyrsHandDev.app'), { recursive: true });",
+    "  const app = path.join(derived, 'Build/Products/Release-iphonesimulator/TyrsHandDev.app');",
+    "  fs.mkdirSync(app, { recursive: true }); fs.writeFileSync(path.join(app, 'TyrsHandDev'), 'fixture');",
     '}',
     "if (name === 'codesign' && args.includes('--verify')) process.exit(Number(process.env.BUILD_GATE_SIGNATURE_STATUS || 0));",
-    "if (name === 'codesign' && args.includes('--display')) console.log('<plist><dict/></plist>');",
     "if (name === 'plutil') {",
-    '  if (!process.env.BUILD_GATE_APP_IDENTIFIER) process.exit(1);',
-    '  console.log(process.env.BUILD_GATE_APP_IDENTIFIER);',
+    "  if (args[1] === 'CFBundleIdentifier') console.log('com.tyrshand.app.dev');",
+    "  else if (args[1] === 'CFBundleExecutable') console.log('TyrsHandDev');",
+    '  else {',
+    "    const xml = fs.readFileSync(args.at(-1), 'utf8'); const match = xml.match(/<key>application-identifier<\\/key><string>([^<]+)<\\/string>/);",
+    '    if (!match) process.exit(1); console.log(match[1]);',
+    '  }',
+    '}',
+    "if (name === 'xcrun' && args[0] === 'lipo') { console.log(process.env.BUILD_GATE_ARCHITECTURES); process.exit(Number(process.env.BUILD_GATE_LIPO_STATUS || 0)); }",
+    "if (name === 'xcrun' && args[0] === 'llvm-objdump') {",
+    "  if (process.env.BUILD_GATE_SECTION === 'missing') process.exit(0);",
+    "  console.log('Contents of section __TEXT,__entitlements:');",
+    "  if (process.env.BUILD_GATE_SECTION === 'duplicate') console.log('Contents of section __TEXT,__entitlements:');",
+    "  if (process.env.BUILD_GATE_SECTION === 'invalid') { console.log(' 10000000 not-hex  ...'); process.exit(0); }",
+    "  const id = args.includes('--arch=x86_64') ? process.env.BUILD_GATE_X86_IDENTIFIER : process.env.BUILD_GATE_APP_IDENTIFIER;",
+    "  const bytes = Buffer.from('<plist><dict>' + (id ? '<key>application-identifier</key><string>' + id + '</string>' : '') + '</dict></plist>');",
+    '  for (let index = 0; index < bytes.length; index += 16) {',
+    "    const words = bytes.subarray(index,index+16).toString('hex').match(/.{1,8}/g);",
+    "    console.log(' ' + (0x10000000+index).toString(16) + ' ' + words.join(' ').padEnd(35) + '  ...');",
+    '  }',
     '}',
   ].join('\n')
   for (const name of ['pnpm', 'pod', 'xcodebuild', 'codesign', 'plutil', 'xcrun']) {
@@ -42,15 +59,21 @@ async function buildFixture(options = {}) {
   const result = spawnSync('bash', [script, 'ios'], { encoding: 'utf8', env: { ...process.env,
     PATH: bin + ':' + process.env.PATH, BUILD_GATE_TRACE: trace,
     BUILD_GATE_APP_IDENTIFIER: options.identifier ?? 'com.tyrshand.app.dev',
+    BUILD_GATE_X86_IDENTIFIER: options.x86Identifier ?? options.identifier ?? 'com.tyrshand.app.dev',
+    BUILD_GATE_SECTION: options.section ?? 'valid',
+    BUILD_GATE_ARCHITECTURES: options.architectures ?? 'arm64 x86_64',
+    BUILD_GATE_LIPO_STATUS: String(options.lipoStatus ?? 0),
     BUILD_GATE_SIGNATURE_STATUS: String(options.signatureStatus ?? 0),
   } })
   const commands = (await readFile(trace, 'utf8')).trim().split('\n').map((line) => JSON.parse(line))
+  const diagnostics = JSON.parse(await readFile(resolve(directory,
+    'client/.e2e-build/ios/signing-diagnostics/status.json'), 'utf8'))
   await rm(directory, { recursive: true, force: true })
-  return { result, commands }
+  return { result, commands, diagnostics }
 }
 
-test('iOS 模拟器构建启用签名并在验证应用身份后才安装', async () => {
-  const { result, commands } = await buildFixture()
+test('iOS 模拟器构建验签并验证每个 Mach-O 架构的嵌入身份后才安装', async () => {
+  const { result, commands, diagnostics } = await buildFixture()
   assert.equal(result.status, 0, result.stderr)
   const build = commands.find((command) => command.name === 'xcodebuild')
   assert.ok(build.args.includes('CODE_SIGNING_ALLOWED=YES'))
@@ -59,12 +82,42 @@ test('iOS 模拟器构建启用签名并在验证应用身份后才安装', asyn
   const identity = commands.findIndex((command) => command.name === 'plutil')
   const install = commands.findIndex((command) => command.name === 'xcrun' && command.args.includes('install'))
   assert.ok(verification >= 0 && identity > verification && install > identity)
+  assert.equal(commands.some((command) => command.name === 'codesign' && command.args.includes('--display')), false)
+  assert.equal(commands.filter((command) => command.name === 'xcrun' && command.args[0] === 'llvm-objdump').length, 2)
+  assert.deepEqual(diagnostics, { stage: 'verify-install', status: 'completed' })
 })
 
 test('签名失败、缺失应用身份或身份不匹配时不能安装', async () => {
   for (const options of [{ signatureStatus: 1 }, { identifier: '' }, { identifier: 'com.example.other' }]) {
-    const { result, commands } = await buildFixture(options)
+    const { result, commands, diagnostics } = await buildFixture(options)
     assert.notEqual(result.status, 0)
+    assert.equal(commands.some((command) => command.name === 'xcrun' && command.args.includes('install')), false)
+    assert.equal(diagnostics.status, 'failed')
+    assert.ok(diagnostics.exitCode > 0)
+  }
+})
+
+test('任一架构身份错误不能被另一架构的正确身份掩盖', async () => {
+  const { result, commands, diagnostics } = await buildFixture({ x86Identifier: 'com.example.other' })
+  assert.notEqual(result.status, 0)
+  assert.equal(diagnostics.stage, 'validate-identity-x86_64')
+  assert.equal(commands.some((command) => command.name === 'xcrun' && command.args.includes('install')), false)
+})
+
+test('架构查询失败、空架构或未知架构必须停止安装', async () => {
+  for (const options of [{ lipoStatus: 1 }, { architectures: '' }, { architectures: 'armv7' }]) {
+    const { result, commands, diagnostics } = await buildFixture(options)
+    assert.notEqual(result.status, 0)
+    assert.equal(diagnostics.stage, 'list-architectures')
+    assert.equal(commands.some((command) => command.name === 'xcrun' && command.args.includes('install')), false)
+  }
+})
+
+test('缺失、重复或无效的二进制 section 必须停止安装并报告阶段', async () => {
+  for (const section of ['missing', 'duplicate', 'invalid']) {
+    const { result, commands, diagnostics } = await buildFixture({ section })
+    assert.notEqual(result.status, 0)
+    assert.equal(diagnostics.stage, 'extract-entitlements-arm64')
     assert.equal(commands.some((command) => command.name === 'xcrun' && command.args.includes('install')), false)
   }
 })

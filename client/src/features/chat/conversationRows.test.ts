@@ -8,6 +8,15 @@ import { primaryPreviewServerId } from "@/preview/config";
 import { TurnDetails } from "./turnDetails";
 
 describe("会话 FlashList Row 稳定性", () => {
+  it("同值数字和字符串原生请求保留不同卡片键", () => {
+    const request = { id: 9, method: "mcpServer/elicitation/request", params: {
+      threadId: "thread", turnId: null, serverName: "fixture", mode: "url",
+      _meta: null, message: "确认", url: "http://localhost/fixture", elicitationId: "fixture",
+    } } satisfies ServerRequest;
+    const rows = conversationRows([], [request, { ...request, id: "9" }]);
+    expect(rows.map((row) => row.key)).toEqual(["request:number:9", "request:string:9"]);
+  });
+
   it("流式更新只重渲染变化正文，稳定用户行可以复用", () => {
     const value = fixtureTurn();
     value.status = "inProgress";

@@ -61,7 +61,7 @@ export class CodexJsonRpcClient {
   private opening: Promise<InitializeResponse> | null = null;
   private initializeResponse: InitializeResponse | null = null;
   private nextId = 0;
-  private readonly pending = new Map<string, PendingRequest>();
+  private readonly pending = new Map<RequestId, PendingRequest>();
   private readonly notifications = new Set<NotificationListener>();
   private readonly serverRequests = new Set<ServerRequestListener>();
   private readonly closeListeners = new Set<CloseListener>();
@@ -98,10 +98,10 @@ export class CodexJsonRpcClient {
     const id = ++this.nextId;
     return new Promise<Result>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(String(id));
+        this.pending.delete(id);
         reject(new JsonRpcRequestError(`${method} 响应超时`, method, "unknown"));
       }, this.requestTimeoutMs);
-      this.pending.set(String(id), {
+      this.pending.set(id, {
         method,
         resolve: (value) => resolve(value as Result),
         reject,
@@ -111,7 +111,7 @@ export class CodexJsonRpcClient {
         socket.send(JSON.stringify(params === undefined ? { id, method } : { id, method, params }));
       } catch (error) {
         clearTimeout(timer);
-        this.pending.delete(String(id));
+        this.pending.delete(id);
         reject(new JsonRpcRequestError(
           error instanceof Error ? error.message : `${method} 发送失败`,
           method,
@@ -168,7 +168,8 @@ export class CodexJsonRpcClient {
       capabilities: {
         experimentalApi: true,
         requestAttestation: false,
-        extensions: null,
+        // Codex 0.147.0 的原生 MCP 协商使用空对象声明 openai/form。
+        extensions: { "openai/form": {} },
         optOutNotificationMethods: null,
       },
     };
@@ -188,16 +189,20 @@ export class CodexJsonRpcClient {
         if (errorFallback !== null) clearTimeout(errorFallback);
         operation();
       };
-      socket.onmessage = (event) => this.handleMessage(event.data);
+      socket.onmessage = (event) => {
+        if (this.socket === socket) this.handleMessage(event.data);
+      };
       // React Native 会先发 error，再同步发出携带底层原因的 close。延迟一个
       // event-loop tick，避免通用错误覆盖更有诊断价值的 close.reason。
       socket.onerror = () => {
+        if (this.socket !== socket) return;
         if (errorFallback !== null) return;
         errorFallback = setTimeout(() => finish(() => reject(
           new Error("Codex App Server WebSocket 连接失败"),
         )), 0);
       };
       socket.onclose = (event) => {
+        if (this.socket !== socket) return;
         const reason = redactLoopbackPath(event.reason ?? "");
         const error = new Error(reason || `Codex App Server WebSocket 已断开 (${event.code ?? 0})`);
         if (!settled) finish(() => reject(error));
@@ -233,10 +238,10 @@ export class CodexJsonRpcClient {
   }
 
   private resolveResponse(response: RpcResponse): void {
-    const pending = this.pending.get(String(response.id));
+    const pending = this.pending.get(response.id);
     if (!pending) return;
     clearTimeout(pending.timer);
-    this.pending.delete(String(response.id));
+    this.pending.delete(response.id);
     if (response.error) {
       pending.reject(new JsonRpcRequestError(response.error.message, pending.method, "rejected",
         response.error.code, response.error.data));

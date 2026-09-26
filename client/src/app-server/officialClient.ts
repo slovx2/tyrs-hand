@@ -82,7 +82,7 @@ export class SubmissionConfirmationError extends Error {
 }
 
 export class OfficialAppServerClient {
-  private readonly pendingServerRequests = new Map<string, ServerRequest>();
+  private readonly pendingServerRequests = new Map<RequestId, ServerRequest>();
   private readonly listeners = new Set<EventListener>();
   private readonly submissions = new Map<string, Promise<SubmitResult>>();
   private readonly internalThreadIds = new Set<string>();
@@ -102,7 +102,7 @@ export class OfficialAppServerClient {
         rpc.respondError(request.id, -32000, "internal title thread does not accept requests");
         return;
       }
-      this.pendingServerRequests.set(String(request.id), request);
+      this.pendingServerRequests.set(request.id, request);
       this.emit(request);
     });
     rpc.onClose(() => {
@@ -422,19 +422,22 @@ export class OfficialAppServerClient {
       !threadId || requestThreadId(request) === threadId);
   }
 
-  answerRequest(id: RequestId, result: unknown): boolean {
-    if (!this.pendingServerRequests.has(String(id))) return false;
-    this.rpc.respond(id, result);
-    this.pendingServerRequests.delete(String(id));
+  answerRequest(request: ServerRequest, result: unknown): boolean {
+    // 原请求对象绑定连接代际与内容；同 ID 重用不能接受旧卡片的回调。
+    if (this.pendingServerRequests.get(request.id) !== request) return false;
+    this.rpc.respond(request.id, result);
+    if (this.pendingServerRequests.get(request.id) === request) {
+      this.pendingServerRequests.delete(request.id);
+    }
     return true;
   }
 
   async dismissPendingRequests(threadId: string): Promise<void> {
     for (const request of this.pendingRequests(threadId)) {
       const result = dismissalResult(request);
-      if (result !== undefined) this.answerRequest(request.id, result);
+      if (result !== undefined) this.answerRequest(request, result);
       else {
-        this.pendingServerRequests.delete(String(request.id));
+        this.pendingServerRequests.delete(request.id);
         this.rpc.respondError(request.id, -32000, "dismissed before user message");
       }
     }
@@ -630,7 +633,10 @@ export class OfficialAppServerClient {
 
   private handleNotification(notification: ServerNotification): void {
     if (notification.method === "serverRequest/resolved") {
-      this.pendingServerRequests.delete(String(notification.params.requestId));
+      const request = this.pendingServerRequests.get(notification.params.requestId);
+      if (request && requestThreadId(request) === notification.params.threadId) {
+        this.pendingServerRequests.delete(notification.params.requestId);
+      }
     }
     const ephemeralThreadId = ephemeralStartedThreadId(notification);
     if (ephemeralThreadId) this.internalThreadIds.add(ephemeralThreadId);

@@ -94,6 +94,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - extendedWaitUntil:
     visible: "MOBILE_CLAUDE_PLAN_OK"
     timeout: 120000
+- runFlow: _shared/mcp-suite.yaml
 - stopApp
 - launchApp
 - extendedWaitUntil:

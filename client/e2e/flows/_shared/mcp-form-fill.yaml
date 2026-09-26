@@ -1,0 +1,63 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- tapOn:
+    id: "interactive:.*:field:value"
+- inputText: "mobile-approved"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:count"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:count"
+- inputText: "0"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:ratio"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:ratio"
+- inputText: "0"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:enabled:option:1"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:enabled:option:1"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:color:option:0"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:color:option:0"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:note"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:field:note"
+- inputText: "remove-me"
+- eraseText
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:accept"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:accept"
+- assertVisible:
+    id: "interactive:.*:error"
+- assertVisible:
+    id: "interactive:.*:accept"
+- takeScreenshot: ${TYRS_HAND_E2E_SCREENSHOT_DIR}/${TASK_TEXT}-invalid
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:field:count"
+    direction: UP
+- tapOn:
+    id: "interactive:.*:field:count"
+- eraseText
+- inputText: "3"
+- hideKeyboard

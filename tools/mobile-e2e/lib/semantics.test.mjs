@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { mobileScenarios, mobileWireSemantics } from './semantics.mjs'
+import { mobileMcpScenarios, mobileMcpAnswer, mobileMcpSchema } from './mcp-scenarios.mjs'
 
 // 合成消息仅验证门禁拒绝规则，不能计入真实运行时验收。
 function fixture(engine = 'claude-code') {
@@ -18,6 +19,16 @@ function fixture(engine = 'claude-code') {
     }
     if (marker.endsWith('_APPROVAL')) ask('', { decision: 'accept' })
     if (marker.endsWith('_DENY')) ask('', { decision: 'decline' })
+    if (mobileMcpScenarios[marker]) {
+      const { mode } = mobileMcpScenarios[marker]
+      add('response', { id: marker + '-mcp', method: 'mcpServer/elicitation/request',
+        params: { threadId: marker, mode, serverName: 'mobile_fixture',
+          ...(mode === 'form' ? { requestedSchema: mobileMcpSchema } : {
+            url: 'http://127.0.0.1/mobile-mcp-confirmation', elicitationId: marker.toLowerCase() }) } })
+      add('request', { id: marker + '-mcp', result: mobileMcpAnswer(marker) })
+      add('response', { method: 'item/completed', params: { threadId: marker,
+        item: { type: 'mcpToolCall', status: 'completed', error: null } } })
+    }
     if (marker.endsWith('_PLAN')) {
       ask('-color', { answers: { color: { answers: ['Blue'] } } }, [{ id: 'color' }])
       add('response', { method: 'item/plan/delta', params: { threadId: marker,
@@ -58,11 +69,29 @@ test('缺少计划输出、确认前执行或未进入计划模式均不能通�
   assert.throws(() => mobileWireSemantics('claude-code', rows.filter((entry) =>
     entry.message.method !== 'item/plan/delta')), /没有输出计划/)
   const early = structuredClone(rows)
-  early.splice(output, 0, early.pop())
+  const write = early.findIndex((entry) => entry.message.params?.item?.type === 'fileChange')
+  early.splice(output, 0, early.splice(write, 1)[0])
   assert.throws(() => mobileWireSemantics('claude-code', early), /确认前已修改/)
   rows.find((entry) => entry.message.method === 'turn/start' &&
     entry.message.params.threadId === 'MOBILE_CLAUDE_PLAN').message.params.collaborationMode.mode = 'default'
   assert.throws(() => mobileWireSemantics('claude-code', rows), /没有进入计划模式/)
+})
+
+test('MCP 字符串代替数字、动作失真、工具失败或缺失真实回答均被门禁拒绝', () => {
+  const marker = 'MOBILE_CLAUDE_MCP_FORM_ACCEPT'
+  const change = (alter) => {
+    const rows = fixture()
+    alter(rows, rows.find((entry) => entry.message.id === marker + '-mcp' && !entry.message.method))
+    return () => mobileWireSemantics('claude-code', rows)
+  }
+  assert.throws(change((_, answer) => { answer.message.result.content.count = '3' }), /类型或动作/)
+  assert.throws(change((_, answer) => { answer.message.result.action = 'cancel' }), /类型或动作/)
+  assert.throws(change((_, answer) => { answer.connection = 'old-connection' }), /没有到达/)
+  assert.throws(change((rows) => {
+    const completed = rows.find((entry) => entry.message.params?.threadId === marker &&
+      entry.message.params.item)
+    completed.message.params.item.status = 'failed'
+  }), /工具执行失败/)
 })
 
 test('标题辅助回合不能覆盖真实业务场景，真正重复提交仍被拒绝', () => {

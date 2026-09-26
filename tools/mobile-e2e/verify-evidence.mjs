@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mobileScenarios, mobileMcpScenarios, mobileMcpAnswer } from './lib/mcp-scenarios.mjs'
 
-const required = ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
-  'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']
+const required = mobileScenarios
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'))
 
 async function manifestsBelow(directory) {
@@ -30,11 +30,23 @@ export async function verifyMobileEvidence(directory, commit) {
     assert.ok(manifest.clientBuild, '必须记录安装版客户端版本')
     assert.match(manifest.nativeBuild?.cliSHA256 ?? '', /^[0-9a-f]{64}$/)
     const root = dirname(path)
+    const cleanup = await json(resolve(root, 'cleanup-report.json'))
+    assert.equal(cleanup.primaryError, null, 'GUI 原始失败不能被成功清单掩盖')
+    assert.deepEqual(cleanup.cleanupErrors, [], '移动验收清理异常仍未解决')
     const model = await json(resolve(root, 'model-assertions.json'))
     assert.equal(model.passed, true)
     for (const marker of required) {
       assert.ok(model.expected.includes(marker) && model.completed.includes(marker),
         manifest.platform + ' 缺少必需模型与文件副作用断言：' + marker)
+    }
+    for (const marker of Object.keys(mobileMcpScenarios)) {
+      const { action, content } = mobileMcpAnswer(marker)
+      assert.deepEqual(model.mcpResults?.[marker], { action, content },
+        manifest.platform + ' 缺少准确类型的 MCP 入模结果：' + marker)
+      for (const phase of ['pending', 'answered']) {
+        const screenshot = await readFile(resolve(root, 'screenshots', marker + '-' + phase + '.png'))
+        assert.equal(screenshot.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', '缺少 MCP GUI 截图')
+      }
     }
     const schema = await json(resolve(root, 'worker/schema-report.json'))
     assert.equal(schema.passed, true)

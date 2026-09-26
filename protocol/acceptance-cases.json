@@ -1,6 +1,7 @@
 {
   "formatVersion": 1,
   "groups": [
+    {"id": "SKILLS", "description": "真实CLI技能开关及持久化、临时目录加载与崩溃清理、内联命令权限边界、变更通知、配置原子失败及祖先目录继承", "cases": ["SKILLS-001", "SKILLS-002", "SKILLS-003", "SKILLS-004", "SKILLS-005"], "caseEngines": {"SKILLS-001": ["claude-code"], "SKILLS-002": ["claude-code"], "SKILLS-003": ["claude-code"], "SKILLS-004": ["claude-code"], "SKILLS-005": ["claude-code"]}},
     {"id": "CATALOG", "description": "双 SSH 模型与权限目录分页、计划模式发现及提供方能力，无隐式模型调用；002 原生 Skills、Hooks、实验特性及重启持久化", "cases": ["CATALOG-001", "CATALOG-002"], "caseEngines": {"CATALOG-001": ["codex", "claude-code"], "CATALOG-002": ["codex"]}},
     {"id": "CONFIG", "description": "原生 provider、CLAUDE.md、配置版本与原子写入、权限默认继承、热重载及双 SSH 隔离", "cases": ["CONFIG-001", "CONFIG-004", "CONFIG-005", "CONFIG-006", "CONFIG-007"], "caseEngines": {"CONFIG-001": ["claude-code"], "CONFIG-004": ["claude-code"], "CONFIG-005": ["claude-code"], "CONFIG-006": ["claude-code"], "CONFIG-007": ["codex", "claude-code"]}},
     {"id": "ENTRY", "description": "双 SSH、专用包装器、幂等启动与独立恢复", "cases": ["ENTRY-001", "ENTRY-002"]},
@@ -19,7 +20,7 @@
     {"id": "FILES", "description": "001 同轮双 SSH 文件 RPC、watch、进程、手机上传下载及真实 CLI 工具完整副作用；007 缓存修复、中断重试与大小边界", "cases": ["FILES-001", "FILES-002", "FILES-003", "FILES-004", "FILES-005", "FILES-006", "FILES-007"], "caseEngines": {"FILES-001": ["codex", "claude-code"], "FILES-007": ["codex", "claude-code"]}},
     {"id": "CHANNELS", "description": "桌面、手机、Discord 三端接力与身份投影；002 单独验证 SSH 与真实 Control", "cases": ["CHANNELS-001", "CHANNELS-002"]},
     {"id": "AUTOMATION", "description": "001 原生创建、修改、暂停跨到期、Worker 离线恢复、自然失败后手动重试及真实 Bash 副作用；任务和结果继承引擎；002 原生创建及 Worker 重启后执行", "cases": ["AUTOMATION-001", "AUTOMATION-002"]},
-    {"id": "FAILURE", "description": "模型故障、半断流、CLI、适配器、Worker 与 Control 离线", "cases": ["FAILURE-001", "FAILURE-401", "FAILURE-429", "FAILURE-500", "FAILURE-503", "FAILURE-SSE", "FAILURE-002", "FAILURE-003"]},
+    {"id": "FAILURE", "description": "模型故障、半断流、CLI、适配器、Worker 与 Control 离线；004 真实CLI文本已送达后断流不得非流式重发，历史闭合且显式继续可执行工具", "cases": ["FAILURE-001", "FAILURE-401", "FAILURE-429", "FAILURE-500", "FAILURE-503", "FAILURE-SSE", "FAILURE-002", "FAILURE-003", "FAILURE-004"], "caseEngines": {"FAILURE-004": ["claude-code"]}},
     {"id": "MIGRATION", "description": "Control 与手机数据迁移以及 Codex、GitHub、Live 回归；003 原生指令、Skills、Hooks 文件迁移和历史记录", "cases": ["MIGRATION-001", "MIGRATION-002", "MIGRATION-003"], "caseEngines": {"MIGRATION-003": ["codex"]}},
     {"id": "CAPABILITY", "description": "专属能力明确拒绝、客户端处理及未知方法错误", "cases": ["CAPABILITY-001", "CAPABILITY-002"]}
   ]

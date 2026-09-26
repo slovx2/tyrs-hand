@@ -442,7 +442,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         try {
-          if (!answerRequest(sessionId, item.request.id, result)) {
+          if (!answerRequest(sessionId, item.request, result)) {
             Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
             void loadThread(sessionId);
           }

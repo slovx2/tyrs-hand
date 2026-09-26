@@ -20,9 +20,10 @@ type nativePermissionCase struct {
 }
 
 type nativePermissionScenario struct {
-	mu     sync.Mutex
-	active *nativePermissionCase
-	path   string
+	mu        sync.Mutex
+	active    *nativePermissionCase
+	path      string
+	grantRoot string
 }
 
 // 只脚本化本机模型；权限回调与命令均由固定原生 Codex 产生并执行。
@@ -79,7 +80,7 @@ func (s *nativePermissionScenario) serve(t *testing.T, w http.ResponseWriter, re
 		}
 		assert.True(t, declared, "权限请求必须使用固定 CLI 实际声明的原生工具")
 		permissionModelTool(w, active.id, "request_permissions", map[string]any{
-			"permissions": map[string]any{"file_system": map[string]any{"write": []string{s.path}}},
+			"permissions": map[string]any{"file_system": map[string]any{"write": []string{s.grantRoot}}},
 			"reason":      active.id,
 		})
 		return
@@ -93,9 +94,9 @@ func (s *nativePermissionScenario) serve(t *testing.T, w http.ResponseWriter, re
 		assert.NoError(t, json.Unmarshal([]byte(permissionResult), &result))
 		assert.Equal(t, active.scope, result.Scope)
 		if active.allowed {
-			assert.Contains(t, string(result.Permissions["file_system"]), s.path)
+			assert.Contains(t, string(result.Permissions["file_system"]), s.grantRoot)
 		} else {
-			assert.NotContains(t, string(result.Permissions["file_system"]), s.path)
+			assert.NotContains(t, string(result.Permissions["file_system"]), s.grantRoot)
 		}
 	}
 	quoted := "'" + strings.ReplaceAll(s.path, "'", "'\"'\"'") + "'"
