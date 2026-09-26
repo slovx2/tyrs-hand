@@ -20,6 +20,9 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 		}
 		return marshalRaw(r.options.RuntimeInfo())
 	}
+	if method == "thread/items/list" && r.usesCodexItemHistory() {
+		return r.listNativeThreadItems(ctx, params)
+	}
 	class := classifyMethod(method)
 	if class == methodLocal {
 		if err := source.identifyClient(params); err != nil {
@@ -137,6 +140,11 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 		}
 		return nil, upstreamErr
 	}
+	if method == "mcpServer/oauth/login" {
+		if err := r.registerOAuthCallback(source, plan.Params, result); err != nil {
+			return nil, err
+		}
+	}
 	if method == "thread/start" || method == "thread/fork" || method == "thread/resume" {
 		threadID := responseThreadID(result)
 		if threadID == "" {
@@ -246,6 +254,7 @@ func (r *Hub) anyDesktopSubscribed(threadID string) bool {
 
 func (r *Hub) forwardEvents() {
 	for event := range r.upstreamEvents.Events() {
+		r.finishOAuthCallbacks(event)
 		r.updateToolTurn(event)
 		threadID, _ := threadScope(event.Params)
 		switch event.Method {

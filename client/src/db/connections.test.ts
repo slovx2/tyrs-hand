@@ -52,12 +52,38 @@ describe("SSH connection persistence", () => {
   });
 
   it("keeps SQL placeholders aligned with persisted values", async () => {
-    await saveSSHConnection(input);
+    const onStage = vi.fn();
+    await saveSSHConnection(input, onStage);
 
     const [statement, ...parameters] = database.runAsync.mock.calls[0] as [string, ...unknown[]];
     expect(statement.match(/\?/g)).toHaveLength(parameters.length);
     expect(parameters).toHaveLength(13);
     expect(parameters.slice(0, 2)).toEqual(["profile-1", "Worker"]);
+    expect(onStage.mock.calls.flat()).toEqual(["store-private-key", "store-passphrase", "write-profile"]);
+  });
+
+  it("凭据清理失败仍返回原始数据库错误", async () => {
+    database.getFirstAsync.mockReset().mockResolvedValueOnce(null).mockResolvedValueOnce({ count: 1 });
+    const original = Object.assign(new Error("insert failed"), { code: "SQLITE_BUSY" });
+    database.runAsync.mockRejectedValueOnce(original);
+    secureStore.deleteItemAsync.mockRejectedValueOnce(new Error("key cleanup failed"))
+      .mockRejectedValueOnce(new Error("passphrase cleanup failed"));
+
+    await expect(saveSSHConnection(input)).rejects.toBe(original);
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledTimes(2);
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith("tyrs-hand.ssh-private-key.key-1");
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith("tyrs-hand.ssh-passphrase.key-1");
+  });
+
+  it("私钥保存失败保持对应阶段且不进入数据库写入", async () => {
+    const onStage = vi.fn();
+    const original = Object.assign(new Error("storage failed"), { code: -34018 });
+    secureStore.setItemAsync.mockRejectedValueOnce(original);
+
+    await expect(saveSSHConnection(input, onStage)).rejects.toBe(original);
+    expect(onStage.mock.calls.flat()).toEqual(["store-private-key"]);
+    expect(database.runAsync).not.toHaveBeenCalled();
+    database.getFirstAsync.mockReset();
   });
 
   it("removes device-only credentials when the database transaction fails", async () => {

@@ -75,12 +75,16 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	commandPermissions, historyOnly, sessionOnly := mode == "command-permissions", mode == "history", mode == "session"
 	turnControlOnly := mode == "turn-control"
 	mcpOnly := mode == "mcp"
+	oauthOnly := mode == "mcp-oauth"
+	goalExecution := mode == "goal-execution"
+	isolationOnly := mode == "isolation"
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	catalogOnly := mode == "catalog"
 	configOnly := mode == "config"
+	codexNative := mode == "codex-catalog" || mode == "codex-migration" || mode == "codex-metadata" || mode == "codex-items"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -99,6 +103,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	lifecycle := &runtimeSessionFixture{started: make(chan struct{}), release: make(chan struct{})}
 	turnControl := newRuntimeTurnControlFixture()
 	mcp := &runtimeMcpFixture{}
+	oauth := &runtimeOAuthFixture{}
+	goal := &runtimeGoalExecutionFixture{root: root, secret: rand.Text()}
+	isolation := newRuntimeIsolationFixture(filepath.Join(root, "project"), rand.Text())
 	plan := &runtimePlanFixture{root: root}
 	approval := &runtimeApprovalFixture{root: root}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -122,6 +129,20 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if mcpOnly {
 				require.Equal(t, runtimeidentity.Claude, engine, "MCP 回调不能调用另一个引擎")
 				mcp.model(t, w, request, body)
+				return
+			}
+			if oauthOnly {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				oauth.model(t, w, request, body)
+				return
+			}
+			if goalExecution {
+				require.Equal(t, runtimeidentity.Claude, engine, "Claude 目标不能请求另一引擎")
+				goal.model(t, w, body)
+				return
+			}
+			if isolationOnly {
+				isolation.model(t, w, request, engine, body)
 				return
 			}
 			if planOnly {
@@ -192,6 +213,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			require.NoError(t, os.WriteFile(filepath.Join(claudeConfig, "CLAUDE.md"), []byte("CLAUDE_RUNTIME_INSTRUCTIONS_7319"), 0o600))
 		} else {
 			configuration := fmt.Sprintf("model = \"mock-model\"\nmodel_provider = \"mock\"\napproval_policy = \"never\"\n[model_providers.mock]\nname = \"Mock\"\nbase_url = %q\nwire_api = \"responses\"\nrequest_max_retries = 0\nstream_max_retries = 0\nsupports_websockets = false\n", upstream.URL+"/v1")
+			if isolationOnly {
+				configuration += "env_key = \"TYRS_HAND_MODEL_API_KEY\"\n"
+				require.NoError(t, os.WriteFile(envFile, []byte("TYRS_HAND_MODEL_API_KEY=isolation-codex-key\n"), 0o600))
+			}
 			require.NoError(t, os.WriteFile(filepath.Join(configHome, "config.toml"), []byte(configuration), 0o600))
 		}
 		options = append(options, RuntimeEntryOptions{
@@ -279,6 +304,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
+		if codexNative {
+			continue
+		}
 		if configOnly {
 			verifyRuntimeConfig(t, ctx, client, root)
 			continue
@@ -287,7 +315,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || planOnly || approvalOnly {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || planOnly || approvalOnly {
 			continue
 		}
 		if commandPermissions {
@@ -313,6 +341,24 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
 	}
+	if codexNative {
+		client, connection := protocol[runtimeidentity.Codex], clients[runtimeidentity.Codex]
+		var expectedCalls int64
+		switch mode {
+		case "codex-catalog":
+			verifyCodexNativeCatalog(t, ctx, client, root, registry, connection)
+		case "codex-migration":
+			verifyCodexNativeMigration(t, ctx, client, root, registry, connection)
+		case "codex-items":
+			verifyCodexNativeItems(t, ctx, client, root, registry, connection)
+			expectedCalls = 3
+		case "codex-metadata":
+			verifyCodexNativeMetadata(t, ctx, client, root, registry, connection)
+			expectedCalls = 2
+		}
+		require.Equal(t, expectedCalls, modelCalls.Load(), "目录、迁移和目标 CRUD 不能额外调用模型")
+		return
+	}
 	if catalogOnly || configOnly {
 		require.Zero(t, modelCalls.Load(), "目录读取不能触发任何模型请求")
 		return
@@ -320,6 +366,21 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if mcpOnly {
 		verifyRuntimeMcpElicitation(t, ctx, registry, clients[runtimeidentity.Claude])
 		require.Equal(t, int64(2), modelCalls.Load(), "只能请求模型工具调用及一次结果续写")
+		return
+	}
+	if oauthOnly {
+		verifyRuntimeMcpOAuth(t, ctx, registry, clients, protocol, signer)
+		require.Equal(t, int64(2), modelCalls.Load(), "OAuth 管理和重启不能额外调用模型")
+		return
+	}
+	if goalExecution {
+		verifyRuntimeGoalExecution(t, ctx, protocol[runtimeidentity.Claude], goal)
+		require.Equal(t, int64(7), modelCalls.Load(), "仅允许目标完成五次和软预算两次真实模型请求")
+		return
+	}
+	if isolationOnly {
+		verifyRuntimeIsolation(t, ctx, registry, clients, isolation)
+		require.Equal(t, int64(6), modelCalls.Load(), "同提交和工具 ID 只允许各一次实际执行及 Claude 审批回合")
 		return
 	}
 	if threadPermissions {

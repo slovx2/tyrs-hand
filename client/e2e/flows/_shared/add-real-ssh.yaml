@@ -31,12 +31,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     direction: DOWN
 - tapOn:
     id: "connection:ssh:private-key"
+# 双入口共用本轮临时密钥，表单保留密钥时直接复用并由真实 SSH 认证核验。
 - runFlow:
     when:
-      visible: "(?s).*BEGIN OPENSSH PRIVATE KEY.*"
-    commands:
-      - eraseText: 512
-- runFlow:
+      notVisible: "(?s).*BEGIN OPENSSH PRIVATE KEY.*"
     file: private-key.yaml
 - hideKeyboard
 - scrollUntilVisible:

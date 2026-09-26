@@ -1,37 +1,9 @@
 appId: ${TYRS_HAND_E2E_APP_ID}
 ---
-- launchApp:
-    clearState: true
-    permissions:
-      all: allow
-- extendedWaitUntil:
-    visible:
-      id: "tab:connections"
-    timeout: 30000
 - runFlow:
-    file: _shared/add-real-ssh.yaml
-    env:
-      SSH_NAME: "Mobile Codex"
-      SSH_PORT: ${TYRS_HAND_E2E_CODEX_PORT}
-      SSH_ENGINE: "codex"
-- runFlow:
-    file: _shared/runtime-task.yaml
-    env:
-      TASK_TEXT: "MOBILE_CODEX_CHAT"
-      PERMISSIONS: "danger-full-access"
-      MODE: "default"
-- extendedWaitUntil:
-    visible: "MOBILE_CODEX_CHAT_OK"
-    timeout: 120000
-- tapOn:
-    id: "session:back"
-- runFlow:
-    file: _shared/add-real-ssh.yaml
-    env:
-      SSH_NAME: "Mobile Claude"
-      SSH_PORT: ${TYRS_HAND_E2E_CLAUDE_PORT}
-      SSH_ENGINE: "claude-code"
-- runFlow: _shared/assert-runtime-entries.yaml
+    when:
+      true: ${typeof TYRS_HAND_E2E_SSH_SETUP_DONE === "undefined" || String(TYRS_HAND_E2E_SSH_SETUP_DONE) !== "true"}
+    file: _shared/dual-engine-ssh-setup.yaml
 - runFlow:
     file: _shared/open-link.yaml
     env:

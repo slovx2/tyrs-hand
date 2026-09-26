@@ -45,7 +45,8 @@ const artifacts = resolve(process.env.PROTOCOL_ARTIFACT_DIR ??
 mkdirSync(artifacts, { recursive: true })
 const runPath = join(artifacts, 'run.json')
 const runId = existsSync(runPath) ? JSON.parse(readFileSync(runPath, 'utf8')).runId : null
-const wire = readdirSync(artifacts).filter(name => name.startsWith('wire-') && name.endsWith('.json'))
+const wire = readdirSync(artifacts).filter(name =>
+  (name.startsWith('wire-') || name.startsWith('fault-injection-')) && name.endsWith('.json'))
   .map(name => JSON.parse(readFileSync(join(artifacts, name), 'utf8')))
 for (const artifact of wire) {
   if (artifact.runId !== runId || artifact.kind !== 'wire') continue

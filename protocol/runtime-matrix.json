@@ -533,13 +533,15 @@
       },
       "cases": {
         "codex": [
-          "CONFIG-007"
+          "CONFIG-007",
+          "ISOLATION-004"
         ],
         "claude-code": [
           "CONFIG-007",
           "CONFIG-004",
           "CONFIG-005",
-          "CONFIG-006"
+          "CONFIG-006",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -559,12 +561,14 @@
       },
       "cases": {
         "codex": [
-          "CONFIG-007"
+          "CONFIG-007",
+          "ISOLATION-004"
         ],
         "claude-code": [
           "CONFIG-007",
           "CONFIG-004",
-          "CONFIG-006"
+          "CONFIG-006",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -694,7 +698,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CATALOG-002"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -712,7 +718,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CATALOG-002"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -730,7 +738,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MIGRATION-003"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -748,7 +758,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MIGRATION-003"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -766,7 +778,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MIGRATION-003"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -774,7 +788,7 @@
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/ExternalAgentConfigImportHistoriesReadResponse.json"
       }
     },
     {
@@ -784,7 +798,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "MIGRATION-003"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -1089,7 +1105,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CATALOG-002"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -1318,7 +1336,8 @@
           "APPROVAL-004",
           "PLAN-003",
           "PERMISSION-004",
-          "PERMISSION-005"
+          "PERMISSION-005",
+          "ISOLATION-004"
         ]
       },
       "schema": {
@@ -1478,10 +1497,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ISOLATION-004"
+        ],
         "claude-code": [
           "TOOLS-001",
-          "HISTORY-002"
+          "HISTORY-002",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -1632,7 +1654,11 @@
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "MCP-011",
+          "MCP-012",
+          "MCP-013"
+        ]
       },
       "callers": [
         "internal/appserverhub/methods.go"
@@ -1713,7 +1739,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "MCP-006"
+          "MCP-006",
+          "MCP-011",
+          "MCP-013"
         ]
       },
       "callers": [
@@ -2306,7 +2334,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CATALOG-002"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -2324,7 +2354,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CATALOG-002"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -2342,7 +2374,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CATALOG-002"
+        ],
         "claude-code": []
       },
       "callers": [
@@ -2567,7 +2601,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "GOAL-004"
+        ],
         "claude-code": [
           "GOAL-001",
           "GOAL-003"
@@ -2611,10 +2647,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "GOAL-004"
+        ],
         "claude-code": [
           "GOAL-001",
-          "GOAL-003"
+          "GOAL-003",
+          "GOAL-005"
         ]
       },
       "callers": [
@@ -2633,10 +2672,13 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "GOAL-004"
+        ],
         "claude-code": [
           "GOAL-001",
-          "GOAL-003"
+          "GOAL-003",
+          "GOAL-005"
         ]
       },
       "callers": [
@@ -2694,7 +2736,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "HISTORY-005"
+        ],
         "claude-code": [
           "HISTORY-001",
           "HISTORY-002"
@@ -2796,12 +2840,14 @@
       },
       "cases": {
         "codex": [
-          "SESSION-003"
+          "SESSION-003",
+          "ISOLATION-004"
         ],
         "claude-code": [
           "HISTORY-003",
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -2855,7 +2901,8 @@
         "codex": [
           "EVENTS-003",
           "SUBMIT-004",
-          "SESSION-003"
+          "SESSION-003",
+          "ISOLATION-004"
         ],
         "claude-code": [
           "HISTORY-002",
@@ -2866,7 +2913,8 @@
           "SUBMIT-003",
           "EVENTS-004",
           "SUBMIT-004",
-          "FAILURE-003"
+          "FAILURE-003",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -2907,7 +2955,8 @@
           "PERMISSION-005",
           "PERMISSION-007",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -2955,7 +3004,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-005"
+        ],
         "claude-code": [
           "SESSION-004"
         ]
@@ -3053,7 +3104,8 @@
           "EVENTS-003",
           "SUBMIT-004",
           "PERMISSION-007",
-          "SESSION-003"
+          "SESSION-003",
+          "ISOLATION-004"
         ],
         "claude-code": [
           "CONTEXT-001",
@@ -3072,7 +3124,8 @@
           "PERMISSION-006",
           "PERMISSION-007",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -3188,7 +3241,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "HISTORY-004"
+        ],
         "claude-code": [
           "HISTORY-001",
           "HISTORY-002"
@@ -3293,7 +3348,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-005"
+        ],
         "claude-code": [
           "SESSION-004"
         ]
@@ -3313,7 +3370,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-005"
+        ],
         "claude-code": [
           "SESSION-004"
         ]
@@ -3333,7 +3392,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-005"
+        ],
         "claude-code": [
           "SESSION-004"
         ]
@@ -3353,7 +3414,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "SESSION-005"
+        ],
         "claude-code": [
           "SESSION-004"
         ]
@@ -3453,7 +3516,8 @@
           "EVENTS-003",
           "SUBMIT-004",
           "PERMISSION-007",
-          "SESSION-003"
+          "SESSION-003",
+          "ISOLATION-004"
         ],
         "claude-code": [
           "SUBMIT-001",
@@ -3471,7 +3535,8 @@
           "PERMISSION-006",
           "PERMISSION-007",
           "SUBMIT-002",
-          "CONTEXT-003"
+          "CONTEXT-003",
+          "ISOLATION-004"
         ]
       },
       "callers": [
@@ -3613,6 +3678,88 @@
       "schema": {
         "params": "ClientRequest.json#/definitions/WindowsSandboxSetupStartParams",
         "response": "v2/WindowsSandboxSetupStartResponse.json"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/progress",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "MIGRATION-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportProgressNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "MIGRATION-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportCompletedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "skills/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "CATALOG-002"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/SkillsChangedNotification",
+        "response": null
+      }
+    },
+    {
+      "method": "mcpServer/oauthLogin/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": [
+          "MCP-011",
+          "MCP-012",
+          "MCP-013"
+        ]
+      },
+      "callers": [
+        "wire:claude-code"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/McpServerOauthLoginCompletedNotification",
+        "response": null
       }
     }
   ]

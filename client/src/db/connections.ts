@@ -2,6 +2,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import { engineSchema, type Engine, type RuntimeInfo } from "@/types/runtime";
+import type { SSHSaveStage } from "@/features/connections/sshSaveDiagnostics";
 import { runDatabaseWrite, withDatabaseTransaction } from "./database";
 
 export type ControlMachineLink = {
@@ -113,15 +114,19 @@ export async function listConnections(): Promise<Connection[]> {
   return rows.map((row) => connectionFromRow(row, links.get(row.profile_id) ?? []));
 }
 
-export async function saveSSHConnection(input: SaveSSHConnectionInput): Promise<string> {
+export async function saveSSHConnection(input: SaveSSHConnectionInput,
+  onStage?: (stage: SSHSaveStage) => void): Promise<string> {
   engineSchema.parse(input.engine);
+  onStage?.("store-private-key");
   await SecureStore.setItemAsync(sshPrivateKeyKey(input.keyRef), input.privateKey, deviceOnly);
   if (input.passphrase) {
+    onStage?.("store-passphrase");
     await SecureStore.setItemAsync(sshPassphraseKey(input.keyRef), input.passphrase, deviceOnly);
   }
   let savedProfileId = input.profileId;
   let replacedKeyRef: string | null = null;
   try {
+    onStage?.("write-profile");
     const now = new Date().toISOString();
     await withDatabaseTransaction(async (database) => {
       const existing = await database.getFirstAsync<{
@@ -151,13 +156,15 @@ export async function saveSSHConnection(input: SaveSSHConnectionInput): Promise<
       input.user, input.keyRef, input.hostFingerprint, input.engine, input.workerId, now, now);
     });
     if (replacedKeyRef && replacedKeyRef !== input.keyRef) {
+      onStage?.("cleanup-old-credentials");
       await SecureStore.deleteItemAsync(sshPrivateKeyKey(replacedKeyRef));
       await SecureStore.deleteItemAsync(sshPassphraseKey(replacedKeyRef));
     }
     return savedProfileId;
   } catch (error) {
-    await SecureStore.deleteItemAsync(sshPrivateKeyKey(input.keyRef));
-    await SecureStore.deleteItemAsync(sshPassphraseKey(input.keyRef));
+    // 清理失败不能覆盖导致保存失败的原始错误。
+    await Promise.allSettled([SecureStore.deleteItemAsync(sshPrivateKeyKey(input.keyRef)),
+      SecureStore.deleteItemAsync(sshPassphraseKey(input.keyRef))]);
     throw error;
   }
 }

@@ -21,6 +21,7 @@ type session struct {
 	subscriptions map[string]bool
 	pending       map[string]chan serverOutcome
 	closed        bool
+	done          chan struct{}
 	closeErr      error
 	client        *Client
 	clientName    string
@@ -31,7 +32,7 @@ type session struct {
 func newSession(id int64, role Role, send func(rpcMessage) error,
 	handler codex.ServerRequestHandler,
 ) *session {
-	return &session{id: id, role: role, send: send, handler: handler,
+	return &session{id: id, role: role, send: send, handler: handler, done: make(chan struct{}),
 		subscriptions: make(map[string]bool), pending: make(map[string]chan serverOutcome)}
 }
 
@@ -156,6 +157,7 @@ func (s *session) close(cause error) {
 		return
 	}
 	s.closed = true
+	close(s.done)
 	s.closeErr = cause
 	pending := s.pending
 	s.pending = make(map[string]chan serverOutcome)

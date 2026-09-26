@@ -15,6 +15,8 @@ import { removeConnection, renameConnection, saveSSHConnection,
   updateSSHHostFingerprint, type SSHConnection } from "@/db/connections";
 import { addSSHProject } from "@/db/sshProjects";
 import { connectPairingUri } from "@/features/connections/connectPairing";
+import { createSSHSaveDiagnostics, sshSaveProgressLabel,
+  type SSHSaveProgress } from "@/features/connections/sshSaveDiagnostics";
 import { inspectSSHRuntime, listSSHDirectory, probeSSHHost, probeSSHHostAddress,
   sshTransport } from "@/native/sshTransport";
 import { isDefaultAssistant, openAssistantSettings } from "@/native/voiceWake";
@@ -186,6 +188,7 @@ export default function ConnectionsScreen() {
       setBrowsingSSH(false);
     }
   };
+  const [sshSaveProgress, setSSHSaveProgress] = useState<SSHSaveProgress | null>(null);
   const createSSH = async () => {
     const port = Number(ssh.port);
     if (!ssh.host.trim() || !ssh.user.trim() || !ssh.privateKey.trim() ||
@@ -193,30 +196,41 @@ export default function ConnectionsScreen() {
       Alert.alert("SSH 配置不完整", "请填写 Host、Port、User 和私钥。");
       return;
     }
+    const diagnostics = createSSHSaveDiagnostics(setSSHSaveProgress);
     setSavingSSH(true);
     try {
+      diagnostics.start("inspect-key");
       await inspectKey();
+      diagnostics.start("probe-host");
       const fingerprint = await probeSSHHostAddress(ssh.host.trim(), port, ssh.user.trim());
+      diagnostics.start("confirm-host");
       Alert.alert("确认 SSH 主机指纹", fingerprint, [
-        { text: "取消", style: "cancel", onPress: () => setSavingSSH(false) },
+        { text: "取消", style: "cancel", onPress: () => { diagnostics.cancel(); setSavingSSH(false); } },
         { text: "确认并保存", onPress: () => void (async () => {
           try {
+            diagnostics.start("prepare-profile");
             const profileId = Crypto.randomUUID();
+            const keyRef = Crypto.randomUUID();
+            diagnostics.start("inspect-runtime");
             const runtime = await inspectSSHRuntime({ host: ssh.host.trim(), port, user: ssh.user.trim(),
               privateKey: ssh.privateKey, passphrase: ssh.passphrase || null, expectedHostFingerprint: fingerprint });
             const savedProfileId = await saveSSHConnection({ kind: "ssh", profileId,
               engine: runtime.engine, workerId: runtime.workerId,
               name: ssh.name.trim() || `${ssh.user.trim()}@${ssh.host.trim()} · ${engineName(runtime.engine)}`,
-              host: ssh.host.trim(), port, user: ssh.user.trim(), keyRef: Crypto.randomUUID(),
+              host: ssh.host.trim(), port, user: ssh.user.trim(), keyRef,
               hostFingerprint: fingerprint,
-              privateKey: ssh.privateKey, ...(ssh.passphrase ? { passphrase: ssh.passphrase } : {}) });
-            setSSHVisible(false); await reload(); await switchConnection(savedProfileId);
+              privateKey: ssh.privateKey, ...(ssh.passphrase ? { passphrase: ssh.passphrase } : {}) }, diagnostics.start);
+            setSSHVisible(false); diagnostics.start("reload-profiles"); await reload();
+            diagnostics.start("activate-profile"); await switchConnection(savedProfileId);
+            diagnostics.complete();
           } catch (error) {
+            diagnostics.fail(error);
             Alert.alert("保存失败", error instanceof Error ? error.message : "请重试");
           } finally { setSavingSSH(false); }
         })() },
       ]);
     } catch (error) {
+      diagnostics.fail(error);
       setSavingSSH(false);
       Alert.alert("SSH 校验失败", error instanceof Error ? error.message : "无法连接主机");
     }
@@ -266,6 +280,10 @@ export default function ConnectionsScreen() {
     </Card> : null}
     {active?.engine === "codex" && <LiveCodexSettings />}
     <ConnectionErrorBanner />
+    {!sshVisible && sshSaveProgress && sshSaveProgress.status !== "completed" &&
+      sshSaveProgress.status !== "cancelled" ? <View testID="connection:ssh:save-status">
+        <Muted>{sshSaveProgressLabel(sshSaveProgress)}</Muted>
+      </View> : null}
     <View style={styles.list}>{connections.length === 0
       ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码关联 Control Worker。" />
       : connections.map((connection) => <Pressable key={connection.profileId}
@@ -358,6 +376,9 @@ export default function ConnectionsScreen() {
             style={{ color: theme.colors.text, fontFamily: "monospace", fontSize: 12 }}>
             {ssh.publicKey}
           </Text></View> : null}
+        {sshSaveProgress ? <View testID="connection:ssh:save-status">
+          <Muted>{sshSaveProgressLabel(sshSaveProgress)}</Muted>
+        </View> : null}
         <View style={styles.formActions}><Button title="取消" variant="secondary" disabled={savingSSH}
           onPress={() => setSSHVisible(false)} />
           <Button testID="connection:ssh:save" title="保存 SSH" loading={savingSSH}

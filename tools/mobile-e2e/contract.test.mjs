@@ -69,6 +69,7 @@ test('默认 suite 使用真实双引擎并验证计划、权限和审批', asyn
   const worker = await readFile(resolve(root, 'tools/mobile-e2e/lib/worker.mjs'), 'utf8')
   const suite = await readFile(resolve(root, 'client/e2e/flows/suite.yaml'), 'utf8')
   const flow = await readFile(resolve(root, 'client/e2e/flows/dual-engine-suite.yaml'), 'utf8')
+  const setup = await readFile(resolve(root, 'client/e2e/flows/_shared/dual-engine-ssh-setup.yaml'), 'utf8')
   assert.match(suite, /dual-engine-suite\.yaml/)
   assert.match(runner, /new WorkerHarness/)
   assert.match(runner, /models\.verify/)
@@ -79,7 +80,7 @@ test('默认 suite 使用真实双引擎并验证计划、权限和审批', asyn
   assert.match(worker, /--net/)
   for (const marker of ['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
     'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN']) {
-    assert.ok(flow.includes(marker), marker + ' 必须经过 GUI')
+    assert.ok((setup + flow).includes(marker), marker + ' 必须经过 GUI')
     assert.ok(runner.includes(marker), marker + ' 必须核对模型和副作用')
   }
   assert.match(flow, /interactive:.*:accept/)
@@ -87,4 +88,11 @@ test('默认 suite 使用真实双引擎并验证计划、权限和审批', asyn
   assert.match(flow, /MODE: "plan"/)
   assert.match(flow, /PERMISSIONS: "danger-full-access"/)
   assert.match(flow, /stopApp/)
+  assert.match(setup, /clearState: true/)
+  assert.doesNotMatch(flow, /clearState: true/, '第二阶段必须保留已完成的真实 SSH 客户端状态')
+  assert.match(flow, /TYRS_HAND_E2E_SSH_SETUP_DONE/)
+  const prepared = runner.indexOf("await runMaestro(setupEnvironment, 'ssh-setup'")
+  assert.ok(prepared >= 0 && runner.indexOf('createPairing(') > prepared,
+    '真实配对链接必须在前置 SSH GUI 成功后生成，不能消耗其十分钟有效期')
+  assert.match(runner, /approveWhenClaimed\(firstPairing.id, 600_000/, '配对等待仍须有界')
 })

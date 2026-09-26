@@ -16,6 +16,7 @@ async function fixture(directory, platform, override = {}) {
   await mkdir(resolve(root, 'worker'), { recursive: true })
   await save(resolve(root, 'mobile-acceptance.json'), {
     platform, commit, dirty: false, passed: true, schemaPassed: true,
+    maestroPhases: ['ssh-setup', 'suite'],
     clientBuild: 'fixture', adapterCommit: 'b'.repeat(40),
     nativeBuild: { cliSHA256: 'c'.repeat(64), sdkVersion: '0.3.282', cliVersion: '2.1.282' },
     ...override,
@@ -30,7 +31,9 @@ async function fixture(directory, platform, override = {}) {
     await save(resolve(root, 'worker/wire-' + name + '.jsonl'), { fixture: true })
     await save(resolve(root, 'model-' + name + '.json'), { requests: [{}], unexpected: [] })
   }
-  await writeFile(resolve(root, 'junit-suite.xml'), '<testsuite><testcase name="fixture"/></testsuite>')
+  for (const phase of ['ssh-setup', 'suite']) {
+    await writeFile(resolve(root, 'junit-' + phase + '.xml'), '<testsuite><testcase name="fixture"/></testsuite>')
+  }
   return root
 }
 
@@ -53,6 +56,25 @@ test('移动门禁要求两平台、相同提交且没有必需用例跳过', as
       passed: true, expected: markers, completed: markers.filter((marker) => !marker.endsWith('_PLAN')),
     })
     await assert.rejects(verifyMobileEvidence(root, commit), /MOBILE_CLAUDE_PLAN/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('SSH 准备阶段缺失、失败或跳过均不能被业务阶段成功掩盖', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'mobile-phase-gate-'))
+  try {
+    await fixture(root, 'android')
+    const ios = await fixture(root, 'ios')
+    await rm(resolve(ios, 'junit-ssh-setup.xml'))
+    await assert.rejects(verifyMobileEvidence(root, commit), /ENOENT/)
+    for (const result of ['failure', 'error', 'skipped']) {
+      await writeFile(resolve(ios, 'junit-ssh-setup.xml'),
+        `<testsuite><testcase name="ssh"><${result}/></testcase></testsuite>`)
+      await assert.rejects(verifyMobileEvidence(root, commit), /不能失败或跳过：ssh-setup/)
+    }
+    await fixture(root, 'ios', { maestroPhases: ['suite'] })
+    await assert.rejects(verifyMobileEvidence(root, commit), /两个 GUI 阶段/)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

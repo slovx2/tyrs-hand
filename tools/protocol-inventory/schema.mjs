@@ -19,6 +19,7 @@ export function schemaIndex(root, extensionsRoot) {
     'configRequirements/read': 'ConfigRequirementsReadResponse',
     'config/value/write': 'ConfigWriteResponse',
     'config/batchWrite': 'ConfigWriteResponse',
+    'externalAgentConfig/import/readHistories': 'ExternalAgentConfigImportHistoriesReadResponse',
   }
   for (const kind of ['ClientRequest', 'ServerRequest', 'ClientNotification', 'ServerNotification']) {
     const schema = JSON.parse(readFileSync(join(root, `${kind}.json`), 'utf8'))

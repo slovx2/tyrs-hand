@@ -1,3 +1,5 @@
+import { foreignServerResponse } from './faults.mjs'
+
 // 专项可以固定引擎；指定双引擎时，两边都必须在本轮实际执行通过。
 export function semanticCoverage(acceptance, executions, runId) {
   return acceptance.groups.map(group => ({ ...group, missing: group.cases.filter(id => {
@@ -108,6 +110,15 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
         const key = requestKey(sender === 'client' ? 'server' : 'client', message.id)
         const late = interrupted.has(key)
         const request = pending.get(key) ?? interrupted.get(key)
+        if (message.expectedForeignServerResponse === true) {
+          try {
+            if (request) throw new Error('跨引擎负例不能覆盖本连接的挂起请求')
+            evidence.push(foreignServerResponse(artifact, message, artifacts, executions, runId, index, validate))
+          } catch (error) {
+            missing.push({ reason: String(error), caseName: artifact.caseName })
+          }
+          continue
+        }
         if (!request) { missing.push({ reason: '响应没有匹配请求', caseName: artifact.caseName }); continue }
         pending.delete(key)
         interrupted.delete(key)

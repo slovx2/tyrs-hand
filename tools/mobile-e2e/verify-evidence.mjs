@@ -52,10 +52,14 @@ export async function verifyMobileEvidence(directory, commit) {
       assert.ok(requests.requests.length > 0)
       assert.deepEqual(requests.unexpected, [])
     }
-    const junit = await readFile(resolve(root, 'junit-suite.xml'), 'utf8')
-    assert.match(junit, /<testcase[\s>]/, '必须保留实际 Maestro 用例报告')
-    assert.doesNotMatch(junit, /<(?:skipped|failure|error)[\s/>]/,
-      '必需 GUI 用例不能失败或跳过')
+    assert.deepEqual(manifest.maestroPhases, ['ssh-setup', 'suite'],
+      '必须记录 SSH 准备与配对业务两个 GUI 阶段')
+    for (const phase of manifest.maestroPhases) {
+      const junit = await readFile(resolve(root, 'junit-' + phase + '.xml'), 'utf8')
+      assert.match(junit, /<testcase[\s>]/, '必须保留实际 Maestro 用例报告：' + phase)
+      assert.doesNotMatch(junit, /<(?:skipped|failure|error)[\s/>]/,
+        '必需 GUI 用例不能失败或跳过：' + phase)
+    }
     reports.push(manifest)
   }
   assert.deepEqual(reports.map((item) => item.platform).sort(), ['android', 'ios'],

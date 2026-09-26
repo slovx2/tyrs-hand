@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promi
 import { dirname, extname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 import { ControlHarness } from './lib/control.mjs'
 import { output, run } from './lib/process.mjs'
@@ -170,8 +171,6 @@ async function main() {
   await worker.start()
   models.setWorkspace(worker.workspace)
   await seed(primary, registration, 'mobile-shared-project', worker.workspace)
-  const firstPairing = await primary.admin.createPairing(registration.worker.id, 'codex')
-  const secondPairing = await primary.admin.createPairing(registration.worker.id, 'claude-code')
   if (platform === 'android') {
     for (const port of [primary.port, ...Object.values(worker.ports)]) {
       run('adb', ['-s', deviceID, 'reverse', `tcp:${port}`, `tcp:${port}`])
@@ -180,8 +179,6 @@ async function main() {
   }
   await assertInstalled()
   isolateAndroidAppLinks()
-  const approvals = [primary.admin.approveWhenClaimed(firstPairing.id, 600_000, pairingAbort.signal),
-    primary.admin.approveWhenClaimed(secondPairing.id, 600_000, pairingAbort.signal)]
   const projectPath = await realpath(worker.workspace)
   const segments = projectPath.split('/').filter(Boolean)
   const sourceFlows = resolve(repoRoot, 'client/e2e/flows')
@@ -199,20 +196,38 @@ async function main() {
     path += '/' + segment
     return `- scrollUntilVisible:\n    element:\n      id: "connection:ssh:directory:${encodeURIComponent(path)}"\n    direction: DOWN\n    timeout: 15000\n- tapOn:\n    id: "connection:ssh:directory:${encodeURIComponent(path)}"\n`
   }).join(''))
-  const maestroEnvironment = { TYRS_HAND_E2E_PLATFORM: platform,
+  const setupEnvironment = { TYRS_HAND_E2E_PLATFORM: platform,
     TYRS_HAND_E2E_SCREENSHOT_DIR: resolve(runDir, 'screenshots'),
-    TYRS_HAND_E2E_APP_ID: appID, TYRS_HAND_E2E_PAIRING_URI: firstPairing.pairingUri,
-    TYRS_HAND_E2E_SECOND_PAIRING_URI: secondPairing.pairingUri,
-    TYRS_HAND_E2E_PRIMARY_SERVER_ID: firstPairing.serverId,
+    TYRS_HAND_E2E_APP_ID: appID,
     TYRS_HAND_E2E_WORKER_ID: registration.worker.id,
     TYRS_HAND_E2E_CODEX_PORT: String(worker.ports.codex),
     TYRS_HAND_E2E_CLAUDE_PORT: String(worker.ports['claude-code']),
     TYRS_HAND_E2E_PRIVATE_KEY: worker.privateKey }
+  await runMaestro(setupEnvironment, 'ssh-setup',
+    resolve(stagedFlows, '_shared/dual-engine-ssh-setup.yaml'))
+  // 配对本身只有十分钟有效期；必须在真实 SSH 准备完成后才创建并开始等待。
+  const firstPairing = await primary.admin.createPairing(registration.worker.id, 'codex')
+  const secondPairing = await primary.admin.createPairing(registration.worker.id, 'claude-code')
+  const maestroEnvironment = { ...setupEnvironment, TYRS_HAND_E2E_SSH_SETUP_DONE: 'true',
+    TYRS_HAND_E2E_PAIRING_URI: firstPairing.pairingUri,
+    TYRS_HAND_E2E_SECOND_PAIRING_URI: secondPairing.pairingUri,
+    TYRS_HAND_E2E_PRIMARY_SERVER_ID: firstPairing.serverId }
+  const approvals = [primary.admin.approveWhenClaimed(firstPairing.id, 600_000, pairingAbort.signal),
+    primary.admin.approveWhenClaimed(secondPairing.id, 600_000, pairingAbort.signal)]
   await Promise.all([runMaestro(maestroEnvironment, 'suite', resolve(stagedFlows, relativeFlow)), ...approvals])
   await models.verify(['MOBILE_CODEX_CHAT', 'MOBILE_CLAUDE_CHAT', 'MOBILE_CLAUDE_FULL',
     'MOBILE_CLAUDE_APPROVAL', 'MOBILE_CLAUDE_DENY', 'MOBILE_CLAUDE_PLAN'])
   const schemaReport = await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'),
     { requireMobileScenarios: true })
+  const commit = output('git', ['rev-parse', 'HEAD'], { cwd: repoRoot })
+  const sourceReport = await readFile(resolve(runDir, 'worker/schema-report.json'))
+  await writeFile(resolve(runDir, 'wire-semantics.json'), JSON.stringify({
+    passed: schemaReport.passed, commit, adapterCommit: worker.pin.commit,
+    derivedFrom: 'worker/schema-report.json',
+    sourceSHA256: createHash('sha256').update(sourceReport).digest('hex'),
+    engines: Object.fromEntries(Object.entries(schemaReport.engines)
+      .map(([engine, value]) => [engine, value.semantics])),
+  }, null, 2))
   const snapshots = controls.map((control) => JSON.parse(output('go', [
     'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))
@@ -223,7 +238,8 @@ async function main() {
       output('xcrun', ['simctl', 'get_app_container', deviceID, appID, 'app']), 'Info.plist')]))
   await writeFile(resolve(runDir, 'mobile-acceptance.json'), JSON.stringify({
     platform, passed: true, appID, clientBuild, maestroVersion: '2.3.0',
-    commit: output('git', ['rev-parse', 'HEAD'], { cwd: repoRoot }),
+    maestroPhases: ['ssh-setup', 'suite'],
+    commit,
     dirty: !!output('git', ['status', '--porcelain'], { cwd: repoRoot }),
     adapterCommit: worker.pin.commit, nativeBuild: worker.nativeBuild,
     schemaPassed: schemaReport.passed, completeProtocolMatrix: false,

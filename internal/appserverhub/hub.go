@@ -29,6 +29,7 @@ type Hub struct {
 	ephemeralThreads   map[string]bool
 	archiveOperations  map[string]*archiveOperation
 	resources          map[string]connectionResource
+	oauthCallbacks     map[string]oauthCallback
 	nextID             atomic.Int64
 	closed             bool
 	stats              Stats

@@ -138,6 +138,8 @@ func (s *SSHServer) serve(ctx context.Context) {
 
 func (s *SSHServer) handleConnection(raw net.Conn) {
 	defer s.wg.Done()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	connection, channels, requests, err := ssh.NewServerConn(raw, s.config)
 	if err != nil {
 		_ = raw.Close()
@@ -162,6 +164,10 @@ func (s *SSHServer) handleConnection(raw net.Conn) {
 	}()
 	go ssh.DiscardRequests(requests)
 	for request := range channels {
+		if request.ChannelType() == "direct-tcpip" {
+			s.handleOAuthForward(ctx, request)
+			continue
+		}
 		if request.ChannelType() != "session" {
 			_ = request.Reject(ssh.Prohibited, "Worker 禁止 SSH 转发")
 			continue
