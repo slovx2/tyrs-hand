@@ -17,6 +17,26 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
+// 格式 1 由双引擎 Worker 写入，与可配置的网络协议版本无关。
+const currentJournalFormatVersion = 1
+
+func validateJournalFormat(data []byte) (bool, error) {
+	var source struct {
+		Version json.RawMessage `json:"journalFormatVersion"`
+	}
+	if err := json.Unmarshal(data, &source); err != nil {
+		return false, err
+	}
+	if source.Version == nil {
+		return false, nil
+	}
+	var version int
+	if json.Unmarshal(source.Version, &version) != nil || version != currentJournalFormatVersion {
+		return true, errors.New("不支持的 Journal 格式版本")
+	}
+	return true, nil
+}
+
 type runJournal struct {
 	mu                sync.Mutex                                `json:"-"`
 	Task              workerprotocol.Task                       `json:"task"`
@@ -136,7 +156,10 @@ func (s *journalStore) save(journal *runJournal) error {
 	if err := journal.Task.Snapshot.Runtime.Engine.Validate(); err != nil {
 		return fmt.Errorf("保存 Run Journal: %w", err)
 	}
-	data, err := json.Marshal(journal)
+	data, err := json.Marshal(struct {
+		*runJournal
+		FormatVersion int `json:"journalFormatVersion"`
+	}{journal, currentJournalFormatVersion})
 	if err != nil {
 		return err
 	}
@@ -196,6 +219,9 @@ func (s *journalStore) loadAll() ([]*runJournal, error) {
 		}
 		var journal runJournal
 		if err := json.Unmarshal(data, &journal); err != nil {
+			return nil, fmt.Errorf("读取 Run Journal %s: %w", entry.Name(), err)
+		}
+		if _, err := validateJournalFormat(data); err != nil {
 			return nil, fmt.Errorf("读取 Run Journal %s: %w", entry.Name(), err)
 		}
 		if err := journal.Task.Snapshot.Runtime.Engine.Validate(); err != nil {

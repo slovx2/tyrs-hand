@@ -17,6 +17,7 @@ type nativePermissionCase struct {
 	id, scope                   string
 	executeOnly, allowed        bool
 	permissionSeen, commandSeen bool
+	permissionCalls, writeCalls int
 }
 
 type nativePermissionScenario struct {

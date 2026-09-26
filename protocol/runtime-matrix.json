@@ -1350,7 +1350,9 @@
           "FAILURE-004",
           "HOOKS-002",
           "HOOKS-003",
-          "HOOKS-004"
+          "HOOKS-004",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "callers": [
@@ -1382,7 +1384,9 @@
       "cases": {
         "codex": [],
         "claude-code": [
-          "PERMISSION-005"
+          "PERMISSION-005",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "schema": {
@@ -1407,7 +1411,9 @@
           "PERMISSION-004",
           "PERMISSION-005",
           "ISOLATION-004",
-          "SKILLS-003"
+          "SKILLS-003",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "schema": {
@@ -1437,7 +1443,11 @@
         "codex": [
           "PERMISSION-009"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PERMISSION-010",
+          "PERMISSION-011",
+          "PERMISSION-012"
+        ]
       },
       "schema": {
         "params": "ServerRequest.json#/definitions/PermissionsRequestApprovalParams",
@@ -1577,7 +1587,9 @@
           "FAILURE-004",
           "HOOKS-002",
           "HOOKS-003",
-          "HOOKS-004"
+          "HOOKS-004",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "callers": [
@@ -2400,7 +2412,8 @@
       "cases": {
         "codex": [
           "MIGRATION-005",
-          "MIGRATION-006"
+          "MIGRATION-006",
+          "MIGRATION-007"
         ],
         "claude-code": []
       },
@@ -2480,7 +2493,9 @@
           "PERMISSION-006",
           "APPROVAL-005",
           "APPROVAL-006",
-          "MCP-014"
+          "MCP-014",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "callers": [
@@ -3127,7 +3142,8 @@
           "FAILURE-004",
           "HOOKS-002",
           "HOOKS-003",
-          "HOOKS-004"
+          "HOOKS-004",
+          "PERMISSION-011"
         ]
       },
       "callers": [
@@ -3171,7 +3187,8 @@
           "CONTEXT-003",
           "ISOLATION-004",
           "FAILURE-004",
-          "SKILLS-001"
+          "SKILLS-001",
+          "PERMISSION-011"
         ]
       },
       "callers": [
@@ -3354,7 +3371,9 @@
           "SKILLS-002",
           "SKILLS-003",
           "SKILLS-005",
-          "MIGRATION-004"
+          "MIGRATION-004",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "callers": [
@@ -3692,7 +3711,9 @@
           "SUBMIT-002",
           "CONTEXT-003",
           "MCP-014",
-          "FAILURE-004"
+          "FAILURE-004",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "callers": [
@@ -3804,7 +3825,9 @@
           "SKILLS-001",
           "SKILLS-002",
           "SKILLS-003",
-          "SKILLS-005"
+          "SKILLS-005",
+          "PERMISSION-011",
+          "PERMISSION-012"
         ]
       },
       "callers": [

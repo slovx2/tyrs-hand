@@ -23,21 +23,37 @@ import (
 
 // 原生 request_permissions → 真 SSH/Hub/Control → Discord 回答 → 原生命令及文件。
 func TestWorkerControlPermissionsRealSSH(t *testing.T) {
+	testWorkerControlPermissionsRealSSH(t, runtimeidentity.Codex)
+}
+
+func TestWorkerControlClaudePermissionsRealSSH(t *testing.T) {
+	testWorkerControlPermissionsRealSSH(t, runtimeidentity.Claude)
+}
+
+func testWorkerControlPermissionsRealSSH(t *testing.T, engine runtimeidentity.Engine) {
 	requireControlNetworkIsolation(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Second)
 	defer cancel()
 	scenario := &nativePermissionScenario{}
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { scenario.serve(t, w, req) }))
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if engine == runtimeidentity.Claude {
+			scenario.serveClaude(t, w, req)
+		} else {
+			scenario.serve(t, w, req)
+		}
+	}))
 	t.Cleanup(model.Close)
 	ready := make(chan struct{})
 	close(ready)
 	f := newControlRuntimeFixture(t, ctx, model.URL, ready)
-	configPath := filepath.Join(f.cfg.WorkerCodexHome, "config.toml")
-	configFile, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY, 0o600)
-	require.NoError(t, err)
-	_, err = configFile.WriteString("\n[features]\nrequest_permissions_tool=true\nexec_permission_approvals=true\n")
-	require.NoError(t, err)
-	require.NoError(t, configFile.Close())
+	if engine == runtimeidentity.Codex {
+		configPath := filepath.Join(f.cfg.WorkerCodexHome, "config.toml")
+		configFile, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY, 0o600)
+		require.NoError(t, err)
+		_, err = configFile.WriteString("\n[features]\nrequest_permissions_tool=true\nexec_permission_approvals=true\n")
+		require.NoError(t, err)
+		require.NoError(t, configFile.Close())
+	}
 	// 真实权限路径在工作区外，并从默认 /tmp 可写范围中排除。
 	home, err := filepath.EvalSymlinks(f.cfg.WorkerHome)
 	require.NoError(t, err)
@@ -53,15 +69,19 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	go func() { done <- app.Run(workerCtx) }()
 	var stop sync.Once
 	t.Cleanup(func() { stop.Do(func() { cancelWorker(); <-done; cleanup() }) })
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	received := make(chan codex.ServerRequest, 8)
-	client, _ := connectBootstrapSSHWithOptions(t, ctx, entry, f.signer, codex.SocketClientOptions{
+	client, _, trace := connectBootstrapSSHWithTrace(t, ctx, entry, f.signer, codex.SocketClientOptions{
 		ServerRequestHandler: func(ctx context.Context, request codex.ServerRequest) (any, error) {
-			received <- request
 			if request.Method == interactiveprotocol.PermissionApproval {
+				received <- request
 				// 较早的 Desktop 答案故意扩权，Hub 不得让它赢过合法 Discord 答案。
 				return map[string]any{"permissions": map[string]any{"network": map[string]any{"enabled": true}}, "scope": "session"}, nil
+			}
+			if engine == runtimeidentity.Claude && request.Method == interactiveprotocol.FileApproval {
+				// 文件操作审批不扩大沙箱；权限拒绝/到期仍必须阻止外部 Write。
+				return map[string]string{"decision": "accept"}, nil
 			}
 			return map[string]string{"decision": "decline"}, nil
 		},
@@ -82,7 +102,7 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	}
 	startTurn("PERMISSION_CONTROL_SETUP")
 	awaitBootstrapTurn(t, ctx, events)
-	awaitControlRunCount(t, ctx, f, runtimeidentity.Codex, 1)
+	awaitControlRunCount(t, ctx, f, engine, 1)
 	manager := discordintegration.NewManager(f.db, nil)
 	var expected string
 	var evidence []map[string]any
@@ -95,6 +115,10 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 		active := test
 		scenario.mu.Lock()
 		scenario.active = &active
+		if engine == runtimeidentity.Claude {
+			// Write 使用独立新文件，避免将既有文件的 Read 前置条件混入权限语义。
+			scenario.path = filepath.Join(scenario.grantRoot, active.id+".txt")
+		}
 		scenario.mu.Unlock()
 		startTurn(active.id)
 		var controlID uuid.UUID
@@ -104,14 +128,27 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 			select {
 			case request = <-received:
 			case <-time.After(15 * time.Second):
-				t.Fatal("真实 Codex 没有发出权限审批")
+				t.Fatal("真实引擎没有发出权限审批")
 			}
 			require.Equal(t, interactiveprotocol.PermissionApproval, request.Method)
 			nativeParams = request.Params
+			// 先确认非法答案已真实发出，再以同连接 RPC 为屏障，之后才允许 Discord 回答。
+			require.Eventually(t, func() bool {
+				trace.mu.Lock()
+				defer trace.mu.Unlock()
+				for _, message := range trace.messages {
+					id, _ := json.Marshal(message["id"])
+					if message["direction"] == "client" && string(id) == string(request.ID) && message["result"] != nil {
+						return true
+					}
+				}
+				return false
+			}, 2*time.Second, 10*time.Millisecond, "必须先发出非法 Desktop 回答")
+			require.NoError(t, client.Call(ctx, "thread/read", map[string]any{"threadId": thread}, nil))
 			discord.deliverUntil(t, ctx, func() bool {
-				return f.db.QueryRowContext(ctx, "SELECT q.id FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.engine='codex' AND q.thread_id=$1 AND q.app_server_request_id=$2::jsonb AND q.status='pending' AND q.discord_message_id IS NOT NULL", thread, request.ID).Scan(&controlID) == nil
+				return f.db.QueryRowContext(ctx, "SELECT q.id FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.engine=$3 AND q.thread_id=$1 AND q.app_server_request_id=$2::jsonb AND q.status='pending' AND q.discord_message_id IS NOT NULL", thread, request.ID, engine).Scan(&controlID) == nil
 			})
-			if expected == "" {
+			if expected == "" || engine == runtimeidentity.Claude {
 				require.NoFileExists(t, scenario.path)
 			} else {
 				data, readErr := os.ReadFile(scenario.path)
@@ -133,20 +170,37 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 			require.NoError(t, f.db.QueryRowContext(ctx, "SELECT answer FROM codex_interactive_requests WHERE id=$1 AND status='resolved'", controlID).Scan(&nativeAnswer))
 		}
 		awaitBootstrapTurn(t, ctx, events)
-		awaitControlRunCount(t, ctx, f, runtimeidentity.Codex, 2+index)
+		awaitControlRunCount(t, ctx, f, engine, 2+index)
 		if active.allowed {
 			expected += active.id + "\n"
 		}
-		content, readErr := os.ReadFile(scenario.path)
-		require.NoError(t, readErr)
-		require.Equal(t, expected, string(content), "权限失效/拒绝后不能写入；授权命令只执行一次")
-		scenario.mu.Lock()
-		require.True(t, active.commandSeen, "原生 exec_command 结果必须回到模型")
-		if !active.executeOnly {
-			require.True(t, active.permissionSeen, "真实权限审批结果必须回到模型")
+		if engine == runtimeidentity.Claude && !active.allowed {
+			require.NoFileExists(t, scenario.path, "拒绝权限后真实 Write 不能产生副作用")
+		} else {
+			content, readErr := os.ReadFile(scenario.path)
+			require.NoError(t, readErr)
+			wanted := expected
+			if engine == runtimeidentity.Claude {
+				wanted = active.id + "\n"
+			}
+			require.Equal(t, wanted, string(content), "权限失效/拒绝后不能写入；授权工具内容必须准确")
 		}
-		nativeReturned := active.commandSeen
+		scenario.mu.Lock()
+		observed := active
 		scenario.mu.Unlock()
+		require.True(t, observed.commandSeen, "原生工具结果必须回到模型")
+		if !active.executeOnly {
+			require.True(t, observed.permissionSeen, "真实权限审批结果必须回到模型")
+		}
+		nativeReturned := observed.commandSeen
+		if engine == runtimeidentity.Claude {
+			require.Equal(t, 1, observed.writeCalls, "每个回合只提案一次真实 Write")
+			wantedPermissions := 1
+			if active.executeOnly {
+				wantedPermissions = 0
+			}
+			require.Equal(t, wantedPermissions, observed.permissionCalls)
+		}
 		evidence = append(evidence, map[string]any{"case": active.id, "scope": active.scope,
 			"grantRoot": scenario.grantRoot, "effectPath": scenario.path,
 			"allowed": active.allowed, "nativeResultReturned": nativeReturned, "controlRequestId": controlID,
@@ -173,10 +227,10 @@ func TestWorkerControlPermissionsRealSSH(t *testing.T) {
 	discord.deliverUntil(t, ctx, func() bool {
 		return f.db.QueryRowContext(ctx, "SELECT id FROM codex_interactive_requests WHERE thread_id=$1 AND app_server_request_id=$2::jsonb AND status='pending'", thread, pending.ID).Scan(&restartID) == nil
 	})
-	restart := verifyControlInteractionRestart(t, ctx, f, app, runtimeidentity.Codex, restartID, pending, json.RawMessage(`{"permissions":{},"scope":"turn"}`))
+	restart := verifyControlInteractionRestart(t, ctx, f, app, engine, restartID, pending, json.RawMessage(`{"permissions":{},"scope":"turn"}`))
 	require.NoFileExists(t, restartPath, "旧回答不得造成文件副作用")
-	var claudeInteractions int
-	require.NoError(t, f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.worker_id=$1 AND c.engine='claude-code'", f.workerID).Scan(&claudeInteractions))
-	require.Zero(t, claudeInteractions)
-	saveBootstrapArtifact(t, "permission-effects", runtimeidentity.Codex, map[string]any{"cases": evidence, "content": expected, "restart": restart})
+	var otherInteractions int
+	require.NoError(t, f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_interactive_requests q JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.worker_id=$1 AND c.engine<>$2", f.workerID, engine).Scan(&otherInteractions))
+	require.Zero(t, otherInteractions)
+	saveBootstrapArtifact(t, "permission-effects", engine, map[string]any{"cases": evidence, "content": expected, "restart": restart})
 }

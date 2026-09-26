@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { startControlInfrastructure } from './protocol-control-infra.mjs'
 import { runMigrationMatrix } from './protocol-migration-matrix.mjs'
+import { collectMacNetworkDiagnostics } from './protocol-macos-diagnostics.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
@@ -47,6 +48,8 @@ const controlSuites = [
     cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
   { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',
     cases: ['MCP-014'], engines: ['claude-code'] },
+  { name: 'bootstrap-claude-permissions', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudePermissionsRealSSH',
+    cases: ['PERMISSION-012'], engines: ['claude-code'] },
   { name: 'bootstrap-live', pkg: './internal/bootstrap', test: 'TestWorkerControlLiveCodexRealSSH',
     cases: ['MIGRATION-004'] },
 ]
@@ -65,6 +68,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['PERMISSION-command'] },
   { name: 'thread-permissions', pkg: './internal/hostworker', test: 'TestRuntimeThreadPermissionsRealSSHBothEngines',
     cases: ['PERMISSION-007'] },
+  { name: 'permission-grants', pkg: './internal/hostworker', test: 'TestRuntimePermissionGrantsRealSSH',
+    cases: ['PERMISSION-011'], engines: ['claude-code'] },
   { name: 'catalog', pkg: './internal/hostworker', test: 'TestRuntimeModelCatalogRealSSHBothEngines',
     cases: ['CATALOG-001'] },
   { name: 'config', pkg: './internal/hostworker', test: 'TestRuntimeConfigRealSSHBothEngines',
@@ -118,6 +123,7 @@ const isolation = process.platform === 'darwin'
 const xml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')
 let runtimeExecutions = ''
 const runtimeFailures = []
+const failedWindows = []
 const infrastructure = suites.some(suite => suite.name === 'bootstrap-control') ? await startControlInfrastructure() : undefined
 Object.assign(env, infrastructure?.env ?? {})
 try {
@@ -125,6 +131,7 @@ for (const suite of suites) {
   // macOS 禁止套用第二层 sandbox-exec。此专项无 Turn/模型调用，测试的就是运行时 OS 沙箱。
   // 所有含 SDK/LLM 的链路仍运行在仅允许本机网络的外层沙箱内。
   const nativePermissionTest = suite.name === 'command-permissions' && process.platform === 'darwin'
+  const startedAt = Date.now()
   const runtime = spawnSync(nativePermissionTest ? go : command, [...(nativePermissionTest ? [] : [...isolation, go]), 'tool', 'test2json', '-t', '-p', `${suite.name}-e2e`, suite.binary,
     '-test.v', `-test.run=^${suite.test}$`, '-test.timeout=180s'],
     { cwd: root, env, encoding: 'utf8', timeout: 200_000, maxBuffer: 16 * 1024 * 1024 })
@@ -134,6 +141,8 @@ for (const suite of suites) {
   const failed = runtime.error || runtime.status !== 0 || !succeeded || events.some(event => event.Action === 'skip' || event.Action === 'fail')
   writeFileSync(resolve(artifacts, `${suite.name}-junit.xml`), `<?xml version="1.0"?><testsuite name="${suite.name}-e2e" tests="1" failures="${failed ? 1 : 0}" skipped="0"><testcase name="${suite.test}">${failed ? `<failure message="${xml(runtime.error ?? '真实 SSH 验收失败')}">${xml(runtime.stdout)}</failure>` : ''}</testcase></testsuite>`)
   if (failed) {
+    failedWindows.push({ suite: suite.name, pid: runtime.pid, startedAt, completedAt: Date.now(),
+      status: runtime.status, signal: runtime.signal })
     process.stderr.write(runtime.stdout ?? '')
     process.stderr.write(runtime.stderr ?? '')
     runtimeFailures.push({ suite: suite.name, error: String(runtime.error ?? '真实 SSH 双引擎验收失败'), status: runtime.status })
@@ -147,6 +156,7 @@ for (const suite of suites) {
   writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 }
 } finally { infrastructure?.close() }
+collectMacNetworkDiagnostics(artifacts, failedWindows)
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
   const migration = await runMigrationMatrix({ root, artifacts, runId, env })
   runtimeFailures.push(...migration.failures)

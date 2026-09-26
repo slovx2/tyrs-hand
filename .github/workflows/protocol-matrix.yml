@@ -92,7 +92,7 @@ jobs:
       - name: Verify coverage gate itself
         run: |
           npm test --prefix tools/protocol-inventory
-          node --test tools/protocol-migration-matrix.test.mjs
+          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs
       - name: Prepare Linux sandbox dependencies
         if: runner.os == 'Linux'
         run: |

@@ -117,6 +117,45 @@ jobs:
           adb shell settings put global animator_duration_scale 0
       - name: 安装客户端依赖
         run: pnpm --dir client install --frozen-lockfile
+      - name: 设置并记录 Android 构建资源预算
+        run: |
+          # public ubuntu-24.04 runner 为 4 CPU / 16 GB；为模拟器、Kotlin 和系统留余量。
+          # 用户级配置优先于 Expo 重建的项目配置，并限制同时执行的重型任务。
+          export GRADLE_USER_HOME="${RUNNER_TEMP}/tyrs-hand-gradle"
+          printf 'GRADLE_USER_HOME=%s\n' "${GRADLE_USER_HOME}" >> "${GITHUB_ENV}"
+          mkdir -p "${GRADLE_USER_HOME}/init.d" .artifacts/mobile-runtime
+          node <<'JS'
+          const os = require('node:os');
+          const fs = require('node:fs');
+          const resources = { cpus: os.availableParallelism(), totalMemoryBytes: os.totalmem(),
+            freeMemoryBytes: os.freemem(), gradleHeapMiB: 4096, gradleMetaspaceMiB: 1024,
+            kotlinHeapMiB: 1024, maxWorkers: 2, parallelProjects: false };
+          fs.writeFileSync('.artifacts/mobile-runtime/android-build-resources.json', JSON.stringify(resources, null, 2));
+          console.log(JSON.stringify(resources));
+          if (resources.totalMemoryBytes < 12 * 1024 ** 3 || resources.cpus < 2)
+            throw new Error('Android CI runner 资源不足以承载预设构建预算');
+          JS
+          cat > "${GRADLE_USER_HOME}/gradle.properties" <<'PROPERTIES'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=2
+          org.gradle.parallel=false
+          kotlin.daemon.jvmargs=-Xmx1024m
+          PROPERTIES
+          cat > "${GRADLE_USER_HOME}/init.d/verify-mobile-budget.gradle" <<'GROOVY'
+          import groovy.json.JsonOutput
+          import java.lang.management.ManagementFactory
+          def actual = [maxHeapBytes: Runtime.runtime.maxMemory(),
+            maxMetaspaceBytes: ManagementFactory.memoryPoolMXBeans.find { it.name == 'Metaspace' }.usage.max,
+            maxWorkers: gradle.startParameter.maxWorkerCount,
+            parallelProjects: gradle.startParameter.parallelProjectExecutionEnabled]
+          def evidence = new File(System.getenv('GITHUB_WORKSPACE'), '.artifacts/mobile-runtime/android-gradle-effective.json')
+          evidence.text = JsonOutput.prettyPrint(JsonOutput.toJson(actual))
+          println('Android CI Gradle 实际预算: ' + JsonOutput.toJson(actual))
+          assert actual.maxHeapBytes == 4096L * 1024 * 1024
+          assert actual.maxMetaspaceBytes == 1024L * 1024 * 1024
+          assert actual.maxWorkers == 2
+          assert !actual.parallelProjects
+          GROOVY
       - name: Android 真实双SSH、SDK与计划审批GUI
         env:
           TYRS_HAND_E2E_MAESTRO_BIN: /home/runner/.local/bin/maestro

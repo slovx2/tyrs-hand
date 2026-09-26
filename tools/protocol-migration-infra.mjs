@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -43,6 +44,10 @@ export async function buildMigrationBinaries(repo, root) {
     const source = generation === 'old' ? oldSource : repo
     binaries[generation] = {}
     manifests[generation] = { commit: versions[generation], binaries: {} }
+    const protocol = await readFile(resolve(source, 'internal/workerprotocol/types.go'), 'utf8')
+    const protocolVersion = Number(protocol.match(/const Version = (\d+)/)?.[1])
+    assert.equal(protocolVersion, generation === 'old' ? 32 : 33)
+    manifests[generation].protocolVersion = protocolVersion
     for (const command of ['admin', 'server', 'worker']) {
       const binary = resolve(root, `${generation}-${command}`)
       output(go, ['build', '-o', binary, `./cmd/tyrs-hand-${command}`], {
@@ -109,7 +114,7 @@ export class MigrationControl {
 
   async startGeneration(generation) {
     output(this.binaries[generation].admin, ['migrate'], { cwd: this.root, env: this.environment, timeout: 90_000 })
-    this.server = await startProcess(`${generation}-control`, this.binaries[generation].server, [], {
+    this.server = await startProcess(`${generation}-control-${this.processes.length + 1}`, this.binaries[generation].server, [], {
       cwd: this.root, env: this.environment, inheritEnv: false, logDir: resolve(this.root, 'logs'),
     })
     this.processes.push(this.server)
@@ -117,6 +122,22 @@ export class MigrationControl {
   }
 
   async upgrade() { await this.server.stop(); await this.startGeneration('new') }
+
+  snapshotDatabase() {
+    return execFileSync('docker', ['exec', this.postgres, 'pg_dump', '-U', 'migration',
+      '-d', 'migration', '--format=custom'], { timeout: 60_000, maxBuffer: 64 * 1024 * 1024 })
+  }
+
+  async restoreOldDatabase(snapshot) {
+    await this.server.stop()
+    // 保留首次升级的数据库；恢复旧快照仅用于隔离 Worker 回滚故障，不冒充原库向后兼容。
+    this.docker(['exec', this.postgres, 'psql', '-U', 'migration', '-d', 'postgres',
+      '-v', 'ON_ERROR_STOP=1', '-c', 'ALTER DATABASE migration RENAME TO migration_after_first_upgrade'])
+    this.docker(['exec', this.postgres, 'createdb', '-U', 'migration', 'migration'])
+    execFileSync('docker', ['exec', '-i', this.postgres, 'pg_restore', '-U', 'migration',
+      '-d', 'migration', '--exit-on-error'], { input: snapshot, timeout: 60_000, maxBuffer: 8 * 1024 * 1024 })
+    await this.startGeneration('old')
+  }
 
   async scan() {
     return until('真实 Worker 项目扫描', async () => {

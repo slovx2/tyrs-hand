@@ -29,6 +29,11 @@ func connectBootstrapSSH(t *testing.T, ctx context.Context, entry *hostworker.Ru
 }
 
 func connectBootstrapSSHWithOptions(t *testing.T, ctx context.Context, entry *hostworker.RuntimeEntry, signer ssh.Signer, options codex.SocketClientOptions) (*codex.SocketClient, <-chan struct{}) {
+	client, closed, _ := connectBootstrapSSHWithTrace(t, ctx, entry, signer, options)
+	return client, closed
+}
+
+func connectBootstrapSSHWithTrace(t *testing.T, ctx context.Context, entry *hostworker.RuntimeEntry, signer ssh.Signer, options codex.SocketClientOptions) (*codex.SocketClient, <-chan struct{}, *bootstrapTrace) {
 	t.Helper()
 	connection, err := ssh.Dial("tcp", entry.SSH.Addr().String(), &ssh.ClientConfig{
 		User: "test", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, Timeout: 5 * time.Second,
@@ -65,7 +70,7 @@ func connectBootstrapSSHWithOptions(t *testing.T, ctx context.Context, entry *ho
 	client, err := codex.ConnectTransport(ctx, trace, options)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
-	return client, closed
+	return client, closed, trace
 }
 
 type bootstrapTrace struct {
@@ -113,6 +118,9 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	}
 	if t.Name() == "TestWorkerControlPermissionsRealSSH" {
 		cases = []string{"PERMISSION-009"}
+	}
+	if t.Name() == "TestWorkerControlClaudePermissionsRealSSH" {
+		cases = []string{"PERMISSION-012"}
 	}
 	if t.Name() == "TestWorkerControlMcpRealSSH" {
 		cases = []string{"MCP-014"}

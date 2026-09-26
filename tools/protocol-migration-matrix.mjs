@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 const modes = [
   { caseId: 'MIGRATION-005', caseName: 'RealWorker32To33Migration', args: [] },
   { caseId: 'MIGRATION-006', caseName: 'RealWorker32To33PendingJournalMigration', args: ['--journal'] },
+  { caseId: 'MIGRATION-007', caseName: 'RealWorkerRollbackThenUpgradeMigration', args: ['--rollback'] },
 ]
 
 export function migrationOutcome(result, report, schema, { runId, caseId }) {

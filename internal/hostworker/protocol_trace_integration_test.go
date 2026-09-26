@@ -80,6 +80,13 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 			caseIDs = []string{"EVENTS-009"}
 		}
 	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimePermissionGrantsRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"PERMISSION-011"}
+		}
+	}
 	data, err := json.MarshalIndent(map[string]any{
 		"formatVersion": 1, "runId": os.Getenv("PROTOCOL_RUN_ID"), "engine": engine,
 		"caseName": caseName, "caseIds": caseIDs,

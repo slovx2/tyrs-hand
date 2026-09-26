@@ -75,6 +75,7 @@ export async function pendingJournal(worker, proxy) {
     const value = JSON.parse(bytes)
     if (!value.result || !value.pendingEvents?.length || value.terminalDelivered) return undefined
     assert.equal(value.task.snapshot.runtime.engine, undefined, '必须取自真实旧版无engine journal')
+    assert.equal(value.journalFormatVersion, undefined, '旧32不能声明新版journal格式')
     assert.equal(value.task.claimed.RunID, proxy.runId)
     return { path, bytes, value }
   })
@@ -82,15 +83,20 @@ export async function pendingJournal(worker, proxy) {
 
 export async function verifyMigratedJournal(previous) {
   const bytes = await readFile(previous.path)
-  const backup = await readFile(previous.path + '.before-runtime-scope')
+  const backup = await readFile(previous.backupPath ?? previous.path + '.before-runtime-scope')
   assert.deepEqual(backup, previous.bytes, '迁移备份必须保留崩溃前原始 journal 字节')
   const migrated = JSON.parse(bytes)
+  assert.equal(migrated.journalFormatVersion, 1)
   assert.equal(migrated.task.snapshot.runtime.engine, 'codex')
   assert.equal(migrated.task.claimed.RunID, previous.value.task.claimed.RunID)
   assert.deepEqual(migrated.result, previous.value.result)
   assert.deepEqual(migrated.pendingEvents, previous.value.pendingEvents)
   assert.equal(migrated.nextSequence, previous.value.nextSequence)
   assert.equal(Boolean(migrated.terminalDelivered), false)
+  if (previous.originalBackupBytes) {
+    assert.deepEqual(await readFile(previous.path + '.before-runtime-scope'), previous.originalBackupBytes,
+      '再次迁移不能覆盖第一次原始备份')
+  }
   // 报告不写任务快照、系统指令、事件正文或任何凭据。
   return { runId: migrated.task.claimed.RunID, beforeSHA256: sha256(previous.bytes),
     backupSHA256: sha256(backup), afterSHA256: sha256(bytes), engine: 'codex',

@@ -81,6 +81,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	sftpOnly := mode == "mobile-sftp" || mode == "files-acceptance"
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
+	permissionGrants := mode == "permission-grants"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	codexEvents := mode == "codex-events"
@@ -113,6 +114,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	sftpFixture := newRuntimeSFTPFixture(root)
 	plan := &runtimePlanFixture{root: root}
 	approval := &runtimeApprovalFixture{root: root}
+	grants := &runtimePermissionGrantsFixture{}
 	nativeEvents := &runtimeCodexEventsFixture{root: root}
 	claudeEventsFixture := &runtimeClaudeEventsFixture{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -133,6 +135,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			requestsMu.Lock()
 			modelRequests[engine] = append(modelRequests[engine], json.RawMessage(body))
 			requestsMu.Unlock()
+			if permissionGrants {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				grants.model(t, w, body)
+				return
+			}
 			if claudeEvents {
 				require.Equal(t, runtimeidentity.Claude, engine)
 				claudeEventsFixture.model(t, w, body)
@@ -325,7 +332,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants {
 			continue
 		}
 		if configOnly {
@@ -361,6 +368,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": options[0].Runtime.WorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &started))
 		threads[engine] = started.Thread.ID
+	}
+	if permissionGrants {
+		verifyRuntimePermissionGrants(t, ctx, registry, clients[runtimeidentity.Claude], grants, root)
+		require.Equal(t, int64(17), modelCalls.Load(), "权限配置及恢复不得产生额外模型请求")
+		return
 	}
 	if claudeEvents {
 		verifyRuntimeClaudeEvents(t, ctx, registry, signer, claudeEventsFixture, root)

@@ -186,15 +186,19 @@ stream_max_retries=0
   }
 
   async clearInstrumentationSockets(generation) {
-    for (const [engine, directory] of [['codex', this.state], ['claude-code', resolve(this.state, 'claude-code')]]) {
-      const path = resolve(directory, 'app-server.sock.native')
+    const sockets = [['codex', resolve(this.state, 'app-server.sock.native'), 'runtime-recorder'],
+      ['claude-code', resolve(this.state, 'claude-code/app-server.sock.native'), 'runtime-recorder']]
+    for (const engine of ['codex', 'claude-code']) {
+      sockets.push([engine, resolve(this.root, `ssh-${this.ports[engine]}.sock`), 'linux-ssh-relay'])
+    }
+    for (const [engine, path, socketKind] of sockets) {
       try { assert.ok((await lstat(path)).isSocket()) }
       catch (error) { if (error.code === 'ENOENT') continue; throw error }
       await new Promise((resolveProbe, reject) => {
         const socket = createConnection(path)
         socket.setTimeout(500)
-        socket.once('connect', () => { socket.destroy(); reject(new Error('上代录制器原生 socket 仍有监听进程')) })
-        socket.once('timeout', () => { socket.destroy(); reject(new Error('无法确认录制器原生 socket 已关闭')) })
+        socket.once('connect', () => { socket.destroy(); reject(new Error('上代测试中继 socket 仍有监听进程')) })
+        socket.once('timeout', () => { socket.destroy(); reject(new Error('无法确认测试中继 socket 已关闭')) })
         socket.once('error', error => {
           socket.destroy()
           if (['ECONNREFUSED', 'ENOENT'].includes(error.code)) resolveProbe()
@@ -202,7 +206,7 @@ stream_max_retries=0
         })
       })
       await rm(path, { force: true })
-      this.instrumentationCleanups.push({ generation, engine, staleSocketRemoved: true })
+      this.instrumentationCleanups.push({ generation, engine, socketKind, staleSocketRemoved: true })
     }
   }
 
@@ -232,5 +236,14 @@ stream_max_retries=0
   async close() {
     for (const process of this.processes.reverse()) await process.stop()
     for (const item of this.relays.reverse()) await item.close()
+  }
+
+  async diagnostics() {
+    const tags = ['EADDRINUSE', 'ENOENT', '缺少有效引擎', 'Worker协议版本不兼容', '同一数据目录已经有 Worker 实例运行']
+    return Promise.all(this.processes.map(async process => {
+      const log = await readFile(resolve(this.root, 'logs', process.name + '.log'), 'utf8')
+      return { name: process.name, code: process.child.exitCode, signal: process.child.signalCode,
+        failureTags: tags.filter(tag => log.includes(tag)) }
+    }))
   }
 }

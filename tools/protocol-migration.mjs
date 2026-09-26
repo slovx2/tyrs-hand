@@ -7,26 +7,28 @@ import { SSHProtocolClient } from './mobile-e2e/lib/ssh-protocol.mjs'
 import { validateRuntimeWire } from './mobile-e2e/lib/wire.mjs'
 import { output } from './mobile-e2e/lib/process.mjs'
 import { buildMigrationBinaries, MigrationControl, OLD_COMMIT, sha256, until } from './protocol-migration-infra.mjs'
+import { rollbackJournal } from './protocol-migration-rollback.mjs'
 import { MigrationWorker } from './protocol-migration-worker.mjs'
 import { startMigrationModels } from './protocol-migration-models.mjs'
 import { MigrationFaultProxy, pendingJournal, verifyMigratedJournal, waitJournalDelivered } from './protocol-migration-journal.mjs'
 
-// 独立入口：固定工具链下运行 node tools/protocol-migration.mjs [--journal]。
-// 默认验 MIGRATION-005；--journal 验 MIGRATION-006。回滚和安装器仍属于后续门禁。
+// --rollback 使用真实旧数据库快照隔离 Worker 回滚再升级；不宣称同库降级兼容。
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const journalMode = process.argv.includes('--journal')
-assert.ok(process.argv.slice(2).every(argument => argument === '--journal'), '未知迁移验收参数')
+const rollbackMode = process.argv.includes('--rollback')
+const journalMode = process.argv.includes('--journal') || rollbackMode
+assert.ok(process.argv.slice(2).every(argument => ['--journal', '--rollback'].includes(argument)), '未知迁移验收参数')
 const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, '../claude-codex'))
 const evidence = resolve(process.env.TYRS_HAND_MIGRATION_EVIDENCE ?? resolve(repo, '.artifacts/protocol-migration', randomUUID()))
 const root = await realpath(await mkdtemp('/tmp/tyrs-mig-'))
 await mkdir(evidence, { recursive: true, mode: 0o700 })
-const report = { caseId: journalMode ? 'MIGRATION-006' : 'MIGRATION-005', passed: false, startedAt: new Date().toISOString(),
+const report = { caseId: rollbackMode ? 'MIGRATION-007' : journalMode ? 'MIGRATION-006' : 'MIGRATION-005', passed: false, startedAt: new Date().toISOString(),
   runId: process.env.PROTOCOL_RUN_ID ?? randomUUID(),
   oldCommit: OLD_COMMIT, evidence, temporaryRoot: root,
   limitations: ['虚拟 Discord 成员是身份前提夹具；Workspace、项目与会话均由真实接口产生',
     '使用独立临时 SSH 端口；生产入口仍为 2222/3333',
     ...(journalMode ? [] : ['本用例不覆盖待补报 journal']),
-    '本用例不覆盖回滚、签名 Linux 安装包或生产部署'], steps: [] }
+    ...(rollbackMode ? ['回滚恢复升级前真实数据库快照，不覆盖升级后数据库直接降级'] : ['本用例不覆盖回滚']),
+    '本用例不覆盖签名 Linux 安装包或生产部署'], steps: [] }
 let control, worker, models, proxy, previousJournal, beforeReplayCalls
 const clients = []
 const mark = step => { report.steps.push({ step, at: new Date().toISOString() }); console.log('迁移验收：' + step) }
@@ -93,7 +95,7 @@ try {
   report.ports = worker.ports
   report.nativeBuild = worker.nativeBuild
   mark('旧协议 32 Control 注册和真实 Worker 扫描已完成')
-  const old = await open('codex')
+  let old = await open('codex')
   const { thread } = await old.request('thread/start', { cwd: worker.workspace, model: 'mock-model',
     approvalPolicy: 'never', sandbox: 'danger-full-access' })
   report.codexThreadId = thread.id
@@ -124,6 +126,14 @@ try {
     await worker.process.stop()
   }
   mark('旧真实 SSH → Codex CLI → Mock LLM 文件副作用和历史已产生')
+  if (rollbackMode) {
+    const rollback = await rollbackJournal({ root, control, worker, models,
+      previous: previousJournal, proxy, open, threadId: thread.id })
+    previousJournal = rollback.journal
+    report.rollback = rollback.report
+    assert.deepEqual(await worker.snapshot(), before)
+    mark('真实旧32重写新版pending journal并移除来源字段；原迁移标记与备份保留')
+  }
   await control.upgrade()
   await worker.start('new')
   if (journalMode) {
@@ -196,7 +206,7 @@ try {
     assert.match(JSON.stringify(resumedAgain.thread.turns), /MIGRATION_PENDING_WRITE_OK/)
     await restart.close()
     assert.deepEqual(models.calls, calls, '再次重启不能重放已补报执行')
-    assert.deepEqual(await readFile(previousJournal.path + '.before-runtime-scope'), previousJournal.bytes)
+    assert.deepEqual(await readFile(previousJournal.backupPath ?? previousJournal.path + '.before-runtime-scope'), previousJournal.bytes)
     assert.deepEqual(await waitControlTurn(report.pendingTurn.turnId), report.recoveredRun,
       '再次重启不能新增完成记录或改变已经确认的事件序号')
     await worker.process.stop()
@@ -218,6 +228,8 @@ try {
   if (report.cleanupErrors.length) { report.passed = false; process.exitCode = 1 }
   report.finishedAt = new Date().toISOString()
   report.instrumentationCleanups = worker?.instrumentationCleanups ?? []
+  try { report.workerDiagnostics = await worker?.diagnostics() }
+  catch { report.workerDiagnostics = [{ error: '无法读取已关闭的测试 Worker 诊断摘要' }] }
   await writeFile(resolve(evidence, 'migration-report.json'), JSON.stringify(report, null, 2))
   console.log(JSON.stringify({ caseId: report.caseId, passed: report.passed, evidence, error: report.error?.message }))
 }

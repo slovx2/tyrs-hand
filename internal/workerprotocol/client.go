@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,10 +23,11 @@ import (
 )
 
 type Client struct {
-	engine     runtimeidentity.Engine
-	baseURL    string
-	credential string
-	http       *http.Client
+	engine       runtimeidentity.Engine
+	baseURL      string
+	credentialMu sync.RWMutex
+	credential   string
+	http         *http.Client
 }
 
 type HTTPError struct {
@@ -58,12 +60,21 @@ func (c *Client) ForEngine(engine runtimeidentity.Engine) (*Client, error) {
 	if err := engine.Validate(); err != nil {
 		return nil, err
 	}
-	client := *c
-	client.engine = engine
-	return &client, nil
+	// 引擎客户端保留创建时的凭据快照，不能复制已经使用的同步锁。
+	return &Client{engine: engine, baseURL: c.baseURL, credential: c.credentialValue(), http: c.http}, nil
 }
 
-func (c *Client) SetCredential(value string) { c.credential = value }
+func (c *Client) SetCredential(value string) {
+	c.credentialMu.Lock()
+	defer c.credentialMu.Unlock()
+	c.credential = value
+}
+
+func (c *Client) credentialValue() string {
+	c.credentialMu.RLock()
+	defer c.credentialMu.RUnlock()
+	return c.credential
+}
 
 func (c *Client) Engine() runtimeidentity.Engine { return c.engine }
 
@@ -508,10 +519,11 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 	if err != nil {
 		return "", 0, err
 	}
-	if c.credential == "" {
+	credential := c.credentialValue()
+	if credential == "" {
 		return "", 0, errors.New("Worker尚未注册")
 	}
-	request.Header.Set("Authorization", "Bearer "+c.credential)
+	request.Header.Set("Authorization", "Bearer "+credential)
 	request.Header.Set(VersionHeader, strconv.Itoa(Version))
 	request.Header.Set(EngineHeader, string(c.engine))
 	response, err := c.http.Do(request)
@@ -625,10 +637,11 @@ func (c *Client) callDirectWithHeaders(ctx context.Context, method, path string,
 
 func (c *Client) execute(request *http.Request, output any, authenticated bool) error {
 	if authenticated {
-		if c.credential == "" {
+		credential := c.credentialValue()
+		if credential == "" {
 			return errors.New("Worker尚未注册")
 		}
-		request.Header.Set("Authorization", "Bearer "+c.credential)
+		request.Header.Set("Authorization", "Bearer "+credential)
 		request.Header.Set(VersionHeader, strconv.Itoa(Version))
 		request.Header.Set(EngineHeader, string(c.engine))
 	}
