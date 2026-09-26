@@ -91,8 +91,15 @@ jobs:
             "${ANDROID_HOME}/platform-tools" "${ANDROID_HOME}/emulator" >> "${GITHUB_PATH}"
           test "$(sdkmanager --version)" = "${ANDROID_COMMAND_LINE_TOOLS_VERSION}"
           sdkmanager "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          # runner 的旧 ANDROID_SDK_HOME 与新版 avdmanager 的默认目录可能不同。
+          # 创建和启动共用显式目录，启动前检查 ini，不能等待不存在的设备。
+          export ANDROID_USER_HOME="${RUNNER_TEMP}/tyrs-hand-android"
+          export ANDROID_AVD_HOME="${ANDROID_USER_HOME}/avd"
+          mkdir -p "${ANDROID_AVD_HOME}"
           echo no | avdmanager create avd --force --name tyrs_hand_e2e_api35 \
             --package "system-images;android-35;google_apis;x86_64" --device "pixel_7"
+          test -f "${ANDROID_AVD_HOME}/tyrs_hand_e2e_api35.ini"
+          emulator -list-avds | grep -Fx tyrs_hand_e2e_api35
           sudo chmod 666 /dev/kvm
           nohup emulator -avd tyrs_hand_e2e_api35 -no-window -no-audio -no-boot-anim \
             -gpu swiftshader_indirect >"${RUNNER_TEMP}/android-emulator.log" 2>&1 &
