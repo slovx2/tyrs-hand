@@ -133,13 +133,19 @@ func runControlNetworkOutage(t *testing.T, engine runtimeidentity.Engine) {
 			bootstrapModelText(w, claude)
 			return
 		}
-		// 原生后台标题等请求不声明工具，不属于业务回合；恢复不重放只统计业务请求。
-		var declared struct{ Tools []json.RawMessage }
-		if json.Unmarshal(body, &declared) == nil && len(declared.Tools) > 0 {
-			modelCalls.Add(1)
-		} else {
-			backgroundCalls.Add(1)
+		// Codex 原生后台标题请求不声明工具；Control 下发的会话标题任务以 StructuredOutput 生成标题，
+		// 恢复后才会被认领。二者都不属于业务回合，恢复不重放只统计业务请求。
+		var declared struct{ Tools []struct{ Name string } }
+		background := json.Unmarshal(body, &declared) != nil || len(declared.Tools) == 0
+		for _, tool := range declared.Tools {
+			background = background || tool.Name == "StructuredOutput"
 		}
+		if background {
+			backgroundCalls.Add(1)
+			bootstrapModelText(w, claude)
+			return
+		}
+		modelCalls.Add(1)
 		handled := false
 		if claude {
 			handled = scenario.respond(t, w, body)
@@ -365,6 +371,12 @@ func runControlNetworkOutage(t *testing.T, engine runtimeidentity.Engine) {
 	}
 	require.Zero(t, otherEngineCalls.Load(), "另一引擎不能产生模型调用")
 	t.Logf("业务模型请求 %d 次，原生后台请求 %d 次", modelCalls.Load(), backgroundCalls.Load())
+	// 预热 1 次；每个窗口工具调用与结果回模各 1 次，Codex 的 cancel 中止后不再回模。
+	wantCalls := int64(1 + 5*2)
+	if engine == runtimeidentity.Codex {
+		wantCalls = 1 + 3*2 + 2
+	}
+	require.Equal(t, wantCalls, modelCalls.Load(), "业务模型请求数必须与真实回合一一对应")
 }
 
 func awaitOutageTurnStatus(t *testing.T, ctx context.Context, events *codex.EventSubscription, want string) {

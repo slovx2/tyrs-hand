@@ -264,6 +264,13 @@ func verifyCodexApprovalTurn(t *testing.T, ctx context.Context, events *codex.Ev
 				}
 			}
 			require.NoError(t, json.Unmarshal(event.Params, &params))
+			// 与原生一致，thread/started 在创建响应之后到达，线程 ID 位于 thread.id。
+			if event.Method == "thread/started" {
+				var started struct{ Thread struct{ ID string } }
+				require.NoError(t, json.Unmarshal(event.Params, &started))
+				require.Equal(t, threadID, started.Thread.ID)
+				continue
+			}
 			require.Equal(t, threadID, params.ThreadID)
 			if event.Method == "item/fileChange/patchUpdated" {
 				require.True(t, strings.HasPrefix(scenario, "patch"))

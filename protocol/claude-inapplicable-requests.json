@@ -2,7 +2,6 @@
   { "method": "account/login/start", "params": { "type": "apiKey", "apiKey": "test-not-a-secret" } },
   { "method": "account/login/cancel", "params": { "loginId": "test-login" } },
   { "method": "account/logout", "params": null },
-  { "method": "account/rateLimits/read", "params": null },
   { "method": "account/usage/read", "params": null },
   { "method": "account/rateLimitResetCredit/consume", "params": { "idempotencyKey": "test-reset" } },
   { "method": "account/sendAddCreditsNudgeEmail", "params": { "creditType": "credits" } },

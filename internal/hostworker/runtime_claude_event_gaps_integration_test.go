@@ -226,12 +226,18 @@ func collectClaudeEventGaps(t *testing.T, ctx context.Context, events *codex.Eve
 			var params struct {
 				ThreadID, TurnID, Diff, Message, Delta string
 				Item                                   json.RawMessage
+				Thread                                 struct{ ID string }
 				Turn                                   struct {
 					ID, Status string
 					Error      any
 				}
 			}
 			require.NoError(t, json.Unmarshal(event.Params, &params))
+			// 与原生一致，thread/started 在创建响应之后到达，且线程 ID 位于 thread.id。
+			if event.Method == "thread/started" {
+				require.Equal(t, threadID, params.Thread.ID)
+				continue
+			}
 			require.Equal(t, threadID, params.ThreadID)
 			if params.TurnID != "" {
 				require.Equal(t, turnID, params.TurnID)

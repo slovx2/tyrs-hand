@@ -356,6 +356,13 @@ func runtimeCodexOAuthTurn(t *testing.T, ctx context.Context, client *codex.Sock
 				}
 			}
 			require.NoError(t, json.Unmarshal(event.Params, &params))
+			// 与原生一致，thread/started 在创建响应之后到达，线程 ID 位于 thread.id。
+			if event.Method == "thread/started" {
+				var started struct{ Thread struct{ ID string } }
+				require.NoError(t, json.Unmarshal(event.Params, &started))
+				require.Equal(t, thread.ID, started.Thread.ID)
+				continue
+			}
 			require.Equal(t, thread.ID, params.ThreadID)
 			if event.Method == "turn/completed" {
 				require.Equal(t, started.Turn.ID, params.Turn.ID)
