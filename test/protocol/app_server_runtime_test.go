@@ -155,16 +155,16 @@ func TestRealCodexShellDoesNotInheritManagedModelKey(t *testing.T) {
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
 		if requestCount.Add(1) == 1 {
 			arguments, _ := json.Marshal(map[string]any{
-				"command": `if test -n "${TYRS_HAND_MODEL_API_KEY+x}"; then ` +
+				"cmd": `if test -n "${TYRS_HAND_MODEL_API_KEY+x}"; then ` +
 					`printf TYRS_MANAGED_KEY_VISIBLE; else printf TYRS_MANAGED_KEY_HIDDEN; fi`,
-				"timeout_ms": 2_000,
+				"yield_time_ms": 2_000,
 			})
 			_, _ = fmt.Fprint(response, sse(
 				map[string]any{"type": "response.created",
 					"response": map[string]any{"id": "resp-shell-1"}},
 				map[string]any{"type": "response.output_item.done", "item": map[string]any{
 					"type": "function_call", "id": "shell-1", "call_id": "shell-call-1",
-					"name": "shell_command", "arguments": string(arguments),
+					"name": "exec_command", "arguments": string(arguments),
 				}},
 				completedResponse("resp-shell-1"),
 			))

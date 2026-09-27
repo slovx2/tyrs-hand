@@ -99,6 +99,11 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 			plan.State = &desktopThreadCallState{request: c.desktopThreadRequest(call)}
 		}
 	case "turn/start":
+		var preflightErr error
+		plan.Params, preflightErr = c.preflightDesktopReplacement(ctx, plan.Params)
+		if preflightErr != nil {
+			return plan, preflightErr
+		}
 		threadID, _ := callScope(plan.Params)
 		if threadID == "" {
 			return plan, nil
@@ -196,7 +201,14 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 				}
 			})
 		plan.State = state
-	case "thread/rollback":
+		if err := c.startDesktopReplacement(plan.Params); err != nil {
+			c.cleanupDesktopCall(plan, err)
+			return plan, err
+		}
+	case "thread/rollback", "thread/revert":
+		if !c.controlEnabled() {
+			return plan, nil
+		}
 		request := workerprotocol.DesktopRollbackPrepareRequest{
 			WorkspaceID: c.workspace.runtime.WorkspaceID,
 			RequestKey:  desktopRequestKey(call.Method, plan.Params, nil), Params: plan.Params,
@@ -215,6 +227,9 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 			}
 		}
 		if err != nil {
+			return plan, err
+		}
+		if err := c.processor.journals.saveDesktopRollback(desktopRollbackJournal{State: state}); err != nil {
 			return plan, err
 		}
 		plan.State = &desktopRollbackCallState{request: state}
@@ -256,32 +271,7 @@ func (c *desktopController) CompleteCall(_ context.Context, call appserverhub.Ca
 		go c.completeDesktopLifecycle(lifecycle.request, result, cause)
 	}
 	if rollback, ok := plan.State.(*desktopRollbackCallState); ok {
-		var requestErr *codex.RequestError
-		if cause != nil && errors.As(cause, &requestErr) && requestErr.State == codex.RequestUnknown {
-			if client := c.workspace.currentClient(); client != nil {
-				runtime := codex.NewRuntime(client)
-				if snapshot, err := runtime.ReadThread(c.processor.workspaces.ctx,
-					rollback.request.ThreadID); err == nil {
-					if _, exists := snapshot.TurnByID(rollback.request.TargetTurnID); !exists {
-						cause = nil
-						result = json.RawMessage(`{}`)
-					}
-				}
-			}
-		}
-		request := workerprotocol.DesktopRollbackCompleteRequest{
-			WorkspaceID: rollback.request.WorkspaceID, Response: result,
-		}
-		if cause != nil {
-			request.Error = cause.Error()
-		}
-		ctx, cancel := context.WithTimeout(c.processor.workspaces.ctx,
-			c.processor.cfg.ControlTimeout)
-		err := c.processor.client.CompleteDesktopRollback(ctx, rollback.request.ID, request)
-		cancel()
-		if err != nil {
-			return result, err
-		}
+		return c.completeDesktopRollback(rollback.request, result, cause)
 	}
 	if cause != nil {
 		var requestErr *codex.RequestError

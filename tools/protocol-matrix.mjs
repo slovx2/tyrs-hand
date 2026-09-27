@@ -55,6 +55,8 @@ const controlSuites = [
     cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
   { name: 'bootstrap-channels-relay', pkg: './internal/bootstrap', test: 'TestWorkerControlChannelsRelayRealSSH',
     cases: ['CHANNELS-001'], engines: ['claude-code'] },
+  { name: 'bootstrap-codex-revert', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexRevertRealSSH',
+    cases: ['SESSION-006'], engines: ['codex'] },
   { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',
     cases: ['MCP-014'], engines: ['claude-code'] },
   { name: 'bootstrap-claude-permissions', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudePermissionsRealSSH',

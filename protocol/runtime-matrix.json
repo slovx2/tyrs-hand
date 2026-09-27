@@ -4015,7 +4015,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["SESSION-003", "SESSION-006"],
         "claude-code": []
       },
       "schema": {
@@ -4033,7 +4033,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["SESSION-003"],
         "claude-code": []
       },
       "schema": {

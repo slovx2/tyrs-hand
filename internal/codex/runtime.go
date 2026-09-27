@@ -168,15 +168,16 @@ func (r *Runtime) ReadRuntimeConfig(ctx context.Context, cwd string) (RuntimeCon
 	return result.Config, nil
 }
 
-// RollbackThread 删除线程末尾的指定数量 turn。调用方仍需通过 thread/read 对账未知响应。
+// RollbackThread 通过官方 revert 回退最新 Turn。调用方仍需读取历史对账未知响应。
 func (r *Runtime) RollbackThread(ctx context.Context, threadID string, numTurns int) error {
 	if numTurns != 1 {
 		return errors.New("当前只允许 rollback 最新一个 turn")
 	}
-	return r.client.Call(ctx, "thread/rollback", map[string]any{
-		"threadId": threadID,
-		"numTurns": numTurns,
-	}, nil)
+	params, err := ResolveThreadRollback(ctx, r.client, threadID, numTurns)
+	if err != nil {
+		return err
+	}
+	return r.client.Call(ctx, "thread/revert", params, nil)
 }
 
 func (s ThreadSnapshot) TurnByClientID(clientID string) (TurnSnapshot, bool) {

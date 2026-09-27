@@ -51,7 +51,7 @@ func validateRuntimeBuild(ctx context.Context, options RuntimeOptions) (RuntimeI
 	}
 	if options.Engine == runtimeidentity.Codex {
 		info.ReleaseReady = true
-		info.Capabilities = []string{}
+		info.Capabilities = []string{"nativeSession.revert.paginated", "nativeSession.rollback.paginated"}
 		var err error
 		info.CLIBuild, err = codex.ValidatedVersion(ctx, options.CodexBin)
 		return info, err

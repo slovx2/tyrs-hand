@@ -34,6 +34,7 @@ type workspaceCodex struct {
 	hostRuntime     *hostworker.Runtime
 
 	mu               sync.Mutex
+	rollbackMu       sync.Mutex
 	metadataEvents   *appserverhub.Subscription
 	metadataSequence *atomic.Int64
 	settingsSequence *atomic.Int64

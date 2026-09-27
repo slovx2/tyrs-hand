@@ -64,6 +64,7 @@ func startControlDiscordFixture(t *testing.T, ctx context.Context, fixture contr
 	})
 	var sequence atomic.Int64
 	sequence.Store(fixture.discordIDBase + 10000)
+	var forumTags []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		body, readErr := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -97,6 +98,21 @@ func startControlDiscordFixture(t *testing.T, ctx context.Context, fixture contr
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "channel_id": parts[1], "content": ""})
 		case len(parts) == 4 && parts[0] == "channels" && parts[2] == "thread-members" && r.Method == http.MethodPut:
 			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/channels/"+forumID && (r.Method == http.MethodGet || r.Method == http.MethodPatch):
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if r.Method == http.MethodPatch {
+				var update struct {
+					AvailableTags []map[string]any `json:"available_tags"`
+				}
+				require.NoError(t, json.Unmarshal(body, &update))
+				forumTags = update.AvailableTags
+				for _, tag := range forumTags {
+					tag["id"] = fmt.Sprint(sequence.Add(1))
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": forumID, "type": 15,
+				"guild_id": fixture.guildID, "name": "Protocol", "available_tags": forumTags})
 		case len(parts) == 2 && parts[0] == "channels" && (r.Method == http.MethodPatch || r.Method == http.MethodGet):
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": parts[1], "type": 11, "parent_id": forumID,
 				"guild_id": fixture.guildID, "name": "Protocol", "applied_tags": []string{}})

@@ -1407,10 +1407,15 @@ func testWorkerDesktopDiscordBinding(t *testing.T, engine runtimeidentity.Engine
 		WHERE operation_key = $1`, "projection:conversation-reply:"+state.ConversationID.String()+
 		":message:"+task.Claimed.ProjectionAnchor).Scan(&projectedReply))
 	require.Equal(t, 1, projectedReply)
+	_, err = client.PrepareDesktopRollback(ctx, workerprotocol.DesktopRollbackPrepareRequest{
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("a", 64),
+		Params: json.RawMessage(`{"threadId":"codex-desktop-thread","beforeTurnId":"wrong-turn"}`),
+	})
+	require.ErrorContains(t, err, "最新回合", "原生回退锚点不匹配时不能创建错误投影")
 	rollback, err := client.PrepareDesktopRollback(ctx,
 		workerprotocol.DesktopRollbackPrepareRequest{
 			WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64),
-			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
+			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","beforeTurnId":"desktop-turn-1"}`),
 		})
 	require.NoError(t, err)
 	require.Equal(t, "reserved", rollback.Status)

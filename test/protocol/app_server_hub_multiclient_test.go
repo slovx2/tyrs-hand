@@ -201,6 +201,13 @@ func requireModernCodexModelCatalog(t *testing.T, client *codex.SocketClient) {
 		} `json:"data"`
 	}
 	require.NoError(t, client.Call(context.Background(), "model/list", map[string]any{}, &catalog))
+	defaults := 0
+	for _, model := range catalog.Data {
+		if model.IsDefault {
+			defaults++
+		}
+	}
+	require.Equal(t, 1, defaults, "原生模型目录必须提供唯一默认模型")
 	for _, model := range catalog.Data {
 		if model.ID != "gpt-5.6-sol" {
 			continue
@@ -213,7 +220,6 @@ func requireModernCodexModelCatalog(t *testing.T, client *codex.SocketClient) {
 		for _, tier := range model.ServiceTiers {
 			tiers = append(tiers, tier.ID)
 		}
-		require.True(t, model.IsDefault)
 		require.Contains(t, efforts, "max")
 		require.Contains(t, efforts, "ultra")
 		require.Contains(t, tiers, "priority")

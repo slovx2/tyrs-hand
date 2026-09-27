@@ -31,6 +31,16 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 		return r.upstream.InitializeResult(), nil
 	}
 	// 未知方法也透明交给固定版本的 app-server 判定，避免 Hub 升级滞后破坏 Desktop 新能力。
+	upstreamMethod := method
+	nativeRevert := (method == "thread/rollback" || method == "thread/revert") && r.usesCodexItemHistory()
+	if nativeRevert {
+		var err error
+		params, err = r.prepareThreadRevert(ctx, method, params)
+		if err != nil {
+			return nil, err
+		}
+		upstreamMethod = "thread/revert"
+	}
 	call := Call{Role: source.role, Method: method, Params: append(json.RawMessage(nil), params...)}
 	plan := CallPlan{Params: params, Forward: true}
 	ephemeral := r.callIsEphemeral(method, params)
@@ -142,7 +152,7 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			if method == "review/start" {
 				result, upstreamErr = r.startReview(ctx, source, scoped, ephemeral)
 			} else {
-				upstreamErr = r.upstream.Call(ctx, method, scoped, &result)
+				upstreamErr = r.upstream.Call(ctx, upstreamMethod, scoped, &result)
 			}
 			finishResource(upstreamErr)
 			r.finishToolTurnStart(threadID, toolTurn, result, upstreamErr)
@@ -183,7 +193,14 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 		r.signalInteractionChange()
 	}
 	if controlled {
-		return r.completeControlled(ctx, call, plan, result, nil)
+		var err error
+		result, err = r.completeControlled(ctx, call, plan, result, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if nativeRevert && method == "thread/rollback" {
+		return r.hydrateRollbackResult(ctx, result)
 	}
 	return result, nil
 }

@@ -24,7 +24,8 @@ export async function startControlInfrastructure() {
     containers.push(pgID)
     const redisID = docker(['run', '--detach', '--rm', '-p', '127.0.0.1::6379', redis])
     containers.push(redisID)
-    for (const [id, command] of [[pgID, ['pg_isready', '-U', 'protocol']], [redisID, ['redis-cli', 'ping']]]) {
+    // 初始化临时 PostgreSQL 只开放 Unix socket；等待最终 TCP 服务，避免代理连到重启窗口。
+    for (const [id, command] of [[pgID, ['pg_isready', '-h', '127.0.0.1', '-U', 'protocol']], [redisID, ['redis-cli', 'ping']]]) {
       let ready = false
       for (let attempt = 0; attempt < 60 && !ready; attempt++) {
         try { docker(['exec', id, ...command]); ready = true } catch {

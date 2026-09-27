@@ -70,6 +70,7 @@ func verifyCodexSessionLifecycle(t *testing.T, ctx context.Context, registry *Ru
 	}
 	thread := readSessionThread(t, ctx, client, "thread/start", map[string]any{
 		"cwd": entry.Runtime.WorkspaceRoot(), "approvalPolicy": "never", "sandbox": "danger-full-access",
+		"historyMode": "paginated",
 	})
 	start := func(client *codex.SocketClient, threadID, text string) string {
 		var result struct{ Turn struct{ ID string } }
@@ -116,7 +117,7 @@ func verifyCodexSessionLifecycle(t *testing.T, ctx context.Context, registry *Ru
 	require.NoError(t, client.Call(ctx, "thread/name/set", map[string]any{"threadId": thread.ID, "name": "Codex SSH 回归"}, nil))
 	git := map[string]any{"sha": strings.Repeat("a", 40), "branch": "main", "originUrl": "/local/bare.git"}
 	require.Equal(t, git, readSessionThread(t, ctx, client, "thread/metadata/update", map[string]any{"threadId": thread.ID, "gitInfo": git}).GitInfo)
-	fork := readSessionThread(t, ctx, client, "thread/fork", map[string]any{"threadId": thread.ID})
+	fork := readSessionThread(t, ctx, client, "thread/fork", map[string]any{"threadId": thread.ID, "excludeTurns": true})
 	require.NotEqual(t, thread.ID, fork.ID)
 	require.Equal(t, thread.ID, fork.ForkedFromID)
 	require.Len(t, complete(fork.ID, "SESSION_FORK").Turns, 2)
@@ -147,11 +148,59 @@ func verifyCodexSessionLifecycle(t *testing.T, ctx context.Context, registry *Ru
 	require.Equal(t, "Codex SSH 回归", resumed.Name)
 	require.Equal(t, git, resumed.GitInfo)
 	require.Len(t, resumed.Turns, 1)
+	retained := readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": fork.ID, "includeTurns": true})
+	require.Len(t, retained.Turns, 2)
+	readSessionThread(t, ctx, client, "thread/resume", map[string]any{"threadId": fork.ID, "excludeTurns": true})
+	revertEvents := client.Subscribe(codex.ThreadFilter{ThreadID: fork.ID})
+	defer revertEvents.Close()
+	// 新入口必须保留原生响应形状；只有旧 rollback 入口补齐 turns。
+	reverted := nativeMetadataCall[struct {
+		Thread                                     sessionThread
+		TurnsBackwardsCursor, ItemsBackwardsCursor *string
+	}](t, ctx, client, "thread/revert", map[string]any{"threadId": fork.ID, "beforeTurnId": retained.Turns[1].ID})
+	require.Empty(t, reverted.Thread.Turns)
+	awaitNativeThreadReverted(t, ctx, revertEvents, fork.ID)
+	require.NotNil(t, reverted.TurnsBackwardsCursor)
+	require.NotNil(t, reverted.ItemsBackwardsCursor)
+	items := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{
+		"threadId": fork.ID, "cursor": *reverted.ItemsBackwardsCursor, "sortDirection": "desc",
+	})
+	require.Len(t, items.Data, 2, "回退响应的原生游标必须能读取保留的完整回合")
+	for _, item := range items.Data {
+		require.Equal(t, retained.Turns[0].ID, item.TurnID)
+	}
+	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": fork.ID, "includeTurns": true}).Turns, 1)
+	legacy := readSessionThread(t, ctx, client, "thread/start", map[string]any{
+		"cwd": entry.Runtime.WorkspaceRoot(), "historyMode": "legacy",
+	})
+	require.ErrorContains(t, client.Call(ctx, "thread/rollback", map[string]any{"threadId": legacy.ID, "numTurns": 1}, nil), "legacy 线程不支持回退")
+	require.ErrorContains(t, client.Call(ctx, "thread/revert", map[string]any{"threadId": legacy.ID, "beforeTurnId": first}, nil), "legacy 线程不支持回退")
+	// paginated fork 共享持久历史；父线程仍被引用时官方 CLI 明确拒绝删除。
+	require.ErrorContains(t, client.Call(ctx, "thread/delete", map[string]any{"threadId": thread.ID}, nil), "forked history still references")
+	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": thread.ID, "includeTurns": true}).Turns, 1)
+	require.NoError(t, client.Call(ctx, "thread/delete", map[string]any{"threadId": fork.ID}, nil))
 	require.NoError(t, client.Call(ctx, "thread/delete", map[string]any{"threadId": thread.ID}, nil))
 	require.Error(t, client.Call(ctx, "thread/read", map[string]any{"threadId": thread.ID, "includeTurns": true}, nil))
-	require.Len(t, readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": fork.ID, "includeTurns": true}).Turns, 2)
 	require.Equal(t, int64(3), fixture.calls.Load())
 	require.Equal(t, otherGeneration, registry.entries[runtimeidentity.Claude].Runtime.Generation())
+}
+
+func awaitNativeThreadReverted(t *testing.T, ctx context.Context, events *codex.EventSubscription, threadID string) {
+	t.Helper()
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("原生回退缺少 thread/reverted 通知")
+		case event, ok := <-events.Events():
+			require.True(t, ok, "回退通知流意外关闭")
+			if event.Method == "thread/reverted" {
+				var notification struct{ ThreadID string }
+				require.NoError(t, json.Unmarshal(event.Params, &notification))
+				require.Equal(t, threadID, notification.ThreadID)
+				return
+			}
+		}
+	}
 }
 
 func TestRuntimeCodexMetadataRealSSH(t *testing.T) {

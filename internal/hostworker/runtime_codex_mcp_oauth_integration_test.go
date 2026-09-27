@@ -75,9 +75,16 @@ func (f *runtimeCodexOAuthFixture) model(t *testing.T, w http.ResponseWriter, re
 		if input.Type != "function_call_output" || input.CallID != id {
 			continue
 		}
-		var output string
+		// 0.157.1 的 MCP 工具结果以 Responses 内容数组实际回模。
+		var output []struct{ Type, Text string }
 		require.NoError(t, json.Unmarshal(input.Output, &output))
-		require.Contains(t, output, "OAUTH_REAL_EFFECT", "真正授权的MCP工具结果必须回模")
+		require.NotEmpty(t, output)
+		var text strings.Builder
+		for _, part := range output {
+			require.Equal(t, "input_text", part.Type)
+			text.WriteString(part.Text)
+		}
+		require.Contains(t, text.String(), "OAUTH_REAL_EFFECT", "真正授权的MCP工具结果必须回模")
 		_, repeated := f.outputs.LoadOrStore(stage, true)
 		require.False(t, repeated)
 		runtimeTextModel(w, request, "CODEX_OAUTH_DONE_"+stage, id+"-done")

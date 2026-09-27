@@ -88,9 +88,23 @@ func (q threadItemsQuery) turnFilter() string {
 	return *q.TurnID
 }
 
-// Codex 0.157.1 的 thread/items/list 明确返回 -32601；从原生完整 Turn 历史分页读取，
-// 保留每个原始 item，不创建会话、Turn、模型请求或任何预制历史。
+// paginated 必须透传原生游标；legacy 从完整 Turn 历史读取既有条目。
 func (r *Hub) listNativeThreadItems(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
+	var scope struct{ ThreadID string }
+	if json.Unmarshal(raw, &scope) != nil || strings.TrimSpace(scope.ThreadID) == "" {
+		return nil, invalidThreadItems("thread/items/list 参数或 threadId 无效")
+	}
+	var metadata struct{ Thread struct{ HistoryMode string } }
+	if err := r.upstream.Call(ctx, "thread/read", map[string]any{
+		"threadId": scope.ThreadID, "includeTurns": false,
+	}, &metadata); err != nil {
+		return nil, err
+	}
+	if metadata.Thread.HistoryMode == "paginated" {
+		var result json.RawMessage
+		err := r.upstream.Call(ctx, "thread/items/list", raw, &result)
+		return result, err
+	}
 	query, cursor, err := decodeThreadItemsQuery(raw)
 	if err != nil {
 		return nil, err

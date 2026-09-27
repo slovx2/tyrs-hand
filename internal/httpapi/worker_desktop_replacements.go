@@ -23,10 +23,13 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		return
 	}
 	var params struct {
-		ThreadID string `json:"threadId"`
-		NumTurns int    `json:"numTurns"`
+		ThreadID     string `json:"threadId"`
+		NumTurns     int    `json:"numTurns"`
+		BeforeTurnID string `json:"beforeTurnId"`
 	}
-	if json.Unmarshal(request.Params, &params) != nil || params.ThreadID == "" || params.NumTurns != 1 {
+	if json.Unmarshal(request.Params, &params) != nil || params.ThreadID == "" ||
+		!((params.NumTurns == 1 && params.BeforeTurnID == "") ||
+			(params.NumTurns == 0 && strings.TrimSpace(params.BeforeTurnID) != "")) {
 		badRequest(c, errors.New("desktop rollback 只允许最新一个 turn"))
 		return
 	}
@@ -67,6 +70,11 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 	}
 	if controlStatus != "idle" || targetTurnID == "" {
 		problem(c, http.StatusConflict, "Desktop rollback 目标仍在运行或尚未确认", nil)
+		return
+	}
+	// Control 的 replacement 只投影最新回合；拒绝更早锚点，避免原生删多轮而投影只删一轮。
+	if params.BeforeTurnID != "" && params.BeforeTurnID != targetTurnID {
+		badRequest(c, errors.New("desktop revert 只允许 Control 已确认的最新回合"))
 		return
 	}
 	idempotencyKey := "desktop-rollback:" + request.WorkspaceID.String() + ":" + targetID.String()

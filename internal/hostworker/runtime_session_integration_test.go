@@ -182,8 +182,8 @@ func verifyClaudeSessionLifecycle(t *testing.T, ctx context.Context, registry *R
 	for renamed := false; !renamed; {
 		select {
 		case event := <-observed.Events():
-			if event.Method == "thread/tokenUsage/updated" {
-				// 恢复的用量快照可能在订阅建立后送达，随后仍须收到名称事件。
+			if event.Method == "thread/tokenUsage/updated" || event.Method == "thread/settings/updated" {
+				// 恢复的用量和设置快照可能在订阅建立后送达，随后仍须收到名称事件。
 				continue
 			}
 			require.Equal(t, "thread/name/updated", event.Method)

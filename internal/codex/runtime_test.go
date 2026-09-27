@@ -77,12 +77,15 @@ func TestStartTurnCarriesCollaborationModeWithoutExplicitModel(t *testing.T) {
 }
 
 func TestRollbackThreadUsesSingleLatestTurn(t *testing.T) {
-	client := &recordingRuntimeClient{}
+	client := &revertRuntimeClient{t: t, replies: []revertReply{
+		{method: "thread/read", response: `{"thread":{"id":"thread-1","historyMode":"paginated"}}`},
+		{method: "thread/turns/list", response: `{"data":[{"id":"last-turn"}],"nextCursor":null}`},
+		{method: "thread/revert", response: `{}`},
+	}}
 	err := NewRuntime(client).RollbackThread(context.Background(), "thread-1", 1)
 	require.NoError(t, err)
-	require.Equal(t, "thread/rollback", client.method)
-	require.Equal(t, "thread-1", client.payload["threadId"])
-	require.Equal(t, 1, client.payload["numTurns"])
+	require.Empty(t, client.replies)
+	require.JSONEq(t, `{"threadId":"thread-1","beforeTurnId":"last-turn"}`, string(client.payloads[2]))
 	require.ErrorContains(t, NewRuntime(client).RollbackThread(context.Background(), "thread-1", 2),
 		"只允许 rollback 最新一个 turn")
 }

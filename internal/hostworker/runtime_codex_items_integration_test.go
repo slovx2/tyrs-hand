@@ -78,30 +78,45 @@ func verifyNativeItemsPages(t *testing.T, ctx context.Context, client *codex.Soc
 	unpaged := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{"threadId": threadID})
 	require.Equal(t, expected, unpaged.Data, "默认方向应为升序")
 	require.Nil(t, unpaged.NextCursor)
+	// 页大小边界沿用固定 CLI 的原生处理，仍检查无遗漏、无重复及分页收敛。
+	for _, limit := range []int{0, 1001} {
+		params := map[string]any{"threadId": threadID, "limit": limit}
+		actual := []runtimeHistoryItem{}
+		for pageNumber := 0; pageNumber <= len(expected); pageNumber++ {
+			page := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", params)
+			require.NotEmpty(t, page.Data, "边界页必须推进：limit=%d", limit)
+			actual = append(actual, page.Data...)
+			if page.NextCursor == nil {
+				break
+			}
+			params["cursor"] = *page.NextCursor
+		}
+		require.Equal(t, expected, actual, "边界页不能漏项或重复：limit=%d", limit)
+	}
 }
 
 func requireNativeItemsInvalid(t *testing.T, ctx context.Context, client *codex.SocketClient, params map[string]any) {
 	t.Helper()
 	err := client.Call(ctx, "thread/items/list", params, nil)
 	var rejected *codex.RPCError
-	require.ErrorAs(t, err, &rejected)
-	require.Equal(t, -32602, rejected.Code)
+	require.ErrorAs(t, err, &rejected, "必须拒绝此条目查询：%v", params)
+	require.Contains(t, []int{-32600, -32602}, rejected.Code, "原生参数或游标应被明确拒绝：%v；%s", params, rejected.Message)
 }
 
-// HISTORY-005：真实两会话三 Turn；跨 Thread/Turn/方向的游标拒绝、重启及回退失效。
+// HISTORY-005：真实两会话三 Turn；原生分页、筛选、反向游标、重启及回退后的隔离。
 func verifyCodexNativeItems(t *testing.T, ctx context.Context, client *codex.SocketClient, root string, registry *RuntimeRegistry, connection *ssh.Client) {
 	t.Helper()
 	otherGeneration := registry.entries[runtimeidentity.Claude].Runtime.Generation()
 	start := func() sessionThread {
-		return readSessionThread(t, ctx, client, "thread/start", map[string]any{"cwd": root, "approvalPolicy": "never", "sandbox": "danger-full-access"})
+		return readSessionThread(t, ctx, client, "thread/start", map[string]any{"cwd": root, "approvalPolicy": "never", "sandbox": "danger-full-access", "historyMode": "paginated"})
 	}
 	emptyThread := start()
 	var unmaterializedNative, unmaterializedItems *codex.RPCError
 	emptyParams := map[string]any{"threadId": emptyThread.ID}
 	require.ErrorAs(t, client.Call(ctx, "thread/turns/list", emptyParams, nil), &unmaterializedNative)
 	require.ErrorAs(t, client.Call(ctx, "thread/items/list", emptyParams, nil), &unmaterializedItems)
-	require.Equal(t, unmaterializedNative.Code, unmaterializedItems.Code, "尚未实体化的原生会话必须保留错误码")
-	require.Equal(t, unmaterializedNative.Message, unmaterializedItems.Message)
+	require.Equal(t, -32600, unmaterializedNative.Code)
+	require.Equal(t, -32601, unmaterializedItems.Code, "固定 CLI 尚未为未实体化的 paginated 会话提供条目页")
 	thread := start()
 	firstTurn := runNativeMetadataTurn(t, ctx, client, thread.ID, "ITEMS_REAL_FIRST")
 	secondTurn := runNativeMetadataTurn(t, ctx, client, thread.ID, "ITEMS_REAL_SECOND")
@@ -124,12 +139,25 @@ func verifyCodexNativeItems(t *testing.T, ctx context.Context, client *codex.Soc
 	require.NotNil(t, second.BackwardsCursor)
 	backwards := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{"threadId": thread.ID, "limit": 2, "cursor": *second.BackwardsCursor, "sortDirection": "desc"})
 	require.Equal(t, []runtimeHistoryItem{expected[2], expected[1]}, backwards.Data, "反向分页包含锚点以接收更新")
-	for _, changes := range []map[string]any{{"threadId": other.ID}, {"turnId": firstTurn}, {"turnId": secondTurn}, {"sortDirection": "desc"}, {"cursor": "invalid"}, {"cursor": ""}, {"limit": 0}, {"limit": 1001}, {"threadId": ""}, {"turnId": ""}} {
+	// 原生游标锚定线程与存储位置，允许在分页时添加 Turn 筛选；不能套用旧 Hub 游标格式。
+	for _, scope := range []struct {
+		turnID string
+		want   []runtimeHistoryItem
+	}{{firstTurn, []runtimeHistoryItem{}}, {secondTurn, expected[2:]}, {"", []runtimeHistoryItem{}}} {
+		page := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{
+			"threadId": thread.ID, "cursor": *first.NextCursor, "turnId": scope.turnID,
+		})
+		require.Equal(t, scope.want, page.Data, "筛选不能返回其他 Turn 的条目")
+	}
+	for _, changes := range []map[string]any{{"threadId": other.ID}, {"cursor": "invalid"}, {"cursor": ""}, {"threadId": ""}} {
 		params := map[string]any{"threadId": thread.ID, "cursor": *first.NextCursor}
 		maps.Copy(params, changes)
 		requireNativeItemsInvalid(t, ctx, client, params)
 	}
-	requireNativeItemsInvalid(t, ctx, client, map[string]any{"threadId": thread.ID, "cursor": *second.BackwardsCursor, "sortDirection": "asc"})
+	forward := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{
+		"threadId": thread.ID, "cursor": *second.BackwardsCursor, "sortDirection": "asc",
+	})
+	require.Equal(t, expected[2:], forward.Data, "原生包含锚点的游标也可沿正向继续")
 	unknown := map[string]any{"threadId": "00000000-0000-4000-8000-000000000001"}
 	var nativeError, itemError *codex.RPCError
 	require.ErrorAs(t, client.Call(ctx, "thread/turns/list", unknown, nil), &nativeError)
@@ -149,7 +177,11 @@ func verifyCodexNativeItems(t *testing.T, ctx context.Context, client *codex.Soc
 	readSessionThread(t, ctx, client, "thread/resume", map[string]any{"threadId": thread.ID})
 	rolled := readSessionThread(t, ctx, client, "thread/rollback", map[string]any{"threadId": thread.ID, "numTurns": 1})
 	require.Len(t, rolled.Turns, 1)
-	requireNativeItemsInvalid(t, ctx, client, map[string]any{"threadId": thread.ID, "turnId": secondTurn, "cursor": *stale.NextCursor})
+	stalePage := nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{
+		"threadId": thread.ID, "turnId": secondTurn, "cursor": *stale.NextCursor,
+	})
+	require.Empty(t, stalePage.Data, "原生存储位置游标仍可解析，但不能读到被回退的内容")
+	require.Nil(t, stalePage.NextCursor)
 	require.Equal(t, expected[:2], nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{"threadId": thread.ID}).Data)
 	require.Equal(t, otherExpected, nativeMetadataCall[nativeItemsPage](t, ctx, client, "thread/items/list", map[string]any{"threadId": other.ID}).Data)
 	require.Equal(t, otherGeneration, registry.entries[runtimeidentity.Claude].Runtime.Generation())

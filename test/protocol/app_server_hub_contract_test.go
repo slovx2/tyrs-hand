@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/slovx2/tyrs-hand/internal/appserverhub"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,6 +74,7 @@ func collectExtensionMethods(t *testing.T, methods map[string]bool) {
 		require.NoError(t, readErr)
 		var extension struct {
 			Method, Kind     string
+			ResponseFile     string `json:"responseFile"`
 			Params, Response map[string]any
 		}
 		require.NoError(t, json.Unmarshal(raw, &extension), file.Name())
@@ -82,6 +84,14 @@ func collectExtensionMethods(t *testing.T, methods map[string]bool) {
 			continue
 		}
 		require.NotEmpty(t, extension.Params, "扩展请求必须登记参数 schema: %s", file.Name())
+		if extension.ResponseFile != "" {
+			require.Empty(t, extension.Response, "响应 schema 不能同时内联和引用文件")
+			require.True(t, filepath.IsLocal(extension.ResponseFile), "响应 schema 必须引用版本目录内文件")
+			schemaFile := filepath.Join(directory, "..", "codex-app-server", codex.RequiredVersion, "json-schema", extension.ResponseFile)
+			response, err := os.ReadFile(schemaFile)
+			require.NoError(t, err, file.Name())
+			require.NoError(t, json.Unmarshal(response, &extension.Response), file.Name())
+		}
 		require.NotEmpty(t, extension.Response, "扩展请求必须登记响应 schema: %s", file.Name())
 		require.False(t, methods[extension.Method], "扩展不能覆盖已有 schema: %s", extension.Method)
 		methods[extension.Method] = true
