@@ -162,6 +162,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['APPROVAL-005'], engines: ['claude-code'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
+  { name: 'bootstrap-queue-budget', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapQueueRealSSHSharedBudgetAndGitTool',
+    cases: ['QUEUE-001'] },
 ]
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
   suites.push(...controlSuites)

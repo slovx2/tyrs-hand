@@ -2,6 +2,21 @@
 
 更新时间：2026-09-27。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：队列共享并发与 Android 验收范围
+
+本段优先于后文历史结果。2026-09-27 用户明确要求跳过 Android **自动化 GUI** 用例，**手工 GUI 验收仍是必需项**。
+
+- 已取消正在运行 GUI 阶段的 Mobile E2E 36328003987，实际结论为 cancelled，不改写成 passed 或 skipped。后续自动化入口和 CI 按 acceptance-policy.json 标记 ssh-setup/suite 两阶段 skipped，并输出 JUnit 与范围报告；手工状态为 pending、mobileAcceptanceComplete=false。构建、协议、SSH 与非 GUI 回归继续执行，iOS 仍按本轮安排暂缓。
+- 自动化 skip 策略、安装隔离、证据拒绝规则、构建与既有契约共 23 项通过。损坏的策略会拒绝继续安装；skip 证据不能通过完整移动成功门禁。未执行本轮 Android 手工验收。
+- 2a33914 的远端常规 CI 36327995287 已成功；协议 CI 36327995308 已失败：Control-runtime/macOS loopback 成功，Linux/macOS14 运行时失败仍为 MCP017、REVIEW006。新 Linux 原始完整覆盖 runId 37207d87-60c6-49e9-80dd-57bf7d74e77d 为 **156 项缺口**：143 未登记用例、2 无成功协议/schema 证据、11 必需语义未通过；PG 死锁门禁通过。这一基线不包含本轮尚未提交的队列改动。
+- 已真实复现并修复原生队列绕过共享并发：限额为 1，Claude 被模型屏障阻塞时，旧 Worker 仍允许 Codex queue/add 实际调用模型。修复在原生输入前预留共享槽，以 clientUserMessageId 和实际 turnId 跟踪自动回合；直接回合和同线程队列使用引用计数共用槽，连续队列结束或明确删除后释放。
+- QUEUE-001 真实双 SSH/官方 CLI/Claude SDK 回归通过：双向满额拒绝、两条连续自动回合、删除待执行项、删除已取出项返回 false、完成后额度释放，以及 CLI 重启后 52 条原生持久队列的两页恢复、resume/start 满额拒绝和无重放。官方队列最多 100 项；初稿 102 项被官方正确拒绝，已改为每页 50 项、共 52 项，未改 CLI 限制。
+- 未知入队响应保留状态不重发；快速回合先于入队响应、并发删除先于入队响应、初始化时已出队项、重复终态均有状态回归。队列事件流丢失不能当作回合结束，旧运行代退出后才释放其持有资源。
+- 最终定向回归使用 race、临时 HOME、虚拟凭据及仅回环出站沙箱，runId 812a9675-1122-409d-bf0d-fb804727e657（queue-final-v2/，包含重启边界的客户端引用快照保护）。正式 runtime-wire 门禁：4 引擎执行、9 wire、282 报文、184 证据，0 错误；增量 integration lint 0 issues，inventory 契约 24/24。最终源码完整 make ci-local 退出 0：生成、lint、Go 单测/race、真实数据库集成、手机 SSH、构建、Android JS export 与浏览器 E2E 5/5 通过；核心覆盖率 80.7%，客户端 368 通过/2 个既存跳过。日志 queue-gui-skip-final-ci-local.log；不等同完整协议或 Android 手工验收通过。
+- 队列专项不是完整队列功能验收：Control intent/run、逐回合 Journal、工具/审批精确归属、绑定身份快照、完整 Worker 重启恢复，以及 queue/start 成功执行仍待补齐。可信 userVerification、图片 fileId 跨端、其他覆盖缺口和官方 MCP017/REVIEW006 继续阻塞发布；Android 手工验收也尚未完成。生产未变更，releaseReady=false。
+
+证据：`.local/validation/2026-09-27-release-goal/queue-capacity-model-baseline.log`、`queue-final-v2/`、`queue-integration-lint-final-v2.log`、`android-gui-skip-contracts.log`、`protocol-2a33914-linux-summary/`。
+
 ## 已完成
 
 - CLI、CI、工具链、手机端、协议清单与适配器切换到精确版本 0.157.1。

@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
@@ -29,6 +30,16 @@ import (
 
 // 使用生产 InitializeWorker 和真实 Controller；模型只能访问隔离 Mock 服务。
 func TestWorkerBootstrapRealSSHSharedBudgetAndGitTool(t *testing.T) {
+	runWorkerBootstrapSharedBudget(t, false)
+}
+
+// 原生队列空闲时会自动执行，不能绕过另一引擎已占用的共享并发槽。
+func TestWorkerBootstrapQueueRealSSHSharedBudgetAndGitTool(t *testing.T) {
+	runWorkerBootstrapSharedBudget(t, true)
+}
+
+func runWorkerBootstrapSharedBudget(t *testing.T, queuedCodex bool) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 75*time.Second)
 	defer cancel()
 	bin, adapter := os.Getenv("TYRS_HAND_TEST_CODEX_BIN"), os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN")
@@ -39,6 +50,10 @@ func TestWorkerBootstrapRealSSHSharedBudgetAndGitTool(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	t.Setenv("HOME", root)
 	entered, release := make(chan struct{}), make(chan struct{})
+	codexEntered := make(chan struct{})
+	codexSecondEntered := make(chan struct{})
+	codexRelease, codexSecondRelease := make(chan struct{}), make(chan struct{})
+	recoveryGate := &bootstrapQueueRecoveryGate{entered: make(chan struct{}), release: make(chan struct{})}
 	var claudeCalls, codexCalls atomic.Int64
 	var toolResultSeen atomic.Bool
 	var requestsMu sync.Mutex
@@ -71,13 +86,38 @@ func TestWorkerBootstrapRealSSHSharedBudgetAndGitTool(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/v1/responses" {
-			codexCalls.Add(1)
+			number := codexCalls.Add(1)
+			switch number {
+			case 1:
+				close(codexEntered)
+			case 2:
+				close(codexSecondEntered)
+			}
+			if queuedCodex && number <= 2 {
+				gate := codexRelease
+				if number == 2 {
+					gate = codexSecondRelease
+				}
+				select {
+				case <-gate:
+				case <-ctx.Done():
+					return
+				}
+			}
 			bootstrapModelText(w, false)
 			return
 		}
 		if r.URL.Path != "/v1/messages" {
 			http.NotFound(w, r)
 			return
+		}
+		if recoveryGate.active.Load() {
+			recoveryGate.once.Do(func() { close(recoveryGate.entered) })
+			select {
+			case <-recoveryGate.release:
+			case <-ctx.Done():
+				return
+			}
 		}
 		var payload struct {
 			Tools    []struct{ Name, Description string } `json:"tools"`
@@ -170,12 +210,32 @@ stream_max_retries=0
 				ID string `json:"id"`
 			} `json:"thread"`
 		}
-		require.NoError(t, client.Call(ctx, "thread/start", map[string]any{
-			"cwd": cfg.WorkerWorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &result))
+		params := map[string]any{"cwd": cfg.WorkerWorkspaceRoot, "approvalPolicy": "never", "sandbox": "danger-full-access"}
+		if queuedCodex && engine == runtimeidentity.Codex {
+			params["historyMode"] = "paginated"
+		}
+		require.NoError(t, client.Call(ctx, "thread/start", params, &result))
 		threads[engine] = result.Thread.ID
 	}
+	enqueueCodex := func(instruction string) (string, error) {
+		var result struct {
+			Submission struct {
+				ID string `json:"id"`
+			} `json:"queuedSubmission"`
+		}
+		err := clients[runtimeidentity.Codex].Call(ctx, "thread/queue/add", map[string]any{"threadId": threads[runtimeidentity.Codex],
+			"clientUserMessageId": uuid.NewString(),
+			"input":               []map[string]any{{"type": "text", "text": instruction, "text_elements": []any{}}}}, &result)
+		return result.Submission.ID, err
+	}
+	var firstQueueID string
 	start := func(engine runtimeidentity.Engine) error {
 		var result any
+		if queuedCodex && engine == runtimeidentity.Codex {
+			var queueErr error
+			firstQueueID, queueErr = enqueueCodex("run queued protocol tool")
+			return queueErr
+		}
 		return clients[engine].Call(ctx, "turn/start", map[string]any{"threadId": threads[engine],
 			"input": []map[string]any{{"type": "text", "text": "run protocol tool", "text_elements": []any{}}}}, &result)
 	}
@@ -188,6 +248,15 @@ stream_max_retries=0
 		t.Fatal("Claude 没有到达 Mock LLM")
 	}
 	err = start(runtimeidentity.Codex)
+	if queuedCodex && err == nil {
+		select {
+		case <-codexEntered:
+			t.Fatal("共享并发上限为 1 且 Claude 仍被屏障阻塞，Codex 原生队列却已调用模型")
+		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
 	require.ErrorContains(t, err, "并发上限")
 	require.Zero(t, codexCalls.Load(), "被拒绝任务不能到达模型")
 	close(release)
@@ -202,8 +271,59 @@ stream_max_retries=0
 	codexEvents := clients[runtimeidentity.Codex].Subscribe(codex.ThreadFilter{ThreadID: threads[runtimeidentity.Codex]})
 	t.Cleanup(codexEvents.Close)
 	require.Eventually(t, func() bool { return start(runtimeidentity.Codex) == nil }, 3*time.Second, 20*time.Millisecond)
+	if queuedCodex {
+		awaitSignal := func(signal <-chan struct{}) {
+			t.Helper()
+			select {
+			case <-signal:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+		}
+		awaitSignal(codexEntered)
+		claudeCount := claudeCalls.Load()
+		require.ErrorContains(t, start(runtimeidentity.Claude), "并发上限")
+		secondID, addErr := enqueueCodex("second native queue turn")
+		require.NoError(t, addErr, "同线程队列必须共用正在运行的槽")
+		deletedID, addErr := enqueueCodex("this queued message must be deleted")
+		require.NoError(t, addErr)
+		deleteQueued := func(id string) bool {
+			t.Helper()
+			var response struct {
+				Deleted bool `json:"deleted"`
+			}
+			require.NoError(t, clients[runtimeidentity.Codex].Call(ctx, "thread/queue/delete",
+				map[string]any{"threadId": threads[runtimeidentity.Codex], "queuedSubmissionId": id}, &response))
+			return response.Deleted
+		}
+		require.False(t, deleteQueued(firstQueueID), "已启动的条目不能被删除")
+		require.True(t, deleteQueued(deletedID))
+		var pending struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		require.NoError(t, clients[runtimeidentity.Codex].Call(ctx, "thread/queue/list",
+			map[string]any{"threadId": threads[runtimeidentity.Codex]}, &pending))
+		require.Len(t, pending.Data, 1)
+		require.Equal(t, secondID, pending.Data[0].ID)
+		require.ErrorContains(t, start(runtimeidentity.Claude), "并发上限")
+		close(codexRelease)
+		awaitBootstrapTurn(t, ctx, codexEvents)
+		awaitSignal(codexSecondEntered)
+		require.ErrorContains(t, start(runtimeidentity.Claude), "并发上限", "自动下一回合不能提前释放额度")
+		require.Equal(t, claudeCount, claudeCalls.Load(), "反向超配请求不能调用 Claude")
+		close(codexSecondRelease)
+	}
 	awaitBootstrapTurn(t, ctx, codexEvents)
-	require.EqualValues(t, 1, codexCalls.Load())
+	if queuedCodex {
+		require.EqualValues(t, 2, codexCalls.Load(), "删除项不得运行，自动回合不得重复")
+		require.Eventually(t, func() bool { return start(runtimeidentity.Claude) == nil }, 3*time.Second, 20*time.Millisecond)
+		awaitBootstrapTurn(t, ctx, claudeEvents)
+		verifyBootstrapQueueRecovery(t, ctx, app, signer, clients, connectionsClosed, threads, recoveryGate, &codexCalls)
+	} else {
+		require.EqualValues(t, 1, codexCalls.Load())
+	}
 
 	// 共用授权文件更新后，两端旧连接都关闭，新密钥仍能读取原会话。
 	_, replacement, err := ed25519.GenerateKey(rand.Reader)

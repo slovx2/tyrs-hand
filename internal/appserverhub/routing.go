@@ -66,7 +66,8 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			reservedArchive, reservedArchiveLeader = r.beginArchive(reservedArchiveThreadID)
 		}
 	}
-	if !ephemeral && (method == "turn/start" || method == "turn/steer") {
+	if !ephemeral && (method == "turn/start" || method == "turn/steer" ||
+		method == "thread/queue/add" || method == "thread/queue/start") {
 		if threadID, _ := threadScope(params); r.archivePending(threadID) {
 			return nil, &ProtocolError{Code: -32052,
 				Message: "该 Codex Thread 正在归档，不能继续发送新输入"}

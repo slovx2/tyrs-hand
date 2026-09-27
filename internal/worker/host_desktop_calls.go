@@ -19,7 +19,8 @@ type hostCallState struct {
 	inner        any
 	subscription *appserverhub.Subscription
 	unbind       func()
-	releaseSlot  func()
+	slot         *hostExecutionSlot
+	queue        *hostQueueCall
 	once         sync.Once
 }
 
@@ -35,6 +36,11 @@ func (c *HostDesktopController) PrepareCall(ctx context.Context, call appserverh
 		c.mu.Unlock()
 	}
 	state := &hostCallState{controller: integration}
+	var queueErr error
+	state.queue, queueErr = c.prepareQueueCall(ctx, runtime, call)
+	if queueErr != nil {
+		return appserverhub.CallPlan{}, queueErr
+	}
 	if call.Method == "turn/start" && threadID != "" {
 		if runtime == nil || runtime.Client() == nil {
 			return appserverhub.CallPlan{}, errors.New("宿主 Codex Runtime 正在恢复")
@@ -69,15 +75,12 @@ func (c *HostDesktopController) PrepareCall(ctx context.Context, call appserverh
 			state.subscription.Close()
 			return appserverhub.CallPlan{}, errors.New("此 Thread 已有正在执行的 turn")
 		}
-		if c.processor.turnSlots != nil {
-			select {
-			case c.processor.turnSlots <- struct{}{}:
-				state.releaseSlot = func() { <-c.processor.turnSlots }
-			default:
-				c.mu.Unlock()
-				state.subscription.Close()
-				return appserverhub.CallPlan{}, errors.New("已达到 Worker 两个引擎共享的并发上限")
-			}
+		var slotErr error
+		state.slot, slotErr = c.reserveExecutionSlot(threadID)
+		if slotErr != nil {
+			c.mu.Unlock()
+			state.subscription.Close()
+			return appserverhub.CallPlan{}, slotErr
 		}
 		c.active[threadID] = state
 		c.mu.Unlock()
@@ -112,6 +115,7 @@ func (c *HostDesktopController) PrepareCall(ctx context.Context, call appserverh
 		}
 	}
 	if err != nil {
+		c.completeQueueCall(call, state.queue, nil, &codex.RequestError{State: codex.RequestNotSent, Cause: err})
 		c.finishHostCall(threadID, state)
 		return plan, err
 	}
@@ -124,6 +128,7 @@ func (c *HostDesktopController) CompleteCall(ctx context.Context, call appserver
 	if !ok {
 		return result, cause
 	}
+	c.completeQueueCall(call, state.queue, result, cause)
 	if state.controller != nil {
 		inner := plan
 		inner.State = state.inner
@@ -170,9 +175,7 @@ func (c *HostDesktopController) observeHostCall(threadID, turnID string, state *
 
 func (c *HostDesktopController) finishHostCall(threadID string, state *hostCallState) {
 	state.once.Do(func() {
-		if state.releaseSlot != nil {
-			state.releaseSlot()
-		}
+		state.slot.release()
 		if state.subscription != nil {
 			state.subscription.Close()
 		}

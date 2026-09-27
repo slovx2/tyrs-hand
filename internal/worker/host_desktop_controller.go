@@ -24,13 +24,15 @@ type HostDesktopController struct {
 	runtime          *hostworker.Runtime
 	integration      *desktopController
 	active           map[string]*hostCallState
+	queued           map[string]*hostQueueState
 	catalogWake      chan struct{}
 	metadataSequence atomic.Int64
 	settingsSequence atomic.Int64
 }
 
 func NewHostDesktopController(processor *Processor, manifest *workerprotocol.WorkspaceManifest) *HostDesktopController {
-	c := &HostDesktopController{processor: processor, active: make(map[string]*hostCallState), catalogWake: make(chan struct{}, 1)}
+	c := &HostDesktopController{processor: processor, active: make(map[string]*hostCallState),
+		queued: make(map[string]*hostQueueState), catalogWake: make(chan struct{}, 1)}
 	c.setBinding(manifest)
 	return c
 }
@@ -153,6 +155,10 @@ func (c *HostDesktopController) RebindRuntime(_ context.Context, client *appserv
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// 旧进程已退出，新进程尚未加载线程；后续 resume/start 重新读取持久化队列。
+	for threadID, queue := range c.queued {
+		c.closeHostQueueLocked(threadID, queue)
+	}
 	if c.integration != nil {
 		c.bindClientLocked(c.integration.workspace, client, generation)
 	}

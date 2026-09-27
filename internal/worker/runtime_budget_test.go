@@ -28,7 +28,7 @@ func TestRuntimesAndRunnerShareOneBudget(t *testing.T) {
 	default:
 	}
 	controller := NewHostDesktopController(claude, nil)
-	state := &hostCallState{releaseSlot: func() { <-claude.turnSlots }}
+	state := &hostCallState{slot: &hostExecutionSlot{users: 1, onRelease: func() { <-claude.turnSlots }}}
 	controller.finishHostCall("thread", state)
 	controller.finishHostCall("thread", state)
 	require.Len(t, codex.turnSlots, 1, "重复终态只能释放一次额度")
