@@ -8,6 +8,11 @@ if [[ $# -gt 2 || ( $# -eq 2 && "${2:-}" != "--install-only" ) ]]; then
 fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 lane="${TYRS_HAND_E2E_LANE:-dual-engine}"
+gui_enabled=$(node "${root}/tools/mobile-e2e/gui-policy.mjs" "${platform}")
+if [[ "${gui_enabled}" == false ]]; then
+  exit 0
+fi
+test "${gui_enabled}" = true
 
 "${root}/tools/mobile-e2e/install-maestro.sh"
 "${root}/tools/mobile-e2e/build-client.sh" "$@"

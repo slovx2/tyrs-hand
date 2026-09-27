@@ -13,6 +13,7 @@ import { mobileScenarios } from './lib/mcp-scenarios.mjs'
 import { AndroidTransportTrace } from './lib/android-transport-trace.mjs'
 import { cleanupManaged, completionError } from './lib/cleanup.mjs'
 import { collectIosDriverDiagnostics } from './lib/ios-driver-diagnostics.mjs'
+import { guiAutomationEnabled } from './gui-policy.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const argumentsMap = new Map()
@@ -21,6 +22,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 }
 const platform = argumentsMap.get('--platform')
 if (platform !== 'android' && platform !== 'ios') throw new Error('--platform 必须是 android 或 ios')
+if (!await guiAutomationEnabled(platform)) process.exit(0)
 const lane = argumentsMap.get('--lane') ?? 'dual-engine'
 if (lane !== 'dual-engine') throw new Error('完整移动端 E2E 必须使用真实 dual-engine lane')
 const appID = argumentsMap.get('--app-id') ?? 'com.tyrshand.app.dev'

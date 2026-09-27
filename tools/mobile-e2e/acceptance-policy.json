@@ -1,0 +1,11 @@
+{
+  "android": {
+    "automatedGui": "skip",
+    "reason": "2026-09-27 用户要求跳过 Android 自动化 GUI 用例；构建、协议、SSH 检查继续执行。",
+    "manualGui": "required"
+  },
+  "ios": {
+    "automatedGui": "run",
+    "manualGui": "required"
+  }
+}
