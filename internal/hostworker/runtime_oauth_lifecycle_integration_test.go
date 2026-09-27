@@ -58,6 +58,7 @@ func verifyRuntimeOAuthCancellation(t *testing.T, ctx context.Context, registry 
 	}
 	var evidence []map[string]any
 	for _, reason := range []string{"channel", "owner", "connection", "hub", "server"} {
+		t.Logf("MCP-013 OAuth 取消原因：%s", reason)
 		effect := filepath.Join(root, "oauth-cancel-"+reason+".txt")
 		code := fmt.Sprintf(`import { OAuthMcpFixture } from %q;
 import { createInterface } from 'node:readline';
@@ -106,6 +107,13 @@ process.on('SIGTERM', async () => {gate.release(); await fixture.close(); proces
 		require.NoError(t, request.Write(tunnel))
 		require.NoError(t, decoder.Decode(&message))
 		require.Equal(t, "started", message.Stage)
+		// channel 与 connection 由客户端单方面关闭，关闭返回时 Worker 可能尚未传播取消；
+		// 必须等适配器宣布本次登录失败后再放行 token，才是“取消之后”的迟到令牌。
+		var acknowledged *codex.EventSubscription
+		if reason == "channel" || reason == "connection" {
+			acknowledged = connectRuntimeSSH(t, ctx, connect(), runtimeidentity.Claude).Subscribe(codex.ThreadFilter{})
+			t.Cleanup(acknowledged.Close)
+		}
 		ended := make(chan struct{})
 		go func() { _, _ = io.Copy(io.Discard, tunnel); _ = tunnel.Close(); close(ended) }()
 		closed := make(chan error, 1)
@@ -135,6 +143,9 @@ process.on('SIGTERM', async () => {gate.release(); await fixture.close(); proces
 		case <-time.After(time.Second):
 			t.Fatalf("%s 未终止真实 SSH 回调", reason)
 		}
+		if acknowledged != nil {
+			waitRuntimeOAuthCancelled(t, ctx, acknowledged, name)
+		}
 		_, err = io.WriteString(input, "release\n")
 		require.NoError(t, err)
 		require.NoError(t, decoder.Decode(&message))
@@ -162,5 +173,32 @@ process.on('SIGTERM', async () => {gate.release(); await fixture.close(); proces
 		data, err := json.MarshalIndent(evidence, "", "  ")
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(directory, "oauth-ssh-cancellation.json"), data, 0o600))
+	}
+}
+
+func waitRuntimeOAuthCancelled(t *testing.T, ctx context.Context, subscription *codex.EventSubscription, name string) {
+	t.Helper()
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-subscription.Events():
+			if event.Method != "mcpServer/oauthLogin/completed" {
+				continue
+			}
+			var completed struct {
+				Name    string
+				Success bool
+			}
+			require.NoError(t, json.Unmarshal(event.Params, &completed))
+			if completed.Name != name {
+				continue
+			}
+			require.False(t, completed.Success, "客户端断开后适配器不能宣布授权成功")
+			return
+		case <-timeout:
+			t.Fatalf("%s 的取消未传到适配器", name)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
 	}
 }

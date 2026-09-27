@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
@@ -120,7 +121,10 @@ func (r *Hub) ServeOAuthCallback(ctx context.Context, host string, port uint32, 
 	defer func() { _ = stream.Close() }()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	stop := context.AfterFunc(ctx, func() { _ = stream.Close() })
+	upstream := &oauthUpstream{}
+	// 先断开适配器侧回调再关闭客户端通道：客户端看到回调终止时，适配器必定已收到断开，
+	// 之后迟到的 token 响应不会先于取消被提交。
+	stop := context.AfterFunc(ctx, func() { upstream.close(); _ = stream.Close() })
 	defer stop()
 	address, ok := oauthLoopbackAddress(host, strconv.FormatUint(uint64(port), 10))
 	if !ok {
@@ -175,7 +179,7 @@ func (r *Hub) ServeOAuthCallback(ctx context.Context, host string, port uint32, 
 	transport := &http.Transport{
 		Proxy: nil, DisableKeepAlives: true, ResponseHeaderTimeout: 25 * time.Second,
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", flow.address)
+			return upstream.dial(ctx, flow.address)
 		},
 	}
 	defer transport.CloseIdleConnections()
@@ -186,6 +190,41 @@ func (r *Hub) ServeOAuthCallback(ctx context.Context, host string, port uint32, 
 	defer func() { _ = response.Body.Close() }()
 	response.Close = true
 	return response.Write(stream)
+}
+
+var dialOAuthCallback = func(ctx context.Context, address string) (net.Conn, error) {
+	return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", address)
+}
+
+// oauthUpstream 记录转发到适配器的唯一回调连接，取消时由调用方同步关闭。
+type oauthUpstream struct {
+	mu     sync.Mutex
+	conn   net.Conn
+	closed bool
+}
+
+func (u *oauthUpstream) dial(ctx context.Context, address string) (net.Conn, error) {
+	conn, err := dialOAuthCallback(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.closed {
+		_ = conn.Close()
+		return nil, context.Canceled
+	}
+	u.conn = conn
+	return conn, nil
+}
+
+func (u *oauthUpstream) close() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.closed = true
+	if u.conn != nil {
+		_ = u.conn.Close()
+	}
 }
 
 func (r *Hub) finishOAuthCallbacks(event codex.Event) {
