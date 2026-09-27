@@ -133,7 +133,7 @@
       "method": "account/rateLimits/read",
       "engines": {
         "codex": "required",
-        "claude-code": "not-applicable"
+        "claude-code": "required"
       },
       "cases": {
         "codex": [],
