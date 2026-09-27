@@ -64,6 +64,13 @@ type Server struct {
 	http     *http.Server
 	nextID   atomic.Int64
 
+	// 原生 app-server 经单一 FIFO 发送队列输出，请求响应与其紧随的通知之间不会插入
+	// 其他服务端消息；outbound 让请求处理与外部 Emit/Server Request 按同一顺序串行输出，
+	// 并保护各连接的 subscriptions。
+	outbound sync.Mutex
+	// 仅供包内测试在响应写出后、后续通知写出前观察并发输出。
+	afterRespond atomic.Pointer[func()]
+
 	mu               sync.Mutex
 	connections      map[int64]*connection
 	threads          map[string]Thread
@@ -181,7 +188,9 @@ func (c *connection) readLoop() {
 		c.server.mu.Lock()
 		c.server.requestsByMethod[message.Method]++
 		c.server.mu.Unlock()
+		c.server.outbound.Lock()
 		c.handle(message)
+		c.server.outbound.Unlock()
 	}
 }
 
@@ -221,7 +230,7 @@ func (c *connection) handle(message Message) {
 			params.ReasoningEffort, params.ServiceTier)
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
-		c.server.broadcast(thread.ID, "thread/started", map[string]any{"thread": thread})
+		c.server.notifyLocked(thread.ID, "thread/started", map[string]any{"thread": thread})
 	case "thread/fork":
 		var params struct {
 			ThreadID string `json:"threadId"`
@@ -237,7 +246,7 @@ func (c *connection) handle(message Message) {
 			source.ReasoningEffort, source.ServiceTier)
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
-		c.server.broadcast(thread.ID, "thread/started", map[string]any{"thread": thread})
+		c.server.notifyLocked(thread.ID, "thread/started", map[string]any{"thread": thread})
 	case "thread/resume":
 		var params struct {
 			ThreadID string `json:"threadId"`
@@ -268,7 +277,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, map[string]any{})
-		c.server.broadcast(thread.ID, "thread/settings/updated", map[string]any{
+		c.server.notifyLocked(thread.ID, "thread/settings/updated", map[string]any{
 			"threadId":       thread.ID,
 			"threadSettings": threadSettings(thread),
 		})
@@ -284,7 +293,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, map[string]any{})
-		c.server.broadcast(thread.ID, "thread/name/updated", map[string]any{
+		c.server.notifyLocked(thread.ID, "thread/name/updated", map[string]any{
 			"threadId": thread.ID, "threadName": thread.Name,
 		})
 	case "thread/read":
@@ -316,7 +325,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, map[string]any{})
-		c.server.broadcast(thread.ID, "thread/archived", map[string]any{
+		c.server.notifyLocked(thread.ID, "thread/archived", map[string]any{
 			"threadId": thread.ID,
 		})
 	case "thread/unarchive":
@@ -330,7 +339,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, threadResponse(thread))
-		c.server.broadcast(thread.ID, "thread/unarchived", map[string]any{
+		c.server.notifyLocked(thread.ID, "thread/unarchived", map[string]any{
 			"threadId": thread.ID,
 		})
 	case "thread/unsubscribe":
@@ -352,7 +361,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, map[string]any{"turn": turn})
-		c.server.broadcast(params.ThreadID, "turn/started", map[string]any{
+		c.server.notifyLocked(params.ThreadID, "turn/started", map[string]any{
 			"threadId": params.ThreadID, "turn": turn,
 		})
 	case "turn/steer":
@@ -366,7 +375,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, map[string]any{"turnId": params.ExpectedTurnID})
-		c.server.broadcast(params.ThreadID, "item/started", map[string]any{
+		c.server.notifyLocked(params.ThreadID, "item/started", map[string]any{
 			"threadId": params.ThreadID, "turnId": params.ExpectedTurnID,
 			"item": map[string]any{"id": "steer-item", "type": "userMessage"},
 		})
@@ -382,7 +391,7 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		c.respond(message.ID, map[string]any{})
-		c.server.broadcast(params.ThreadID, "turn/completed", map[string]any{
+		c.server.notifyLocked(params.ThreadID, "turn/completed", map[string]any{
 			"threadId": params.ThreadID, "turn": turn,
 		})
 	default:
@@ -409,6 +418,9 @@ func threadSettings(thread Thread) map[string]any {
 
 func (c *connection) respond(id json.RawMessage, result any) {
 	c.write(map[string]any{"id": json.RawMessage(id), "result": result})
+	if hook := c.server.afterRespond.Load(); hook != nil {
+		(*hook)()
+	}
 }
 
 func (c *connection) respondError(id json.RawMessage, code int, message string) {
@@ -620,6 +632,18 @@ func (s *Server) broadcast(threadID, method string, params any) {
 }
 
 func (s *Server) broadcastMessage(threadID string, message any) {
+	s.outbound.Lock()
+	defer s.outbound.Unlock()
+	s.fanoutLocked(threadID, message)
+}
+
+// 调用方持有 outbound。
+func (s *Server) notifyLocked(threadID, method string, params any) {
+	s.fanoutLocked(threadID, map[string]any{"method": method, "params": params})
+}
+
+// 调用方持有 outbound。
+func (s *Server) fanoutLocked(threadID string, message any) {
 	s.mu.Lock()
 	connections := make([]*connection, 0, len(s.connections))
 	for _, item := range s.connections {
