@@ -57,6 +57,8 @@ const controlSuites = [
     cases: ['CHANNELS-001'], engines: ['claude-code'] },
   { name: 'bootstrap-codex-revert', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexRevertRealSSH',
     cases: ['SESSION-006'], engines: ['codex'] },
+  { name: 'bootstrap-codex-stdin', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexStdinApprovalRealSSH',
+    cases: ['APPROVAL-009'], engines: ['codex'] },
   { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',
     cases: ['MCP-014'], engines: ['claude-code'] },
   { name: 'bootstrap-claude-permissions', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudePermissionsRealSSH',
@@ -169,7 +171,8 @@ const xml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt
 let runtimeExecutions = ''
 const runtimeFailures = []
 const failedWindows = []
-const infrastructure = suites.some(suite => suite.name === 'bootstrap-control') ? await startControlInfrastructure() : undefined
+const infrastructure = suites.some(suite => suite.name === 'bootstrap-control')
+  ? await startControlInfrastructure({ evidenceDir: artifacts }) : undefined
 Object.assign(env, infrastructure?.env ?? {})
 try {
 for (const suite of suites) {

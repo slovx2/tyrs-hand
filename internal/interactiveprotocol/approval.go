@@ -53,6 +53,7 @@ func parseApprovalParams(raw json.RawMessage) (approvalParams, error) {
 }
 
 type approvalParams struct {
+	Kind               string            `json:"kind"`
 	Command            string            `json:"command"`
 	CWD                string            `json:"cwd"`
 	Reason             string            `json:"reason"`
@@ -80,6 +81,9 @@ func Questions(method string, params json.RawMessage) (json.RawMessage, error) {
 	title, detail := "命令审批", request.Command
 	if method == FileApproval {
 		title, detail = "文件修改审批", request.GrantRoot
+	} else if request.Kind == "writeStdin" {
+		title = "终端输入审批"
+		detail = "向正在运行的终端发送输入：\n" + request.Command
 	}
 	if request.CWD != "" {
 		detail += "\n目录：" + request.CWD

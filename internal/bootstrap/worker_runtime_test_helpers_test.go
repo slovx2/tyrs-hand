@@ -143,6 +143,9 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	if t.Name() == "TestWorkerControlPermissionsRealSSH" {
 		cases = []string{"PERMISSION-009"}
 	}
+	if t.Name() == "TestWorkerControlCodexStdinApprovalRealSSH" {
+		cases = []string{"APPROVAL-009"}
+	}
 	if t.Name() == "TestWorkerControlClaudePermissionsRealSSH" {
 		cases = []string{"PERMISSION-012"}
 	}

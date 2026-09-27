@@ -12,6 +12,20 @@ const titles = {
   accept: "允许本次", acceptForSession: "允许本会话", decline: "拒绝", cancel: "取消回合",
 } as const;
 
+export function approvalDescription(request: ApprovalRequest) {
+  if (request.method === "item/fileChange/requestApproval") {
+    return { title: "文件修改审批", detail: request.params.reason ?? "AI 请求修改文件",
+      location: request.params.grantRoot, reason: null };
+  }
+  const stdin = request.params.kind === "writeStdin";
+  return {
+    title: stdin ? "终端输入审批" : "命令审批",
+    detail: request.params.command ?? (stdin ? "AI 请求向正在运行的终端发送输入" : "AI 请求执行命令"),
+    location: request.params.cwd,
+    reason: request.params.reason,
+  };
+}
+
 // 没有决策列表时使用协议内的显式选择；空列表表示没有可用选择。
 export function approvalActions(request: ApprovalRequest): ApprovalAction[] {
   const available = request.method === "item/commandExecution/requestApproval"

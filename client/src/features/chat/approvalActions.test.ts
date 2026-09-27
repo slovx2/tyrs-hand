@@ -1,7 +1,7 @@
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
 import { describe, expect, it } from "vitest";
 
-import { approvalActions } from "./approvalActions";
+import { approvalActions, approvalDescription } from "./approvalActions";
 
 type CommandRequest = Extract<ServerRequest, { method: "item/commandExecution/requestApproval" }>;
 function command(params: Partial<CommandRequest["params"]> = {}): CommandRequest {
@@ -12,6 +12,17 @@ function command(params: Partial<CommandRequest["params"]> = {}): CommandRequest
 }
 
 describe("手机原生审批选择", () => {
+  it("终端输入与启动命令分别展示，并保留输入、原因及原生决策", () => {
+    const request = command({ kind: "writeStdin", command: "write_stdin 123 'printf ok\n'",
+      cwd: "/tmp/project", reason: "终端仍持有上一回合权限", availableDecisions: ["accept", "cancel"] });
+    expect(approvalDescription(request)).toEqual({ title: "终端输入审批",
+      detail: request.params.command, location: "/tmp/project", reason: request.params.reason });
+    expect(approvalDescription(command()).title).toBe("命令审批");
+    expect(approvalDescription(command({ kind: "writeStdin", command: null })).detail)
+      .toBe("AI 请求向正在运行的终端发送输入");
+    expect(approvalActions(request).map((action) => action.decision)).toEqual(["accept", "cancel"]);
+  });
+
   it("保留原生允许的顺序，不展示未授权的允许按钮", () => {
     const actions = approvalActions(command({ availableDecisions: ["cancel", "decline"] }));
     expect(actions.map((action) => action.decision)).toEqual(["cancel", "decline"]);

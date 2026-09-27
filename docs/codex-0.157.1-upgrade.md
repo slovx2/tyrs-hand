@@ -33,6 +33,16 @@
 
 ## Phase 2：原生回退与 Control 替换
 
+### 终端输入审批与首次建帖死锁（2026-09-27）
+
+- 手机卡片和 Control/Discord 问题按原生 kind=writeStdin 显示“终端输入审批”，保留真实命令、输入、原因、目录和原生可选决策。
+- APPROVAL-009 已实现并登记真实矩阵：官方 CLI 启动 PTY，在后续回合降为只读，产生独立 stdin 审批；取消后无续写和副作用，允许后只写入一次。两个回调共享终端 itemId，但 approvalId 不同；Control 原样保存请求参数与回答，Discord 卡片含审批类型。
+- 原生 writeStdin 在该场景仅提供 accept/cancel，不伪造 decline。测试断言原生 interrupted 与 Control canceled 一致，后续回合仍使用同一真实终端。
+- 新验收连续两次复现 PostgreSQL 死锁。数据库日志明确显示首次建帖持有 Control 等 intent，而 ConfirmTurn 持有 intent 等 Control。提交、确认、完成和对账现在先经 fence 锁 Control，再锁 intent/run，未添加盲重试。
+- 确定性真实数据库回归使用锁等待和 NOWAIT：通过 Go overlay 编译旧源码时四条路径全部失败，当前源码全部通过；迟到确认不重开终态的旧回归也通过。
+- 最终真实组合通过：stdin 审批、原生回退/替换、双引擎 Control 和三端接力；数据库日志无死锁。Go 相关 race、integration-tag 改动 lint（0 issues）、客户端类型检查/改动 lint、审批测试 5/5 与协议契约测试 18/18 通过。
+- 证据：.local/validation/2026-09-27-codex-phase2/control-stdin-deadlock-evidence/、submission-lock-old-baseline/、submission-lock-fixed-v2/、stdin-lock-combination/。临时 Control 数据库日志现在随矩阵保留，便于核查锁等待。
+
 ### 恢复与迁移补充（2026-09-27）
 
 - 官方 0.157.1 的 Unix 监听入口已变为符号链接，原夹具按 lstat().isSocket() 判断导致提前退出。仅对 Codex 录制器入口支持该原生形式，仍拒绝普通文件及活监听；物理 socket 留给官方 CLI 回收。
@@ -94,7 +104,7 @@ PostgreSQL 就绪探测改为 127.0.0.1 TCP。事实是一次本地数据库初�
 
 1. 本轮回退改动仍需由新一轮全量 CI/matrix 验证；修复剩余 events、approvals 等旧 shell 工具夹具，保留实际事件和副作用断言。
 2. `thread/queue/start` 已分类 controlled，但 Controller 仍需接入真实生命周期；Claude 新接口仍需实现及执行证据，不能将分类当成已实现。
-3. `kind=writeStdin` 审批卡片和审计区分；Go 侧 openaiForm 归一化、用户身份验证的可信完成/拒绝链路。
+3. writeStdin 已在本地真实链路完成，需由最终矩阵复验；Go 侧 openaiForm 归一化、用户身份验证的可信完成/拒绝链路仍未完成。
 4. 新增 ThreadItem、HookMetadata、图片 fileId、异步问题等需要完整跨端行为验收，当前类型检查通过不等于能力验收。
 5. MCP019 已在本地真实关闭，需由完整 matrix 复验；MCP017、REVIEW006 仍是已知上游阻塞，本轮未再定向复测，不制作自编译 CLI。
 6. Android 构建与模拟器错峰，排除 device offline 后复现 database is locked；iOS 继续暂缓。

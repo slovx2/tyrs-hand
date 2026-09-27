@@ -6,7 +6,7 @@ import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 import { traceInteraction } from "@/preview/perf";
 
-import { approvalActions } from "./approvalActions";
+import { approvalActions, approvalDescription } from "./approvalActions";
 import { McpElicitationCard } from "./McpElicitationCard";
 
 export function ServerRequestCard({ request, onAnswer }: {
@@ -32,14 +32,11 @@ function ActiveServerRequest({ request, onAnswer }: {
   const approval = request.method === "item/commandExecution/requestApproval" ||
     request.method === "item/fileChange/requestApproval";
   if (approval) {
-    const title = request.method === "item/commandExecution/requestApproval"
-      ? request.params.command ?? request.params.reason ?? "AI 请求执行命令"
-      : request.params.reason ?? "AI 请求修改文件";
+    const { title, detail, location, reason } = approvalDescription(request);
     const actions = approvalActions(request);
-    const location = request.method === "item/commandExecution/requestApproval"
-      ? request.params.cwd : request.params.grantRoot;
     return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
-      <Title>需要确认</Title><Muted selectable>{title}</Muted>
+      <Title>{title}</Title><Muted selectable>{detail}</Muted>
+      {reason && <Muted selectable>原因：{reason}</Muted>}
       {location && <Muted selectable>目录：{location}</Muted>}
       {request.method === "item/commandExecution/requestApproval" && request.params.additionalPermissions &&
         <Muted selectable>额外权限：{JSON.stringify(request.params.additionalPermissions)}</Muted>}

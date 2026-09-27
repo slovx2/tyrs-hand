@@ -1473,7 +1473,8 @@
       },
       "cases": {
         "codex": [
-          "APPROVAL-008"
+          "APPROVAL-008",
+          "APPROVAL-009"
         ],
         "claude-code": [
           "PLAN-003",

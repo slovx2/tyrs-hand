@@ -1,18 +1,26 @@
-import { execFileSync, fork } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync, fork, spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const postgres = 'postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba'
 const redis = 'redis:8.4.0-bookworm@sha256:c22af04bb576503bf16b3e34a1fd2fd82de0f765afd866d2e380145e0af30d78'
 
-export async function startControlInfrastructure() {
+export async function startControlInfrastructure({ evidenceDir } = {}) {
   const root = mkdtempSync('/tmp/tyrs-protocol-db-')
   const containers = []
   let proxy
   const docker = args => execFileSync('docker', args, { encoding: 'utf8', timeout: 120_000 }).trim()
   const close = () => {
     proxy?.kill('SIGTERM')
+    if (evidenceDir) {
+      mkdirSync(evidenceDir, { recursive: true })
+      for (const [index, id] of containers.entries()) {
+        const log = spawnSync('docker', ['logs', id], { encoding: 'utf8', timeout: 10_000 })
+        writeFileSync(resolve(evidenceDir, index === 0 ? 'postgres.log' : 'redis.log'),
+          (log.stdout ?? '') + (log.stderr ?? ''), { mode: 0o600 })
+      }
+    }
     for (const id of containers.reverse()) {
       try { docker(['rm', '-f', id]) } catch (error) { console.error('清理临时数据库失败:', error.message) }
     }

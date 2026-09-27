@@ -1020,8 +1020,11 @@ func (r *Repository) ReplySatisfied(ctx context.Context, claimed *ClaimedControl
 
 func (r *Repository) fence(ctx context.Context, tx *sql.Tx, claimed *ClaimedControl) error {
 	var exists bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_runs
-		WHERE id=$1 AND control_id=$2 AND primary_intent_id=$3 AND worker_id IS NOT NULL)`,
+	// 与 Desktop 投影及领取保持 control -> intent -> run 顺序，避免确认回合与首次建帖互锁。
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_runs run
+		JOIN codex_thread_controls control ON control.id=run.control_id
+		WHERE run.id=$1 AND run.control_id=$2 AND run.primary_intent_id=$3
+		AND run.worker_id IS NOT NULL FOR UPDATE OF control)`,
 		claimed.RunID, claimed.ControlID, claimed.ID).Scan(&exists)
 	if err != nil {
 		return err

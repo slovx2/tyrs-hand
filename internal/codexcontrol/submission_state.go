@@ -8,7 +8,7 @@ import (
 
 var ErrSubmissionConflict = errors.New("提交或 Turn 标识与已登记记录冲突")
 
-// 与终态写入保持 intent -> run 的加锁顺序，迟到确认不得把终态重新变成 running。
+// 调用方先经 fence 锁定 control，再按 intent -> run 加锁；迟到确认不得重开终态。
 func lockSubmissionState(ctx context.Context, tx *sql.Tx, claimed *ClaimedControl, value string, confirming bool) (bool, error) {
 	var intentStatus, runStatus string
 	var submission, confirmed sql.NullString
