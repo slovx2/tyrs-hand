@@ -85,6 +85,8 @@ func (f *runtimeCodexApprovalFixture) model(t *testing.T, w http.ResponseWriter,
 		switch {
 		case scenario == "question-answer":
 			require.JSONEq(t, `{"answers":{"confirm":{"answers":["Yes"]}}}`, output)
+		case scenario == "command-accept":
+			require.Contains(t, output, "Process exited with code 0", "真实 exec_command 必须执行成功")
 		case strings.HasSuffix(scenario, "accept"):
 			require.Contains(t, output, "Exit code: 0", "真实工具必须执行成功")
 		case strings.HasPrefix(scenario, "patch"):
@@ -97,7 +99,7 @@ func (f *runtimeCodexApprovalFixture) model(t *testing.T, w http.ResponseWriter,
 			"content": []map[string]string{{"type": "output_text", "text": "CODEX_APPROVAL_DONE"}},
 		}})
 	} else {
-		tool := "shell_command"
+		tool := "exec_command"
 		if strings.HasPrefix(scenario, "question") {
 			tool = "request_user_input"
 		} else if strings.HasPrefix(scenario, "patch") {
@@ -122,7 +124,7 @@ func (f *runtimeCodexApprovalFixture) model(t *testing.T, w http.ResponseWriter,
 			item["input"] = patch
 			event("response.output_item.done", map[string]any{"output_index": 0, "item": item})
 		} else {
-			args := map[string]any{"command": "printf '" + scenario + "\\n' > " + path, "workdir": filepath.Join(f.root, "project")}
+			args := map[string]any{"cmd": "printf '" + scenario + "\\n' > " + path, "workdir": filepath.Join(f.root, "project"), "yield_time_ms": 10000}
 			if tool == "request_user_input" {
 				args = map[string]any{"questions": []map[string]any{{"id": "confirm", "header": "Confirm", "question": "Continue?",
 					"options": []map[string]string{{"label": "Yes", "description": "Continue"}, {"label": "No", "description": "Stop"}}}}}
@@ -169,7 +171,7 @@ func verifyRuntimeCodexApprovals(t *testing.T, ctx context.Context, connection *
 			thread := readSessionThread(t, ctx, client, "thread/start", map[string]any{
 				"cwd": filepath.Join(fixture.root, "project"), "model": "gpt-5.4", "approvalPolicy": "untrusted", "sandbox": sandbox,
 				// mock-model 没有原生 freeform apply_patch。模型只决定 CLI 工具目录，provider 始终是回环 Mock。
-				"config": map[string]any{"features.unified_exec": false, "features.apply_patch_streaming_events": true},
+				"config": map[string]any{"features.apply_patch_streaming_events": true},
 			})
 			events := client.Subscribe(codex.ThreadFilter{ThreadID: thread.ID})
 			defer events.Close()

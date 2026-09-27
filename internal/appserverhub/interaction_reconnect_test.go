@@ -30,8 +30,24 @@ func TestHubPendingInteractionSurvivesDesktopReconnect(t *testing.T) {
 			second := connectDesktop(t, hub.SocketPath())
 			second.initialize(t, 1)
 			second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume", Params: mustJSON(map[string]any{"threadId": threadID})})
-			require.Nil(t, second.response(t, rawID(2)).Error)
-			resumed := second.serverRequest(t, method)
+			// 恢复订阅后审批可先于 resume 响应到达，等待响应时不能丢弃它。
+			require.NoError(t, second.ws.SetReadDeadline(time.Now().Add(5*time.Second)))
+			var resumed rpcMessage
+			responseSeen := false
+			for !responseSeen || len(resumed.ID) == 0 {
+				var message rpcMessage
+				require.NoError(t, second.ws.ReadJSON(&message))
+				if message.Method == "" && string(message.ID) == string(rawID(2)) {
+					require.False(t, responseSeen)
+					require.Nil(t, message.Error)
+					responseSeen = true
+				}
+				if message.Method == method && len(message.ID) > 0 {
+					require.Empty(t, resumed.ID, "重连后的审批只能投递一次")
+					resumed = message
+				}
+			}
+			require.NoError(t, second.ws.SetReadDeadline(time.Time{}))
 			require.JSONEq(t, string(old.ID), string(resumed.ID))
 			require.JSONEq(t, string(old.Params), string(resumed.Params))
 			answer := map[string]any{"decision": "accept"}

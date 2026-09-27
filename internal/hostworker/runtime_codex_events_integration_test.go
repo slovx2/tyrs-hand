@@ -61,17 +61,19 @@ func (f *runtimeCodexEventsFixture) model(t *testing.T, w http.ResponseWriter, b
 		require.NoError(t, json.Unmarshal(body, &request))
 		available := false
 		for _, tool := range request.Tools {
-			available = available || tool.Name == "shell_command"
+			available = available || tool.Name == "exec_command"
 		}
-		require.True(t, available, "必须使用固定 CLI 实际声明的 shell_command")
-		command := "printf 'CMD_A\\n'; sleep 0.1; printf 'CMD_B\\n'; printf 'EVENT_EFFECT\\n' > event-effect.txt"
+		require.True(t, available, "必须使用固定 CLI 实际声明的 exec_command")
+		// 客户端实际收到命令开始后才放行输出，确保验收运行中的流而非短命令终态快照。
+		command := "stty -onlcr; while [ ! -f event-stream-ready ]; do sleep 0.01; done; printf 'CMD_A\\n'; sleep 0.1; printf 'CMD_B\\n'; printf 'EVENT_EFFECT\\n' > event-effect.txt"
 		if step == 5 {
 			// Codex 原生识别 shell 中的 apply_patch，产生真实文件补丁事件。
 			command = "apply_patch <<'PATCH'\n*** Begin Patch\n*** Add File: event-patch.txt\n+PATCH_EFFECT\n*** End Patch\nPATCH"
 		}
-		args, err := json.Marshal(map[string]any{"command": command, "workdir": filepath.Join(f.root, "project")})
+		args, err := json.Marshal(map[string]any{"cmd": command, "workdir": filepath.Join(f.root, "project"),
+			"yield_time_ms": 10000, "tty": step == 3})
 		require.NoError(t, err)
-		event("response.output_item.done", map[string]any{"item": map[string]any{"type": "function_call", "name": "shell_command",
+		event("response.output_item.done", map[string]any{"item": map[string]any{"type": "function_call", "name": "exec_command",
 			"call_id": "native-event-tool", "arguments": string(args)}})
 	} else {
 		if step == 4 || step == 6 {
@@ -146,8 +148,7 @@ func verifyCodexNativeEvents(t *testing.T, ctx context.Context, client *codex.So
 			thread := readSessionThread(t, ctx, client, "thread/start", map[string]any{
 				"cwd": filepath.Join(fixture.root, "project"), "approvalPolicy": "never", "sandbox": "danger-full-access",
 				"historyMode": "paginated",
-				// shell_command 的原生执行器发出输出 delta；unified_exec 的短命令仅发终态。
-				"config": map[string]any{"show_raw_agent_reasoning": true, "features.unified_exec": false}})
+				"config":      map[string]any{"show_raw_agent_reasoning": true}})
 			events := client.Subscribe(codex.ThreadFilter{ThreadID: thread.ID})
 			defer events.Close()
 			params := map[string]any{"threadId": thread.ID,
@@ -219,6 +220,9 @@ func verifyNativeEventTurn(t *testing.T, ctx context.Context, client *codex.Sock
 				require.True(t, started)
 				require.NotContains(t, starts, params.Item.ID)
 				starts[params.Item.ID] = params.Item.Type
+				if scenario == "command" && params.Item.Type == "commandExecution" {
+					require.NoError(t, os.WriteFile(filepath.Join(root, "project", "event-stream-ready"), []byte("ready\n"), 0o600))
+				}
 			case "item/completed":
 				require.Equal(t, params.Item.Type, starts[params.Item.ID], "必须先收到同一 Item 的开始事件")
 				require.NotContains(t, ends, params.Item.ID)

@@ -89,7 +89,20 @@ func (f *runtimeCodexMcpFixture) model(t *testing.T, w http.ResponseWriter, requ
 			continue
 		}
 		var output string
-		require.NoError(t, json.Unmarshal(input.Output, &output))
+		if scenario.name == "stdio-write" {
+			// structuredContent 优先回模为 JSON 字符串；真实结果不能按内容数组解析。
+			require.NoError(t, json.Unmarshal(input.Output, &output))
+		} else {
+			var parts []struct{ Type, Text string }
+			require.NoError(t, json.Unmarshal(input.Output, &parts), "实际工具结果：%s", input.Output)
+			require.NotEmpty(t, parts)
+			var result strings.Builder
+			for _, part := range parts {
+				require.Equal(t, "input_text", part.Type)
+				result.WriteString(part.Text)
+			}
+			output = result.String()
+		}
 		_, repeated := f.outputs.LoadOrStore(scenario.name, true)
 		require.False(t, repeated, "一个真实工具结果只能回模一次")
 		switch scenario.name {

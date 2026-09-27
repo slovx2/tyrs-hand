@@ -66,12 +66,12 @@ docker run --detach --name "${redis_name}" \
   redis:8.4.0-bookworm@sha256:c22af04bb576503bf16b3e34a1fd2fd82de0f765afd866d2e380145e0af30d78 >/dev/null
 
 for _ in $(seq 1 60); do
-  if docker exec "${postgres_name}" pg_isready -U tyrs_hand -d tyrs_hand_test >/dev/null 2>&1; then
+  if docker exec "${postgres_name}" pg_isready -h 127.0.0.1 -U tyrs_hand -d tyrs_hand_test >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-docker exec "${postgres_name}" pg_isready -U tyrs_hand -d tyrs_hand_test >/dev/null
+docker exec "${postgres_name}" pg_isready -h 127.0.0.1 -U tyrs_hand -d tyrs_hand_test >/dev/null
 
 for _ in $(seq 1 60); do
   if docker exec "${redis_name}" redis-cli ping 2>/dev/null | grep -q PONG; then
@@ -89,7 +89,19 @@ export TEST_REDIS_URL="redis://127.0.0.1:${redis_port}/1"
 pnpm --dir web install --frozen-lockfile
 make ci
 
-e2e_port="${TYRS_HAND_LOCAL_E2E_PORT:-18080}"
+# 默认申请空闲回环端口；显式端口也先验证，避免撞到其他本地服务并误验收。
+e2e_port="$(node --input-type=module - "${TYRS_HAND_LOCAL_E2E_PORT:-0}" <<'JS'
+import { createServer } from 'node:net'
+const port = Number(process.argv[2])
+if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('本地 E2E 端口无效')
+const probe = createServer()
+probe.on('error', error => { console.error('本地 E2E 端口不可用:', error.code); process.exitCode = 1 })
+probe.listen({ host: '127.0.0.1', port }, () => {
+  console.log(probe.address().port)
+  probe.close()
+})
+JS
+)"
 export TYRS_HAND_DATABASE_URL="${TEST_DATABASE_URL}"
 export TYRS_HAND_REDIS_URL="${TEST_REDIS_URL}"
 export TYRS_HAND_HTTP_ADDR="127.0.0.1:${e2e_port}"
@@ -104,12 +116,12 @@ go build -o "${server_bin}" ./cmd/tyrs-hand-server
 "${server_bin}" >"${server_log}" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do
-  if curl --fail --silent "${E2E_BASE_URL}/healthz" >/dev/null; then
-    break
-  fi
   if ! kill -0 "${server_pid}" 2>/dev/null; then
     echo "本地 E2E Server 提前退出。" >&2
     exit 1
+  fi
+  if curl --fail --silent "${E2E_BASE_URL}/healthz" >/dev/null && kill -0 "${server_pid}" 2>/dev/null; then
+    break
   fi
   sleep 1
 done

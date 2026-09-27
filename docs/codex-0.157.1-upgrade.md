@@ -17,6 +17,20 @@
 
 适配器提交：`25bf4ee06b2daee45bc3d36e81837f6d248f0877`。
 
+## 完整测试推进（2026-09-27，优先于下文历史验证）
+
+- 完整 `make ci-local` 通过，包括生成检查、lint、前端测试、Go 单测/race/集成测试、手机 SSH、80.6% 核心覆盖率、构建、Android JS export 和浏览器 E2E 5/5；这不代表 Android 真机或协议完整覆盖通过。
+- 首次完整运行只在浏览器服务启动时撞到已有本地服务的 18080 端口；未停止该服务。脚本改为申请空闲回环端口、检查本轮服务进程，第二次完整执行退出码为 0。
+- Codex 审批与并行审批切换到 CLI 实际声明的 exec_command，校验真实命令输出、审批回答和文件副作用；两引擎并行专项通过。
+- Codex 事件使用真实 PTY 命令，客户端收到 item/started 后释放文件屏障，再验证 outputDelta、终态聚合、补丁、历史和实际文件；四场景全部通过。短命令终态输出存在但无流分片已保留为失败证据，未伪造事件。
+- MCP 八场景通过：普通 MCP 内容按 input_text 数组解析，含 structuredContent 的 stdio-write 按真实字符串解析，保留管理、表单/URL 接受/拒绝/取消、副作用与重载隔离断言。
+- 组合真实 SSH 验收七专项通过：events、MCP、approvals、parallel-approvals、permission-grants、files、Claude event-gaps。全部使用临时 HOME、虚拟凭据与回环 Mock LLM。
+- 324501c 的常规 CI 36313951393 失败于审批重连测试等待超时；代码检查发现等待 resume 响应时会丢弃提前到达的审批。改为同时接收两者且设置读超时，修后 race 重复 200 次及全 Hub race 通过。原用例本地 100 次未复现，不能将 CI 根因推测写成直接复现。
+- 同提交协议 CI 36313951469 已结束：Control 与 macOS 15 loopback 通过，Linux/macOS 14 协议矩阵失败。macOS 14 的文件上传、权限和 Claude readonly 日志记录回环连接 EPERM；对应本地组合通过，但尚不能认定 CI 环境问题已消除。
+- `releaseReady=false`，生产未变。完整矩阵、新能力、上游 MCP017/REVIEW006、迁移/故障与 Android 门禁仍需完成。
+
+证据：`.local/validation/2026-09-27-release-goal/`（完整 CI、失败 CI、重连回归）及 `.local/validation/2026-09-27-codex-phase2/acceptance-fixtures-final/`（七专项组合）。
+
 ## Phase 2：原生回退与 Control 替换
 
 - Codex 的数量回退先通过原生降序分页解析明确的 beforeTurnId，再调用 thread/revert；legacy 明确拒绝。Claude 继续使用自己的原生 rollback。
