@@ -109,15 +109,33 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 }
 
 func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
+	runID, inputID := uuid.New(), uuid.New()
 	var eventsAvailable atomic.Bool
 	var acceptedEvents atomic.Int64
 	var completed atomic.Int64
 	var heartbeats atomic.Int64
+	var registrations atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
 		unwrapWorkerTestRequest(t, request)
+		if request.URL.Path == "/worker/v1/inputs/decide" {
+			var decision workerprotocol.InputDecisionRequest
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&decision))
+			require.Equal(t, inputID, decision.InputID)
+			require.Equal(t, runID, decision.RunID)
+			require.Equal(t, "start", decision.Action)
+			registrations.Add(1)
+			response.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if request.URL.Path == "/worker/v1/runs/"+runID.String()+"/heartbeat" {
+			heartbeats.Add(1)
+			require.NoError(t, json.NewEncoder(response).Encode(workerprotocol.RunHeartbeatResponse{}))
+			return
+		}
 		if strings.HasSuffix(request.URL.Path, "/complete") {
+			require.EqualValues(t, 1, registrations.Load(), "终态前必须成功登记 Run")
 			completed.Add(1)
 			response.WriteHeader(http.StatusNoContent)
 			return
@@ -131,8 +149,8 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 			http.Error(response, "control unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		heartbeats.Add(1)
-		http.Error(response, "run finished", http.StatusConflict)
+		t.Errorf("意外请求 %s", request.URL.Path)
+		http.NotFound(response, request)
 	}))
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
@@ -144,7 +162,8 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn.started"}},
 		Result:        &codexcontrol.TurnResult{FinalAnswer: "done"}}
 	journal.Task.Snapshot.Runtime.Engine = "codex"
-	journal.Task.Claimed.RunID = uuid.New()
+	journal.Task.Claimed.RunID = runID
+	journal.Task.Claimed.ID = inputID
 	journal.Task.Claimed.LeaseToken = "lease"
 	journal.Task.Claimed.LeaseEpoch = 1
 	require.NoError(t, store.save(journal))
@@ -175,6 +194,7 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	require.EqualValues(t, 1, completed.Load(), "补发事件时不能重复提交终态")
 	require.EqualValues(t, 1, heartbeats.Load(),
 		"首次终态提交前只补报一次 Run，恢复已确认终态时不能重复同步")
+	require.EqualValues(t, 1, registrations.Load(), "恢复已确认终态时只补发事件，不重复登记")
 	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }

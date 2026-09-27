@@ -91,7 +91,7 @@ func (r *Hub) desktopToolOwner(ctx context.Context, threadID, turnID string) (*s
 			}
 		}
 		if !found && wait == nil {
-			if reviews := r.reviewWaitsLocked(threadID); len(reviews) > 0 {
+			if starts := r.threadStartWaitsLocked(threadID); len(starts) > 0 {
 				if r.interactionChanged == nil {
 					r.interactionChanged = make(chan struct{})
 				}

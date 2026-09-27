@@ -22,20 +22,23 @@ type Hub struct {
 	listener       net.Listener
 	httpServer     *http.Server
 
-	mu                 sync.Mutex
-	sessions           map[int64]*session
-	interactionChanged chan struct{}
-	toolThreads        map[string]*toolThreadState
-	ephemeralThreads   map[string]bool
-	archiveOperations  map[string]*archiveOperation
-	resources          map[string]connectionResource
-	oauthCallbacks     map[string]oauthCallback
-	reviewStarts       map[*pendingReviewStart]bool
-	reviewChanged      chan struct{}
-	nextID             atomic.Int64
-	closed             bool
-	stats              Stats
-	done               chan struct{}
+	mu                      sync.Mutex
+	sessions                map[int64]*session
+	interactionChanged      chan struct{}
+	toolThreads             map[string]*toolThreadState
+	ephemeralThreads        map[string]bool
+	knownThreads            map[string]bool
+	unclassifiedThreadGuard bool
+	unclassifiedEvents      []unclassifiedThreadEvent
+	archiveOperations       map[string]*archiveOperation
+	resources               map[string]connectionResource
+	oauthCallbacks          map[string]oauthCallback
+	threadStarts            map[*pendingThreadStart]bool
+	threadStartsChanged     chan struct{}
+	nextID                  atomic.Int64
+	closed                  bool
+	stats                   Stats
+	done                    chan struct{}
 }
 
 func Start(ctx context.Context, options Options) (*Hub, error) {
@@ -55,12 +58,13 @@ func Start(ctx context.Context, options Options) (*Hub, error) {
 		options.EventBacklog = 4096
 	}
 	hub := &Hub{options: options, sessions: make(map[int64]*session),
-		interactionChanged: make(chan struct{}),
-		toolThreads:        make(map[string]*toolThreadState),
-		reviewStarts:       make(map[*pendingReviewStart]bool),
-		reviewChanged:      make(chan struct{}, 1),
-		ephemeralThreads:   make(map[string]bool),
-		archiveOperations:  make(map[string]*archiveOperation), done: make(chan struct{})}
+		interactionChanged:  make(chan struct{}),
+		toolThreads:         make(map[string]*toolThreadState),
+		threadStarts:        make(map[*pendingThreadStart]bool),
+		threadStartsChanged: make(chan struct{}, 1),
+		ephemeralThreads:    make(map[string]bool),
+		knownThreads:        make(map[string]bool),
+		archiveOperations:   make(map[string]*archiveOperation), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
 		SocketPath: options.UpstreamSocketPath, RequestTimeout: options.RequestTimeout,
 		ServerRequestTimeout: options.ServerRequestTimeout, EventBacklog: options.EventBacklog,

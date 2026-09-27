@@ -98,6 +98,16 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 	}
 	var result json.RawMessage
 	var upstreamErr error
+	var pendingStart *pendingThreadStart
+	if method == "thread/start" || method == "thread/fork" || method == "thread/resume" {
+		threadID, _ := threadScope(plan.Params)
+		pendingStart = r.beginThreadStart(threadID, ephemeral)
+		// 先关联订阅、临时会话和工具执行端，再释放响应前到达的通知。
+		defer r.finishThreadStart(pendingStart)
+		var cancel context.CancelFunc
+		ctx, cancel = requestContext(ctx, r.options.RequestTimeout)
+		defer cancel()
+	}
 	if method == "thread/archive" && !ephemeral {
 		var gate func(context.Context) error
 		if controlled {
@@ -167,6 +177,9 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			r.subscribeCreatedThread(source, threadID, ephemeral)
 		}
 		r.bindDesktopTools(source, threadID, result)
+		r.classifyThreadPrivacy(threadID, ephemeral)
+		r.rememberThread(threadID)
+		pendingStart.threadID = threadID
 		r.signalInteractionChange()
 	}
 	if controlled {
@@ -257,7 +270,10 @@ func (r *Hub) anyDesktopSubscribed(threadID string) bool {
 }
 
 func (r *Hub) forwardEvents() {
-	var held []heldReviewEvent
+	var held []heldThreadEvent
+	// 隔离到期不依赖新流量；最多多等待一秒检查周期。
+	cleanup := time.NewTicker(min(r.options.RequestTimeout, time.Second))
+	defer cleanup.Stop()
 	for {
 		var event codex.Event
 		select {
@@ -271,23 +287,40 @@ func (r *Hub) forwardEvents() {
 				return
 			}
 			event = next
-		case <-r.reviewChanged:
+		case <-r.threadStartsChanged:
+		case <-cleanup.C:
 		case <-r.done:
 			return
 		}
-		held = r.flushReviewEvents(held)
+		// 元数据即使排在正文之后，也必须先用于隐私分类；取消不能按旧分类释放正文。
+		if event.Method == "thread/started" {
+			threadID, _ := threadScope(event.Params)
+			if private, present := threadPrivacyFromMetadata(event.Params); present {
+				r.classifyThreadPrivacy(threadID, private)
+			}
+		}
+		if event.Method == "thread/closed" || event.Method == "thread/deleted" {
+			threadID, _ := threadScope(event.Params)
+			r.discardUnclassifiedEvents(threadID)
+		}
+		held = r.flushThreadEvents(held)
+		r.flushUnclassifiedEvents()
 		if event.Method == "" {
 			continue
 		}
-		if waits := r.reviewEventWaits(event, held); len(waits) > 0 {
+		if waits := r.threadEventWaits(event, held); len(waits) > 0 {
+			if r.shouldQuarantine(event, waits) {
+				r.quarantineThreadEvent(event, waits)
+				continue
+			}
 			if len(held) >= r.options.EventBacklog {
-				r.shutdown(errors.New("审查启动事件缓存已满"))
+				r.shutdown(errors.New("会话启动事件缓存已满"))
 				return
 			}
-			held = append(held, heldReviewEvent{event: event, waits: waits})
+			held = append(held, heldThreadEvent{event: event, waits: waits})
 			continue
 		}
-		r.forwardEvent(event)
+		r.forwardOrQuarantine(event, nil)
 	}
 }
 
@@ -295,6 +328,9 @@ func (r *Hub) forwardEvent(event codex.Event) {
 	r.finishOAuthCallbacks(event)
 	r.updateToolTurn(event)
 	threadID, _ := threadScope(event.Params)
+	if event.Method == "thread/started" {
+		r.rememberThread(threadID)
+	}
 	switch event.Method {
 	case "turn/started", "turn/completed", "thread/archived", "thread/unarchived":
 		r.signalLifecycle(threadID)
@@ -324,6 +360,16 @@ func (r *Hub) forwardEvent(event codex.Event) {
 		if err := item.publish(event); err != nil {
 			r.removeSession(item)
 		}
+	}
+	if event.Method == "thread/closed" || event.Method == "thread/deleted" {
+		r.mu.Lock()
+		if r.ephemeralThreads[threadID] {
+			// 释放 ID 记录后仍拒绝把迟到的未知事件当成普通会话广播。
+			r.unclassifiedThreadGuard = true
+		}
+		delete(r.knownThreads, threadID)
+		delete(r.ephemeralThreads, threadID)
+		r.mu.Unlock()
 	}
 }
 

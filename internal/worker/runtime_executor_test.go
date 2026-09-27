@@ -52,6 +52,7 @@ func TestRunnerDispatchesBothEnginesOnceWithSharedBudget(t *testing.T) {
 	decided := map[runtimeidentity.Engine]bool{}
 	completed := map[runtimeidentity.Engine]int{}
 	events := map[runtimeidentity.Engine]int{}
+	threads := map[runtimeidentity.Engine]int{}
 	// 刻意复用所有协议 ID；执行及补报只能按入口引擎路由。
 	task := coordinatorTask(uuid.New(), uuid.New(), uuid.New(), "same-thread", 5)
 	task.Claimed.SourceType = codexcontrol.SourceWorkspace
@@ -73,7 +74,15 @@ func TestRunnerDispatchesBothEnginesOnceWithSharedBudget(t *testing.T) {
 		case req.URL.Path == "/worker/v1/inputs/decide":
 			decided[engine] = true
 			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(req.URL.Path, "/thread"):
+			var identity workerprotocol.SetThreadRequest
+			require.NoError(t, json.NewDecoder(req.Body).Decode(&identity))
+			require.Equal(t, "same-thread", identity.ThreadID)
+			require.True(t, decided[engine], "身份补报必须晚于同一引擎登记")
+			threads[engine]++
+			w.WriteHeader(http.StatusNoContent)
 		case strings.HasSuffix(req.URL.Path, "/complete"):
+			require.Positive(t, threads[engine], "终态前必须补报同一引擎原生身份")
 			completed[engine]++
 			w.WriteHeader(http.StatusNoContent)
 		case strings.HasSuffix(req.URL.Path, "/events"):
@@ -145,6 +154,7 @@ func TestRunnerDispatchesBothEnginesOnceWithSharedBudget(t *testing.T) {
 		require.Empty(t, stored, "终态确认后必须删除对应引擎的 Journal")
 		mu.Lock()
 		require.Equal(t, 1, events[executor.engine])
+		require.Positive(t, threads[executor.engine])
 		mu.Unlock()
 	}
 }

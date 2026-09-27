@@ -16,6 +16,7 @@ export function schemaIndex(root, extensionsRoot) {
   // null 参数或共用响应的请求，必须显式关联官方生成的响应类型。
   const responseNames = {
     'account/logout': 'LogoutAccountResponse',
+    'account/rateLimits/read': 'GetAccountRateLimitsResponse',
     'config/mcpServer/reload': 'McpServerRefreshResponse',
     'configRequirements/read': 'ConfigRequirementsReadResponse',
     'config/value/write': 'ConfigWriteResponse',

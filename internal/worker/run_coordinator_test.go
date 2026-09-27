@@ -182,6 +182,7 @@ func TestRunCoordinatorKeepsFullCommandQueueAttachedToActiveTurn(t *testing.T) {
 func TestRunStateSyncReplaysAppliedInputDecisionAfterAckLoss(t *testing.T) {
 	runID, primaryID, steerID := uuid.New(), uuid.New(), uuid.New()
 	var actions []workerprotocol.InputDecisionRequest
+	var calls []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -190,8 +191,16 @@ func TestRunStateSyncReplaysAppliedInputDecisionAfterAckLoss(t *testing.T) {
 			var decision workerprotocol.InputDecisionRequest
 			require.NoError(t, json.NewDecoder(request.Body).Decode(&decision))
 			actions = append(actions, decision)
+			calls = append(calls, decision.Action)
+			writer.WriteHeader(http.StatusNoContent)
+		case "/worker/v1/runs/" + runID.String() + "/thread":
+			var identity workerprotocol.SetThreadRequest
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&identity))
+			require.Equal(t, "thread-1", identity.ThreadID)
+			calls = append(calls, "thread")
 			writer.WriteHeader(http.StatusNoContent)
 		case "/worker/v1/runs/" + runID.String() + "/heartbeat":
+			calls = append(calls, "heartbeat")
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = writer.Write([]byte(`{"commands":[],"recovery":{}}`))
 		default:
@@ -214,6 +223,8 @@ func TestRunStateSyncReplaysAppliedInputDecisionAfterAckLoss(t *testing.T) {
 	require.Equal(t, steerID, actions[1].InputID)
 	require.Equal(t, "steer", actions[1].Action)
 	require.Equal(t, "turn-1", actions[1].TurnID)
+	require.Equal(t, []string{"start", "thread", "steer", "heartbeat"}, calls,
+		"先补报原任务身份，再重放已应用的输入决议")
 }
 
 func coordinatorTask(intentID, controlID, workspaceID uuid.UUID, threadID string,

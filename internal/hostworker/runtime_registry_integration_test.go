@@ -89,7 +89,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	codexReview := mode == "codex-review"
 	codexContext := mode == "codex-context"
 	codexPlugins := mode == "codex-plugins"
+	codexError := mode == "codex-error"
 	codexAccount := mode == "codex-account"
+	claudeAccount := mode == "claude-account"
 	parallelApprovals := mode == "parallel-approvals"
 	codexMcp := mode == "codex-mcp"
 	codexMcpOAuth := mode == "codex-mcp-oauth"
@@ -137,7 +139,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	codexReviewFixture := newRuntimeCodexReviewFixture(root)
 	codexContextFixture := &runtimeCodexContextFixture{}
 	codexPluginsFixture := newRuntimeCodexPluginsFixture(root)
+	codexErrorFixture := &runtimeCodexErrorFixture{root: root, marker: "ERROR_RECOVERY_" + rand.Text()}
 	accountFixture := &runtimeCodexAccountFixture{}
+	claudeAccountFixture := &runtimeClaudeAccountFixture{resetsAt: time.Now().Add(time.Hour).Unix()}
 	codexMcpFixture := newRuntimeCodexMcpFixture(root)
 	codexOAuthFixture := newRuntimeCodexOAuthFixture(root)
 	parallelFixture := &runtimeParallelApprovalFixture{root: root, codex: runtimeCodexApprovalFixture{root: root}}
@@ -149,7 +153,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			engine := runtimeidentity.Codex
 			if request.URL.Path == "/v1/messages" {
 				engine = runtimeidentity.Claude
-				if claudeEventGaps {
+				if claudeEventGaps || claudeAccount {
 					require.Equal(t, "Bearer sk-ant-oat01-test-not-a-secret", request.Header.Get("Authorization"))
 					require.Empty(t, request.Header.Get("x-api-key"), "事件专项只允许虚拟 OAuth 凭据")
 				} else if strings.Contains(string(body), "hello from phone") {
@@ -174,6 +178,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			}
 			if parallelApprovals {
 				parallelFixture.model(t, w, request, engine, body)
+				return
+			}
+			if claudeAccount {
+				require.Equal(t, runtimeidentity.Claude, engine)
+				claudeAccountFixture.model(t, w, request, body)
 				return
 			}
 			if codexAccount {
@@ -204,6 +213,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if codexPlugins {
 				require.Equal(t, runtimeidentity.Codex, engine)
 				codexPluginsFixture.model(t, w, request, body)
+				return
+			}
+			if codexError {
+				require.Equal(t, runtimeidentity.Codex, engine, "Codex 故障与恢复不得请求 Claude 模型")
+				codexErrorFixture.model(t, w, request, body)
 				return
 			}
 			if claudeEventGaps {
@@ -314,7 +328,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			runtimeEnv := "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n"
 			model := "claude-config-model"
 			modelEnv := map[string]string{"ANTHROPIC_API_KEY": "test-not-a-secret", "ANTHROPIC_BASE_URL": upstream.URL}
-			if claudeEventGaps {
+			if claudeEventGaps || claudeAccount {
 				modelEnv["CLAUDE_CODE_OAUTH_TOKEN"] = "sk-ant-oat01-test-not-a-secret"
 				model = "claude-sonnet-4-6"
 				delete(modelEnv, "ANTHROPIC_API_KEY")
@@ -330,6 +344,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			configuration := fmt.Sprintf("model = \"mock-model\"\nmodel_provider = \"mock\"\napproval_policy = \"never\"\n[model_providers.mock]\nname = \"Mock\"\nbase_url = %q\nwire_api = \"responses\"\nrequest_max_retries = 0\nstream_max_retries = 0\nsupports_websockets = false\n", upstream.URL+"/v1")
 			if codexAccount {
 				configuration = accountFixture.configuration(upstream.URL)
+			}
+			if codexError {
+				configuration = strings.Replace(configuration, "stream_max_retries = 0", "stream_max_retries = 1", 1)
 			}
 			if isolationOnly {
 				configuration += "env_key = \"TYRS_HAND_MODEL_API_KEY\"\n"
@@ -422,7 +439,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || parallelApprovals || codexMcp || codexMcpOAuth || reviewOnly || codexReview || codexContext || codexPlugins {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || claudeAccount || parallelApprovals || codexMcp || codexMcpOAuth || reviewOnly || codexReview || codexContext || codexPlugins || codexError {
 			continue
 		}
 		if configOnly {
@@ -478,6 +495,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		require.Equal(t, int64(8), modelCalls.Load(), "两个引擎各两次真实工具及结果回模")
 		return
 	}
+	if claudeAccount {
+		verifyRuntimeClaudeAccount(t, ctx, registry, clients[runtimeidentity.Claude], protocol[runtimeidentity.Codex], claudeAccountFixture, root)
+		require.Equal(t, int64(3), modelCalls.Load())
+		return
+	}
 	if codexAccount {
 		verifyRuntimeCodexAccount(t, ctx, registry, clients[runtimeidentity.Codex], accountFixture, root)
 		require.Equal(t, int64(2), modelCalls.Load(), "仅两次业务 Turn 可以请求模型")
@@ -506,6 +528,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if codexPlugins {
 		verifyRuntimeCodexPlugins(t, ctx, registry, clients[runtimeidentity.Codex], codexPluginsFixture, root)
 		require.Equal(t, int64(5), modelCalls.Load(), "仅插件技能业务回合与卸载后目录检查可以请求模型")
+		return
+	}
+	if codexError {
+		verifyRuntimeCodexError(t, ctx, registry, clients, codexErrorFixture)
+		require.Equal(t, int64(5), modelCalls.Load(), "两次失败、一次实际重试与一次工具恢复只能请求五次模型")
 		return
 	}
 	if shellCommands {

@@ -84,6 +84,13 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 	defer p.mu.Unlock()
 	caseName := t.Name()
 	caseIDs := []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexErrorRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"EVENTS-011"}
+		}
+	}
 	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexPluginsRealSSH" {
 		caseName = rootName
 		caseIDs = []string{}
@@ -149,6 +156,13 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 		caseIDs = []string{}
 		if engine == runtimeidentity.Codex {
 			caseIDs = []string{"ACCOUNT-001"}
+		}
+	}
+	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeClaudeAccountRealSSH" {
+		caseName = rootName
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"ACCOUNT-003"}
 		}
 	}
 	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeContextInjectionRealSSH" {

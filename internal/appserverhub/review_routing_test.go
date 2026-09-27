@@ -157,7 +157,7 @@ func TestReviewRoutingEarlyEventsAndToolOwner(t *testing.T) {
 			}
 			hub.mu.Lock()
 			require.Empty(t, hub.toolThreads)
-			require.Empty(t, hub.reviewStarts)
+			require.Empty(t, hub.threadStarts)
 			hub.mu.Unlock()
 		})
 	}
@@ -202,7 +202,7 @@ func TestReviewRoutingReleasesFailedAndCanceledStarts(t *testing.T) {
 				require.Equal(t, "thread/started", reviewReceive(t, events).Method)
 			}
 			hub.mu.Lock()
-			pendingCount := len(hub.reviewStarts)
+			pendingCount := len(hub.threadStarts)
 			toolCount := len(hub.toolThreads)
 			hub.mu.Unlock()
 			require.Zero(t, pendingCount)
@@ -241,7 +241,7 @@ func TestReviewRoutingConcurrentStartsDoNotHoldResolvedChild(t *testing.T) {
 		require.Equal(t, method, reviewReceive(t, events).Method)
 	}
 	hub.mu.Lock()
-	pendingCount, toolCount := len(hub.reviewStarts), len(hub.toolThreads)
+	pendingCount, toolCount := len(hub.threadStarts), len(hub.toolThreads)
 	hub.mu.Unlock()
 	require.Equal(t, 1, pendingCount, "另一个审查仍在等待 upstream 响应")
 	require.Zero(t, toolCount, "提前完成的通知必须清理 owner，迟到响应不能复活回合")
