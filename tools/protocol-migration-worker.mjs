@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createPublicKey } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { createConnection } from 'node:net'
@@ -13,6 +13,30 @@ const exec = promisify(execFile)
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'"
 const sandbox = '(version 1)(allow default)(deny network-outbound)' +
   '(allow network-outbound (remote ip "localhost:*") (remote unix-socket))'
+
+// 0.157.1 的 Codex 监听入口是符号链接；只删除 fixture 的入口，物理 socket 由原生 CLI 回收。
+async function removeStaleInstrumentationSocket(path, allowAlias = false) {
+  let metadata
+  try { metadata = await lstat(path) }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error }
+  if (allowAlias && metadata.isSymbolicLink()) {
+    try { assert.ok((await stat(path)).isSocket(), '录制器入口不能指向普通文件') }
+    catch (error) { if (error.code !== 'ENOENT') throw error }
+  } else assert.ok(metadata.isSocket(), '测试中继路径必须是 socket')
+  await new Promise((resolveProbe, reject) => {
+    const socket = createConnection(path)
+    socket.setTimeout(500)
+    socket.once('connect', () => { socket.destroy(); reject(new Error('上代测试中继 socket 仍有监听进程')) })
+    socket.once('timeout', () => { socket.destroy(); reject(new Error('无法确认测试中继 socket 已关闭')) })
+    socket.once('error', error => {
+      socket.destroy()
+      if (['ECONNREFUSED', 'ENOENT'].includes(error.code)) resolveProbe()
+      else reject(error)
+    })
+  })
+  await rm(path)
+  return true
+}
 
 function hostPublicKey(privateKey) {
   // 真实 Worker 生成 PKCS8 Ed25519；导出公钥，不转换或重写持久 Host Key。
@@ -192,20 +216,8 @@ stream_max_retries=0
       sockets.push([engine, resolve(this.root, `ssh-${this.ports[engine]}.sock`), 'linux-ssh-relay'])
     }
     for (const [engine, path, socketKind] of sockets) {
-      try { assert.ok((await lstat(path)).isSocket()) }
-      catch (error) { if (error.code === 'ENOENT') continue; throw error }
-      await new Promise((resolveProbe, reject) => {
-        const socket = createConnection(path)
-        socket.setTimeout(500)
-        socket.once('connect', () => { socket.destroy(); reject(new Error('上代测试中继 socket 仍有监听进程')) })
-        socket.once('timeout', () => { socket.destroy(); reject(new Error('无法确认测试中继 socket 已关闭')) })
-        socket.once('error', error => {
-          socket.destroy()
-          if (['ECONNREFUSED', 'ENOENT'].includes(error.code)) resolveProbe()
-          else reject(error)
-        })
-      })
-      await rm(path, { force: true })
+      const removed = await removeStaleInstrumentationSocket(path, engine === 'codex' && socketKind === 'runtime-recorder')
+      if (!removed) continue
       this.instrumentationCleanups.push({ generation, engine, socketKind, staleSocketRemoved: true })
     }
   }
@@ -225,11 +237,19 @@ stream_max_retries=0
       try { process.kill(pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error }
     }
     await this.process.exit
+    // SIGKILL 返回只表示已发送信号；父进程退出也不能证明后代已经释放监听句柄。
+    // 只等待上面记录的本次进程树，不按名称查杀，不删除仍有监听的入口。
+    await until('本次 Worker 子进程树退出', () => {
+      const running = output('ps', ['-axo', 'pid=,stat=']).split('\n')
+        .map(line => line.trim().split(/\s+/))
+        .filter(([pid, state]) => owned.includes(Number(pid)) && !state.startsWith('Z'))
+      if (running.length) throw new Error('尚未退出的 fixture PID：' + running.map(([pid]) => pid).join(','))
+      return true
+    }, 5000)
     // Worker 会清理正式 app-server.sock；录制器额外引入的 .native 不在其管理范围。
     // 仅清理此 fixture 的旁路 socket，正式 socket 和全部会话状态留给真实 Worker 恢复。
     const instrumentationSocket = resolve(this.state, 'app-server.sock.native')
-    assert.ok((await lstat(instrumentationSocket)).isSocket())
-    await rm(instrumentationSocket)
+    assert.ok(await removeStaleInstrumentationSocket(instrumentationSocket, true), '真实 Codex 录制器入口必须存在')
     return { signal: 'SIGKILL', processCount: owned.length, instrumentationSocketRemoved: true }
   }
 

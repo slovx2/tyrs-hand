@@ -33,6 +33,15 @@
 
 ## Phase 2：原生回退与 Control 替换
 
+### 恢复与迁移补充（2026-09-27）
+
+- 官方 0.157.1 的 Unix 监听入口已变为符号链接，原夹具按 lstat().isSocket() 判断导致提前退出。仅对 Codex 录制器入口支持该原生形式，仍拒绝普通文件及活监听；物理 socket 留给官方 CLI 回收。
+- 真实 SIGKILL 测试进一步发现父进程退出时后代尚未释放监听。夹具现在等待刚捕获的本次 PID 树全部退出，再验证监听关闭；不按进程名查杀，也不删除活监听。
+- FAILURE-006/007/008 和 MIGRATION-005/006/007 本地全过，包含真实 Control、数据库、Worker、SSH、CLI、崩溃、补报、不重放、旧32升级及回滚再升级，独立 schema 与进程收尾校验全部通过。Node 回归 10/10。
+- 证据目录：.local/validation/2026-09-27-release-goal/recovery-migration-socket-v2/；前一轮失败证据保留在 recovery-migration-socket/。本地通过仍需 Linux CI 验证。
+- 4c3e2c2 的协议 CI 36316392532 已结束失败；Control 和 macOS15 loopback 成功，macOS14 仅余 MCP017/REVIEW006，先前 EPERM 本次未复现，不能认定彻底消除。Linux 结果另行跟进。
+- 队列实测新增明确缺陷：空闲时 queue/add 自动运行并完成模型回合，但 Control 没有对应 intent/run。userMessage 通知包含实际输入与 clientId，turn/started 和 queue/start 响应均不包含输入。不能只给 queue/start 补 switch；自动、连续、恢复回合的并发额度、工具/审批绑定、身份快照和 Journal 均需接入。当前保留失败验收，未将其计作完成。
+
 - Codex 的数量回退先通过原生降序分页解析明确的 beforeTurnId，再调用 thread/revert；legacy 明确拒绝。Claude 继续使用自己的原生 rollback。
 - 原生 thread/revert 保留空 turns 与原生分页游标；旧 rollback 响应从原生 turns 分页补齐历史。没有改写 rollout、模拟历史或重新请求模型。
 - paginated 的 thread/items/list 透传原生不透明游标；legacy 保留既有读取实现。页大小 0/1001、反向游标、跨线程拒绝及回退后不泄漏已删条目均通过真实分页回归。
