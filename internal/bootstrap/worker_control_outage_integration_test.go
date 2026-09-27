@@ -24,19 +24,102 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 真实 Control 短网络分区；不冒称 Worker 进程重启或全部双引擎故障验收。
+// 真实 Control 短网络分区；不冒称 Worker 进程重启验收。
 func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
+	runControlNetworkOutage(t, runtimeidentity.Claude)
+}
+
+func TestWorkerControlCodexNetworkOutageRealSSH(t *testing.T) {
+	runControlNetworkOutage(t, runtimeidentity.Codex)
+}
+
+// 固定 Codex 仅在 untrusted 策略下对普通 shell 命令发起真实审批；模型只脚本化工具调用。
+type codexOutageScenario struct {
+	mu     sync.Mutex
+	active *controlApprovalCase
+}
+
+func (s *codexOutageScenario) respond(t *testing.T, w http.ResponseWriter, body []byte) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	active := s.active
+	if active == nil || !strings.Contains(string(body), active.id) {
+		return false
+	}
+	var payload struct {
+		Tools []struct{ Name string }
+		Input []struct {
+			Type   string
+			CallID string `json:"call_id"`
+			Output json.RawMessage
+		}
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Error(err)
+		return false
+	}
+	// 只能使用固定 CLI 按模型配置实际声明的命令工具；后台标题等请求不声明工具，不能收到工具调用。
+	tool := ""
+	for _, declared := range payload.Tools {
+		if declared.Name == "shell_command" || (declared.Name == "exec_command" && tool == "") {
+			tool = declared.Name
+		}
+	}
+	if tool == "" {
+		return false
+	}
+	for _, item := range payload.Input {
+		if item.Type != "function_call_output" || item.CallID != active.id {
+			continue
+		}
+		var output string
+		if err := json.Unmarshal(item.Output, &output); err != nil {
+			output = string(item.Output)
+		}
+		active.resultSeen = true
+		if active.decision == "accept" && !strings.Contains(output, "Exit code: 0") &&
+			!strings.Contains(output, "Process exited with code 0") {
+			t.Errorf("%s 允许后真实命令必须执行成功", active.id)
+		}
+		if active.decision == "decline" && !strings.Contains(output, "rejected") {
+			t.Errorf("%s 拒绝结果必须入模", active.id)
+		}
+		bootstrapModelText(w, false)
+		return true
+	}
+	if active.sent {
+		t.Errorf("%s 工具调用不能重复下发", active.id)
+		return false
+	}
+	active.sent, active.tool = true, tool
+	input := active.input
+	if tool == "exec_command" {
+		input = map[string]any{"cmd": active.input["command"], "workdir": active.input["workdir"]}
+	}
+	args, _ := json.Marshal(input)
+	bootstrapEvent(w, "response.created", map[string]any{"response": map[string]any{"id": active.id}})
+	bootstrapEvent(w, "response.output_item.done", map[string]any{"item": map[string]any{
+		"type": "function_call", "name": tool, "call_id": active.id, "arguments": string(args)}})
+	bootstrapEvent(w, "response.completed", map[string]any{"response": map[string]any{"id": active.id,
+		"usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15,
+			"input_tokens_details": nil, "output_tokens_details": nil}}})
+	return true
+}
+
+func runControlNetworkOutage(t *testing.T, engine runtimeidentity.Engine) {
 	requireControlNetworkIsolation(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Second)
 	defer cancel()
 	scenario := newControlApprovalScenario()
-	var modelCalls atomic.Int64
+	codexScenario := &codexOutageScenario{}
+	var modelCalls, backgroundCalls, otherEngineCalls atomic.Int64
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.Contains(req.URL.Path, "count_tokens") {
 			_, _ = io.WriteString(w, `{"input_tokens":10}`)
 			return
 		}
-		if req.URL.Path != "/v1/messages" {
+		claude := req.URL.Path == "/v1/messages"
+		if !claude && req.URL.Path != "/v1/responses" {
 			http.NotFound(w, req)
 			return
 		}
@@ -45,9 +128,26 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		modelCalls.Add(1)
-		if !scenario.respond(t, w, body) {
-			bootstrapModelText(w, true)
+		if claude != (engine == runtimeidentity.Claude) {
+			otherEngineCalls.Add(1)
+			bootstrapModelText(w, claude)
+			return
+		}
+		// 原生后台标题等请求不声明工具，不属于业务回合；恢复不重放只统计业务请求。
+		var declared struct{ Tools []json.RawMessage }
+		if json.Unmarshal(body, &declared) == nil && len(declared.Tools) > 0 {
+			modelCalls.Add(1)
+		} else {
+			backgroundCalls.Add(1)
+		}
+		handled := false
+		if claude {
+			handled = scenario.respond(t, w, body)
+		} else {
+			handled = codexScenario.respond(t, w, body)
+		}
+		if !handled {
+			bootstrapModelText(w, claude)
 		}
 	}))
 	t.Cleanup(model.Close)
@@ -65,7 +165,7 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 	go func() { done <- app.Run(workerCtx) }()
 	var once sync.Once
 	t.Cleanup(func() { once.Do(func() { stopWorker(); <-done; cleanup() }) })
-	entry, err := app.Runtimes.Entry(runtimeidentity.Claude)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	type question struct {
 		request codex.ServerRequest
@@ -88,23 +188,33 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 			}
 		},
 	})
+	// 另一端的拒绝必须是原生请求实际提供的决策：Claude 为 decline，固定 Codex 命令审批只有 cancel。
+	remoteDeny := "decline"
+	if engine == runtimeidentity.Codex {
+		remoteDeny = "cancel"
+	}
+	approvalPolicy := "on-request"
+	if engine == runtimeidentity.Codex {
+		approvalPolicy = "untrusted"
+	}
+	threadParams := map[string]any{
+		"cwd": f.cfg.WorkerWorkspaceRoot, "approvalPolicy": approvalPolicy, "sandbox": "danger-full-access",
+	}
 	var started struct{ Thread struct{ ID string } }
-	require.NoError(t, client.Call(ctx, "thread/start", map[string]any{
-		"cwd": f.cfg.WorkerWorkspaceRoot, "approvalPolicy": "on-request", "sandbox": "danger-full-access",
-	}, &started))
+	require.NoError(t, client.Call(ctx, "thread/start", threadParams, &started))
 	thread := started.Thread.ID
 	events := client.Subscribe(codex.ThreadFilter{ThreadID: thread})
 	t.Cleanup(events.Close)
 	start := func(prompt string) {
 		require.NoError(t, client.Call(ctx, "turn/start", map[string]any{
-			"threadId": thread, "approvalPolicy": "on-request",
+			"threadId": thread, "approvalPolicy": approvalPolicy,
 			"sandboxPolicy": map[string]any{"type": "dangerFullAccess"},
 			"input":         []map[string]any{{"type": "text", "text": prompt, "text_elements": []any{}}},
 		}, nil))
 	}
 	start("CONTROL_OUTAGE_WARMUP")
 	awaitBootstrapTurn(t, ctx, events)
-	awaitControlRunCount(t, ctx, f, runtimeidentity.Claude, 1)
+	awaitControlRunCount(t, ctx, f, engine, 1)
 	for index, test := range []struct{ registered, allow, conflict bool }{
 		{true, true, false}, {true, false, false}, {false, true, false}, {false, false, false}, {true, true, true},
 	} {
@@ -118,9 +228,23 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 			quotedPath := "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
 			active.input = map[string]any{"command": "printf '" + id + "\\n' >> " + quotedPath}
 		}
-		scenario.mu.Lock()
-		scenario.active = active
-		scenario.mu.Unlock()
+		if engine == runtimeidentity.Codex {
+			quotedPath := "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
+			// 固定 Codex 命令审批只提供 accept/amendment/cancel，Desktop 的拒绝即 cancel 并中止回合。
+			active.tool, active.method = "shell_command", interactiveprotocol.CommandApproval
+			if !test.allow {
+				active.decision = "cancel"
+			}
+			active.input = map[string]any{"command": "printf '" + id + "\\n' >> " + quotedPath,
+				"workdir": f.cfg.WorkerWorkspaceRoot}
+			codexScenario.mu.Lock()
+			codexScenario.active = active
+			codexScenario.mu.Unlock()
+		} else {
+			scenario.mu.Lock()
+			scenario.active = active
+			scenario.mu.Unlock()
+		}
 		if !test.registered {
 			gate.Offline()
 		}
@@ -132,6 +256,18 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 			t.Fatal("未收到真实 SSH 审批")
 		}
 		require.Equal(t, active.method, q.request.Method)
+		var offered struct {
+			AvailableDecisions []json.RawMessage `json:"availableDecisions"`
+		}
+		require.NoError(t, json.Unmarshal(q.request.Params, &offered))
+		if offered.AvailableDecisions != nil {
+			decision, _ := json.Marshal(active.decision)
+			found := false
+			for _, available := range offered.AvailableDecisions {
+				found = found || string(available) == string(decision)
+			}
+			require.True(t, found, "%s：原生请求必须提供本窗口的真实决策 %s，实际 %s", id, active.decision, offered.AvailableDecisions)
+		}
 		require.NoFileExists(t, path)
 		t.Cleanup(func() {
 			diagnosticCtx, cancelDiagnostic := context.WithTimeout(context.Background(), 2*time.Second)
@@ -141,7 +277,7 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 				COALESCE(q.answer_surface,''), r.status FROM codex_interactive_requests q
 				JOIN codex_thread_controls c ON c.id=q.control_id JOIN codex_turn_runs r ON r.id=q.run_id
 				WHERE c.worker_id=$1 AND c.engine=$2 AND q.thread_id=$3 AND q.app_server_request_id=$4::jsonb`,
-				f.workerID, runtimeidentity.Claude, thread, q.request.ID).Scan(&state.Status, &state.Decision, &state.Surface, &state.RunStatus)
+				f.workerID, engine, thread, q.request.ID).Scan(&state.Status, &state.Decision, &state.Surface, &state.RunStatus)
 			if err != nil {
 				t.Logf("%s：恢复后 Control 状态诊断失败：%v", id, err)
 				return
@@ -154,7 +290,7 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 				err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_interactive_requests q
 					JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.worker_id=$1
 					AND c.engine=$2 AND q.thread_id=$3 AND q.app_server_request_id=$4::jsonb AND q.status='pending'`,
-					f.workerID, runtimeidentity.Claude, thread, q.request.ID).Scan(&count)
+					f.workerID, engine, thread, q.request.ID).Scan(&count)
 				return err == nil && count == 1
 			}, 10*time.Second, 50*time.Millisecond)
 			gate.Offline()
@@ -162,25 +298,35 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 		if test.conflict {
 			credential, err := os.ReadFile(f.cfg.WorkerCredentialFile)
 			require.NoError(t, err)
-			control, err := workerprotocol.NewClient(controlURL, string(credential), 5*time.Second).ForEngine(runtimeidentity.Claude)
+			control, err := workerprotocol.NewClient(controlURL, string(credential), 5*time.Second).ForEngine(engine)
 			require.NoError(t, err)
 			remote := workerprotocol.InteractiveAnswerRequest{RequestID: q.request.ID,
 				AppServerGeneration: entry.Runtime.Generation(), WorkspaceID: f.workspaceID,
-				Surface: "desktop", Answer: json.RawMessage(`{"decision":"decline"}`)}
+				Surface: "desktop", Answer: json.RawMessage(`{"decision":"` + remoteDeny + `"}`)}
 			var scope struct{ ThreadID, TurnID, ItemID string }
 			require.NoError(t, json.Unmarshal(q.request.Params, &scope))
 			remote.ThreadID, remote.TurnID, remote.ItemID = scope.ThreadID, scope.TurnID, scope.ItemID
 			winner, err := control.AnswerInteractive(ctx, remote)
 			require.NoError(t, err)
 			require.True(t, winner.Accepted)
-			require.JSONEq(t, `{"decision":"decline"}`, string(winner.Answer))
+			require.JSONEq(t, `{"decision":"`+remoteDeny+`"}`, string(winner.Answer))
 		}
 		q.answer <- active.decision
-		awaitBootstrapTurn(t, ctx, events)
+		if active.decision == "cancel" {
+			awaitOutageTurnStatus(t, ctx, events, "interrupted")
+		} else {
+			awaitBootstrapTurn(t, ctx, events)
+		}
 		scenario.mu.Lock()
+		codexScenario.mu.Lock()
 		resultSeen := active.resultSeen
+		codexScenario.mu.Unlock()
 		scenario.mu.Unlock()
-		require.True(t, resultSeen, "离线答案必须真实进入 SDK/CLI 的工具结果")
+		if active.decision == "cancel" {
+			require.False(t, resultSeen, "cancel 中止回合，工具结果不能再入模")
+		} else {
+			require.True(t, resultSeen, "离线答案必须真实进入 SDK/CLI 的工具结果")
+		}
 		assertEffect := func() {
 			if !test.allow {
 				require.NoFileExists(t, path)
@@ -195,31 +341,65 @@ func TestWorkerControlClaudeNetworkOutageRealSSH(t *testing.T) {
 		calls := modelCalls.Load()
 		require.NoError(t, gate.Online())
 		// SSH 独立于 Control：冲突也以本地真实结果完成，另以事件记录冲突。
-		awaitControlRunCount(t, ctx, f, runtimeidentity.Claude, index+2)
+		awaitControlTerminalRunCount(t, ctx, f, engine, index+2)
 		if test.conflict {
-			verifyOfflineApprovalConflict(t, ctx, f, q.request)
+			verifyOfflineApprovalConflict(t, ctx, f, engine, q.request, remoteDeny)
 		}
 		var stored json.RawMessage
 		require.Eventually(t, func() bool {
 			err := f.db.QueryRowContext(ctx, `SELECT q.answer FROM codex_interactive_requests q
 				JOIN codex_thread_controls c ON c.id=q.control_id WHERE c.worker_id=$1 AND c.engine=$2
 				AND q.thread_id=$3 AND q.app_server_request_id=$4::jsonb AND q.status='resolved'`,
-				f.workerID, runtimeidentity.Claude, thread, q.request.ID).Scan(&stored)
+				f.workerID, engine, thread, q.request.ID).Scan(&stored)
 			return err == nil
 		}, 12*time.Second, 50*time.Millisecond, "恢复后真实 Control 必须补记离线答案")
 		var answer struct{ Decision string }
 		require.NoError(t, json.Unmarshal(stored, &answer))
 		wantDecision := active.decision
 		if test.conflict {
-			wantDecision = "decline"
+			wantDecision = remoteDeny
 		}
 		require.Equal(t, wantDecision, answer.Decision)
 		require.Equal(t, calls, modelCalls.Load(), "网络恢复不能重新请求模型")
 		assertEffect()
 	}
+	require.Zero(t, otherEngineCalls.Load(), "另一引擎不能产生模型调用")
+	t.Logf("业务模型请求 %d 次，原生后台请求 %d 次", modelCalls.Load(), backgroundCalls.Load())
 }
 
-func verifyOfflineApprovalConflict(t *testing.T, ctx context.Context, f controlRuntimeFixture, request codex.ServerRequest) {
+func awaitOutageTurnStatus(t *testing.T, ctx context.Context, events *codex.EventSubscription, want string) {
+	t.Helper()
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("等待真实 Turn 终态超时")
+		case event, ok := <-events.Events():
+			require.True(t, ok, "事件流在终态前关闭")
+			if event.Method != "turn/completed" {
+				continue
+			}
+			var result struct{ Turn struct{ Status string } }
+			require.NoError(t, json.Unmarshal(event.Params, &result))
+			require.Equal(t, want, result.Turn.Status)
+			return
+		}
+	}
+}
+
+// cancel 中止的回合不以 completed 结束；此处只要求每个窗口都有已送达的终态。
+func awaitControlTerminalRunCount(t *testing.T, ctx context.Context, f controlRuntimeFixture, engine runtimeidentity.Engine, want int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		var count int
+		err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs r JOIN codex_thread_controls c
+			ON c.id=r.control_id WHERE c.worker_id=$1 AND c.engine=$2 AND r.finished_at IS NOT NULL`, f.workerID, engine).Scan(&count)
+		return err == nil && count >= want
+	}, 40*time.Second, 100*time.Millisecond, "Control 需要收到 %s 的 %d 个终态", engine, want)
+}
+
+func verifyOfflineApprovalConflict(t *testing.T, ctx context.Context, f controlRuntimeFixture,
+	engine runtimeidentity.Engine, request codex.ServerRequest, remoteDeny string,
+) {
 	t.Helper()
 	var runID string
 	var result json.RawMessage
@@ -260,14 +440,18 @@ func verifyOfflineApprovalConflict(t *testing.T, ctx context.Context, f controlR
 	require.NoError(t, json.Unmarshal(events[0], &conflict))
 	require.Equal(t, "control_answer_mismatch", conflict.Conflict)
 	require.JSONEq(t, `{"decision":"accept"}`, string(conflict.LocalAnswer))
-	require.JSONEq(t, `{"decision":"decline"}`, string(conflict.Remote.Answer))
-	path := filepath.Join(f.cfg.ClaudeStateDir(), "control-state", "runs", runID+".json")
+	require.JSONEq(t, `{"decision":"`+remoteDeny+`"}`, string(conflict.Remote.Answer))
+	stateRoot := f.cfg.WorkerDataRoot
+	if engine == runtimeidentity.Claude {
+		stateRoot = f.cfg.ClaudeStateDir()
+	}
+	path := filepath.Join(stateRoot, "control-state", "runs", runID+".json")
 	require.Eventually(t, func() bool {
 		_, err := os.Stat(path)
 		return os.IsNotExist(err)
 	}, 5*time.Second, 25*time.Millisecond, "终态送达后必须清理 Journal")
-	saveBootstrapArtifact(t, "offline-conflict", runtimeidentity.Claude, map[string]any{
-		"runStatus": "completed", "conflictEvent": "interactive.offline_conflict", "remoteDecision": "decline",
+	saveBootstrapArtifact(t, "offline-conflict", engine, map[string]any{
+		"runStatus": "completed", "conflictEvent": "interactive.offline_conflict", "remoteDecision": remoteDeny,
 		"localDecision": "accept", "localResultDelivered": true, "sideEffectNotReplayed": true,
 	})
 }
