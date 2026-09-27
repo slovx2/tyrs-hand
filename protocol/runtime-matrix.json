@@ -1940,7 +1940,8 @@
       },
       "cases": {
         "codex": [
-          "MCP-016"
+          "MCP-016",
+          "MCP-020"
         ],
         "claude-code": [
           "MCP-004",

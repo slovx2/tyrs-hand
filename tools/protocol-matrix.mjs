@@ -61,6 +61,8 @@ const controlSuites = [
     cases: ['APPROVAL-009'], engines: ['codex'] },
   { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',
     cases: ['MCP-014'], engines: ['claude-code'] },
+  { name: 'bootstrap-codex-forms', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexFormsRealSSH',
+    cases: ['MCP-020'], engines: ['codex'] },
   { name: 'bootstrap-claude-permissions', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudePermissionsRealSSH',
     cases: ['PERMISSION-012'], engines: ['claude-code'] },
   { name: 'bootstrap-live', pkg: './internal/bootstrap', test: 'TestWorkerControlLiveCodexRealSSH',

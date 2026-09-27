@@ -47,7 +47,8 @@ async function initialize(): Promise<{ client: CodexJsonRpcClient; socket: FakeS
   await vi.waitFor(() => expect(socket.sent).toHaveLength(1));
   expect(socket.sent[0]).toMatchObject({ method: "initialize", params: {
     clientInfo: { name: "tyrs_hand_mobile" },
-    capabilities: { experimentalApi: true, extensions: { "openai/form": {} } },
+    capabilities: { experimentalApi: true,
+      extensions: { "openai/form": {}, "openai/elicitation": { form: {} } } },
   } });
   socket.receive({ id: socket.sent[0]!.id, result: {
     userAgent: "codex/0.157.1", codexHome: "/tmp/codex", platformFamily: "unix", platformOs: "linux",

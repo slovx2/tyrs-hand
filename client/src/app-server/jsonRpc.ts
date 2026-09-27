@@ -169,8 +169,8 @@ export class CodexJsonRpcClient {
       capabilities: {
         experimentalApi: true,
         requestAttestation: false,
-        // Codex 0.157.1 的原生 MCP 协商使用空对象声明 openai/form。
-        extensions: { "openai/form": {} },
+        // 仅声明已实现的 JSON Schema 表单；不声明用户身份验证。
+        extensions: { "openai/form": {}, "openai/elicitation": { form: {} } },
         optOutNotificationMethods: null,
       },
     };

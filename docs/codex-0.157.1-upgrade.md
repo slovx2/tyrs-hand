@@ -1,6 +1,6 @@
 # Codex 0.157.1 升级进度
 
-更新时间：2026-09-27。Phase 1 和 Phase 2 的回退链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
+更新时间：2026-09-27。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
 ## 已完成
 
@@ -19,7 +19,14 @@
 
 ## 完整测试推进（2026-09-27，优先于下文历史验证）
 
-- 完整 `make ci-local` 通过，包括生成检查、lint、前端测试、Go 单测/race/集成测试、手机 SSH、80.6% 核心覆盖率、构建、Android JS export 和浏览器 E2E 5/5；这不代表 Android 真机或协议完整覆盖通过。
+- 最近已结束的 CI 基线：e5c175f，包含 stdin 真实审批与 Control/intent 锁顺序修复；常规 CI 36318253525 全绿。协议 CI 36318253522 的 Linux 与 macOS 14 均只剩 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started）失败，Control-runtime 和 macOS loopback 成功。
+- 最新完整覆盖基线为 e5c175f 的 Linux CI：157 项缺口（runId 06c15c5e-06e4-4f88-991b-36f90658d6c4）。这是 CI 原始 inventory 结果，替代此前 324501c 的 200 项；本地 control-only 子集不用于重算整个项目的缺口数。
+- 前一提交 8e70412：常规 CI 36317234697 全绿；协议 CI 36317234788 的 Linux 与 macOS 14 均只剩 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started）失败。Control-runtime、macOS loopback 成功，恢复/迁移六项不再失败；不能因此宣称完整协议覆盖通过。
+- 原生队列的独立失败验收已复现：空闲线程 queue/add 自动完成真实模型回合，但 Control 没有对应 intent/run。queue/start 的响应和 turn/started 没有输入，实际 userMessage 的 clientId/content 才能用于关联。队列仍未实现，不能只补一个方法分支或关闭原生自动消费来绕过。
+- 队列设计还必须涵盖入队/恢复前的共享并发预留、连续自动回合的独立 Journal、工具/审批的精确回合绑定、绑定身份快照与重启恢复。以上是待实现约束，不是通过证据。
+- 本次扩展表单工作树的完整 make ci-local 退出 0：生成检查、Go lint、前端类型/lint/测试、Go 单测/race/真实数据库集成、手机 SSH、80.7% 核心覆盖率、构建、Android JS export 和浏览器 E2E 5/5 通过。客户端 368 通过、2 个原有真实连接用例按原配置跳过，ESLint 保留 6 个既存 warning、0 error。日志为 .local/validation/2026-09-27-release-goal/forms-ci-local.log；不代表 Android 真机、队列或完整协议覆盖通过。
+
+- 历史提交 4c3e2c2 的完整 `make ci-local` 曾通过，核心覆盖率 80.6%，浏览器 E2E 5/5；当前表单工作树的验证结果以上一条为准。
 - 首次完整运行只在浏览器服务启动时撞到已有本地服务的 18080 端口；未停止该服务。脚本改为申请空闲回环端口、检查本轮服务进程，第二次完整执行退出码为 0。
 - Codex 审批与并行审批切换到 CLI 实际声明的 exec_command，校验真实命令输出、审批回答和文件副作用；两引擎并行专项通过。
 - Codex 事件使用真实 PTY 命令，客户端收到 item/started 后释放文件屏障，再验证 outputDelta、终态聚合、补丁、历史和实际文件；四场景全部通过。短命令终态输出存在但无流分片已保留为失败证据，未伪造事件。
@@ -32,6 +39,20 @@
 证据：`.local/validation/2026-09-27-release-goal/`（完整 CI、失败 CI、重连回归）及 `.local/validation/2026-09-27-codex-phase2/acceptance-fixtures-final/`（七专项组合）。
 
 ## Phase 2：原生回退与 Control 替换
+
+### 扩展 MCP 表单（2026-09-27）
+
+- 修复两个实际缺陷：Go 归一化拒绝官方 openaiForm；Worker 初始化未声明扩展表单能力，导致官方 CLI 对扩展 MCP 方法返回 -32601。
+- Worker 的 socket/stdio 和手机握手现在均声明 openai/form 与 openai/elicitation.form，使用现有 JSON Schema 校验；没有声明尚未实现的用户身份验证能力。
+- 新增 MCP-020 真实验收：标准 form、旧扩展 openai/form、新扩展 openaiForm 各覆盖 accept/decline/cancel，共九场景；原生 MCP SDK 调用由官方 CLI 转换成相应 app-server 模式。
+- 已通过定向真实 Control/PG/Redis/Worker/SSH/CLI 验收：早到错误类型答案不能抢占合法答案，Discord 越界答案被拒绝，数值和布尔类型保持，接受只写一次文件，拒绝及取消均不写，模型结果只回传一次，Control Run 完成且 Outbox 清零。
+- 使用 Go overlay 恢复旧解析器后，前六场景成功，第七个 openaiForm/accept 在 Control 返回 400“不支持的 MCP 交互模式”；修复后的九场景全部通过。能力未声明时的原生 -32601 失败证据单独保留。
+- 正式 control-only 矩阵从仓库根执行测试二进制，11 个专项、13 条引擎执行全部通过；20 份真实 wire 独立校验无 schema 错误。MCP-020 的 313 条报文及原生表单回答正确关联本轮 runId 和 caseIds。
+- 该组合包含两引擎断网恢复、双引擎 Control、三端接力、原生回退、stdin 审批、Claude MCP/权限、新 Codex 表单及重启链路。它不包含队列失败草稿，也不等同完整协议、Android 或 GUI 通过。
+- Go 五包 race、客户端握手与表单测试 19/19、TypeScript/改动 ESLint、integration-tag 改动 lint（0 issues）及 Node 协议/恢复/迁移契约 30/30 通过。
+- 临时数据库清理使用 finally，日志目录不可写时仍回收本轮容器和 socket；真实故障注入已验证，保留写入错误而非伪称证据保存成功。
+
+证据：.local/validation/2026-09-27-codex-phase2/control-codex-forms-capabilities/、control-codex-forms-old-parser/、control-codex-forms-native-methods/；正式组合位于 .local/validation/2026-09-27-release-goal/forms-control-matrix/runs/124a0e65-14dc-4f4b-a11e-60bd4de71dbd/，含 control-validation-summary.json。契约和资源回收日志位于同一 release-goal 目录。
 
 ### 终端输入审批与首次建帖死锁（2026-09-27）
 
@@ -102,11 +123,11 @@ PostgreSQL 就绪探测改为 127.0.0.1 TCP。事实是一次本地数据库初�
 
 ## 后续必须完成
 
-1. 本轮回退改动仍需由新一轮全量 CI/matrix 验证；修复剩余 events、approvals 等旧 shell 工具夹具，保留实际事件和副作用断言。
+1. 新增表单改动的完整 make ci-local 和本地 Control 矩阵通过，仍需新提交的两平台 CI 及最终完整协议覆盖；events、approvals 等已完成的专项不能等同完整覆盖通过。
 2. `thread/queue/start` 已分类 controlled，但 Controller 仍需接入真实生命周期；Claude 新接口仍需实现及执行证据，不能将分类当成已实现。
-3. writeStdin 已在本地真实链路完成，需由最终矩阵复验；Go 侧 openaiForm 归一化、用户身份验证的可信完成/拒绝链路仍未完成。
+3. writeStdin 已在本地及 CI 真实链路完成；Go 侧 openaiForm 归一化、扩展能力协商及本地 Control 组合通过，仍需新提交的两平台 CI。用户身份验证的可信完成、拒绝及取消链路仍未完成。
 4. 新增 ThreadItem、HookMetadata、图片 fileId、异步问题等需要完整跨端行为验收，当前类型检查通过不等于能力验收。
-5. MCP019 已在本地真实关闭，需由完整 matrix 复验；MCP017、REVIEW006 仍是已知上游阻塞，本轮未再定向复测，不制作自编译 CLI。
+5. MCP019 在本地和最新两平台 CI 真实通过；MCP017、REVIEW006 在 e5c175f 的两平台 CI 仍失败，不制作自编译 CLI。
 6. Android 构建与模拟器错峰，排除 device offline 后复现 database is locked；iOS 继续暂缓。
 7. 保留原交接中的语义专项和未执行方法缺口，完成后再考虑生产门禁。
 

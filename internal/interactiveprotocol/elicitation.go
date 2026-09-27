@@ -32,7 +32,7 @@ func parseElicitation(params json.RawMessage) (elicitationRequest, *jsonschema.S
 			return request, nil, errors.New("MCP URL 交互参数无效")
 		}
 		return request, nil, nil
-	case "form", "openai/form":
+	case "form", "openai/form", "openaiForm":
 		var schemaValue any
 		if len(request.RequestedSchema) == 0 || json.Unmarshal(request.RequestedSchema, &schemaValue) != nil {
 			return request, nil, errors.New("MCP 表单缺少合法 schema")

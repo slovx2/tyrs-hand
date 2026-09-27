@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { collectMcpValues, initialMcpValues, mcpUrl, parseMcpJson, parseMcpText, prepareMcpForm } from "./mcpElicitation";
 
 describe("MCP 手机表单", () => {
+  it("扩展表单的 anyOf 字段保留数字和布尔值，并校验范围", () => {
+    const form = prepareMcpForm({ type: "object", properties: {
+      count: { anyOf: [{ type: "integer", minimum: 1 }] }, enabled: { type: "boolean" },
+    }, required: ["count", "enabled"], additionalProperties: false });
+    expect(form.error).toBeNull();
+    const result = collectMcpValues(form.fields, { enabled: false }, { count: "2" });
+    expect(result).toEqual({ valid: true, value: { count: 2, enabled: false } });
+    expect(form.validate({ count: 2, enabled: false }).valid).toBe(true);
+    for (const content of [{ count: 0, enabled: false }, { count: "2", enabled: false },
+      { count: 2, enabled: "false" }, { count: 2 }, { count: 2, enabled: false, unknown: true }]) {
+      expect(form.validate(content).valid).toBe(false);
+    }
+  });
+
   it("提交时合并可见输入并删除选填空值，保留 false 和数字零", () => {
     const form = prepareMcpForm({ type: "object", properties: {
       enabled: { type: "boolean" }, amount: { type: "number" }, note: { type: "string" },

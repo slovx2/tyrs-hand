@@ -152,6 +152,9 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 	if t.Name() == "TestWorkerControlMcpRealSSH" {
 		cases = []string{"MCP-014"}
 	}
+	if t.Name() == "TestWorkerControlCodexFormsRealSSH" {
+		cases = []string{"MCP-020"}
+	}
 	if t.Name() == "TestWorkerControlLiveCodexRealSSH" {
 		cases = []string{"MIGRATION-004"}
 	}

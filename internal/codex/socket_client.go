@@ -123,7 +123,7 @@ func ConnectTransport(ctx context.Context, transport MessageTransport,
 	}
 	if err := client.Call(initCtx, "initialize", map[string]any{
 		"clientInfo":   map[string]string{"name": clientName, "title": "Tyrs Hand", "version": "0.1.0"},
-		"capabilities": map[string]any{"experimentalApi": true},
+		"capabilities": initializeCapabilities(),
 	}, &result); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("初始化 Codex App Server Socket: %w", err)

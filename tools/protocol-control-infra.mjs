@@ -13,18 +13,22 @@ export async function startControlInfrastructure({ evidenceDir } = {}) {
   const docker = args => execFileSync('docker', args, { encoding: 'utf8', timeout: 120_000 }).trim()
   const close = () => {
     proxy?.kill('SIGTERM')
-    if (evidenceDir) {
-      mkdirSync(evidenceDir, { recursive: true })
-      for (const [index, id] of containers.entries()) {
-        const log = spawnSync('docker', ['logs', id], { encoding: 'utf8', timeout: 10_000 })
-        writeFileSync(resolve(evidenceDir, index === 0 ? 'postgres.log' : 'redis.log'),
-          (log.stdout ?? '') + (log.stderr ?? ''), { mode: 0o600 })
+    try {
+      if (evidenceDir) {
+        mkdirSync(evidenceDir, { recursive: true })
+        for (const [index, id] of containers.entries()) {
+          const log = spawnSync('docker', ['logs', id], { encoding: 'utf8', timeout: 10_000 })
+          writeFileSync(resolve(evidenceDir, index === 0 ? 'postgres.log' : 'redis.log'),
+            (log.stdout ?? '') + (log.stderr ?? ''), { mode: 0o600 })
+        }
       }
+    } finally {
+      // 证据目录写入失败也必须回收本轮资源；原始写入错误继续向上传递。
+      for (const id of containers.reverse()) {
+        try { docker(['rm', '-f', id]) } catch (error) { console.error('清理临时数据库失败:', error.message) }
+      }
+      rmSync(root, { recursive: true, force: true })
     }
-    for (const id of containers.reverse()) {
-      try { docker(['rm', '-f', id]) } catch (error) { console.error('清理临时数据库失败:', error.message) }
-    }
-    rmSync(root, { recursive: true, force: true })
   }
   try {
     const pgID = docker(['run', '--detach', '--rm', '-p', '127.0.0.1::5432',
@@ -59,7 +63,9 @@ export async function startControlInfrastructure({ evidenceDir } = {}) {
       TYRS_HAND_TEST_REDIS_SOCKET: redisSocket,
     } }
   } catch (error) {
-    close()
+    try { close() } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], '启动与清理临时 Control 数据库均失败')
+    }
     throw error
   }
 }

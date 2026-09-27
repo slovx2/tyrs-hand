@@ -108,7 +108,7 @@ func Start(ctx context.Context, options ClientOptions) (*Client, error) {
 	var result json.RawMessage
 	err = client.call(initCtx, "initialize", map[string]any{
 		"clientInfo":   map[string]any{"name": "tyrs-hand", "title": "tyrs-hand", "version": "0.1.0"},
-		"capabilities": map[string]any{"experimentalApi": true},
+		"capabilities": initializeCapabilities(),
 	}, &result)
 	if err == nil {
 		err = client.notify("initialized", map[string]any{})
