@@ -19,8 +19,17 @@
 
 ## 完整测试推进（2026-09-27，优先于下文历史验证）
 
-- 最近已结束的 CI 基线：6640499，常规 CI 36321807435 成功。协议 CI 36321807423 的 Control-runtime 和 macOS loopback 成功；macOS 14 仍有 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started），Linux 另有 Codex 表单死锁与 Claude 权限专项跨用例 Discord 请求。后两项已有直接证据和本地修复，需新提交的 CI 复验。
-- 最新完整覆盖基线为 6640499 的 Linux CI：169 项缺口（runId cf6ea44e-8cbe-4667-868c-80332bf03c50）。这是该提交的原始 inventory 结果，替代 d9279e1 的 157 项基线；本地 control-only 子集不用于重算整个项目的缺口数。
+- 最新基线为 d5e8940：常规 CI 36324743015 成功；协议 CI 36324743007 失败，Linux/macOS 14 的运行时专项均仅 MCP017、REVIEW006 失败，Control-runtime/macOS loopback 成功。Linux 完整覆盖原始结果为 157 项缺口，runId b8b14fc7-d80f-41a8-94a0-a83a30dbfaf1，替代以下 6640499 的 169 项历史记录。
+- 本地 Android 完整 GUI 在 d5e8940 APK 上通过（SSH 设置 4m22s、主流程 8m36s）：12 个模型场景、schema/语义和资源回收均通过。运行包含保留的 shared YAML 工作区修改，不能替代干净提交 CI；远端 Android 36324762397 已失败，详情见下。本轮未复现 database is locked，不能宣称历史问题已修复。证据：.local/e2e/evidence/2026-09-27T141153682Z-mobile-android-dual-engine/。
+- Control 组合 1009a65b 再现两条 Session 外键死锁。标题/metadata 的 Session 锁现改为 FOR NO KEY UPDATE：最初 8 个真实数据库回归旧实现全失败、修复全通过，写互斥、旧锁顺序、人工标题、租约和引擎隔离仍通过。最终源码组合及完整 make ci-local 已通过；后文 0502d2d9 组合成功属于历史结果。
+- control-only 增加正式 runtime-wire.json 门禁，复用官方 schema 与完整清单，仅豁免未执行能力的全量覆盖要求，24 项契约通过。新门禁正确拒绝上述失败组合。configWarning 按 d5e8940 原始证据中的 MIGRATION-006/007 登记 Codex；Claude 仍保持缺口。清单变更后的全量覆盖尚未重算。
+- 再次审计发现 1df32c8c 组合虽然业务/wire 通过，PG 仍有 metadata 与终态 Session 消息序号的反向等待。回合 fence 改为从真实 Run 关联先锁 Session，再锁 Control/intent/run；同时修复入队的 Session 强锁。10 个外键插入场景、2 个两引擎完成场景均有修前失败/修后通过证据，连同既存锁序共 19 场景通过。新增 PG 日志门禁能拒绝这类隐藏死锁。
+- 最终冻结源码组合 c32066a9-4a5c-4e1c-bef7-1532adade0d4 已退出 0：13 专项、14 引擎执行、21 份 wire、1468 条报文与 1304 条协议证据；runtime-wire.json 和 postgres-diagnostics.json 均通过，runtime-failures.json 为空。它涵盖最后的入队锁修复，替代 e601593c；不等同完整协议矩阵通过。integration-tag 增量 lint 为 0 issues。证据位于 .local/validation/2026-09-27-release-goal/session-locks-control-final-v2/。
+- 完整 CI 的 v2 复验退出 2：覆盖率阶段的 Discord 测试在数据库初始化时报 port "5432/tcp" not found，业务断言尚未执行；同时只读检查确认该临时容器已启动却没有宿主端口映射。现让 Discord 测试复用 CI 显式提供的 PostgreSQL 服务，每个用例创建和清理独立数据库；未改变生产代码、未添加重试。新增回归旧实现失败、修复后与原失败用例一同通过，验证同一服务、数据隔离、不清空前例与退出清理。integration-tag 增量 lint 为 0 issues。证据：session-locks-final-v2-ci-local.log、discord-ci-database-baseline.log、discord-ci-database-fixed.log。
+- 最终 v3 完整 make ci-local 已退出 0：生成、lint、Go 单测/race、真实数据库集成、手机 SSH、构建、Android JS export、浏览器 E2E 5/5 均通过；核心覆盖率 80.8%，客户端 368 通过/2 个既存跳过。日志：.local/validation/2026-09-27-release-goal/session-locks-final-v3-ci-local.log。这不是完整协议矩阵或新 Android GUI 的通过结果。
+- 远端 Android 36324762397 已失败：SSH 设置通过，主流程 4m35s 在退出计划确认时找不到提交按钮，截图证实卡片底部超出视口。本轮没有 device offline/database is locked 证据。两次问答提交前补 scrollUntilVisible，待新提交 GUI 验证；iPhone skipped，完整移动验收未通过。
+- 历史 CI 基线：6640499，常规 CI 36321807435 成功。协议 CI 36321807423 的 Control-runtime 和 macOS loopback 成功；macOS 14 仍有 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started），Linux 另有 Codex 表单死锁与 Claude 权限专项跨用例 Discord 请求。后两项已有直接证据和修复，d5e8940 的两平台 CI 未再出现；本轮新锁修复仍需新提交 CI。
+- 历史完整覆盖基线为 6640499 的 Linux CI：169 项缺口（runId cf6ea44e-8cbe-4667-868c-80332bf03c50）。当前原始完整基线为本节首条 d5e8940 的 157 项；本地 control-only 子集不用于重算整个项目的缺口数。
 - 标题隔离、数据库隔离、两处锁顺序修复与 Android 诊断改动后的完整 make ci-local 退出 0：Go 单测/race/真实数据库集成、手机 SSH、核心覆盖率 80.7%、构建、Android JS export、浏览器 E2E 5/5。客户端 368 通过、2 个既存跳过，6 个既存 ESLint warning、0 error。最后补充的终端通知清单通过 20 项协议契约及真实组合 wire 重验。日志：.local/validation/2026-09-27-release-goal/title-locks-ci-local.log。仍不代表完整协议或 Android GUI 通过。
 - 前一提交 8e70412：常规 CI 36317234697 全绿；协议 CI 36317234788 的 Linux 与 macOS 14 均只剩 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started）失败。Control-runtime、macOS loopback 成功，恢复/迁移六项不再失败；不能因此宣称完整协议覆盖通过。
 - 原生队列的独立失败验收已复现：空闲线程 queue/add 自动完成真实模型回合，但 Control 没有对应 intent/run。queue/start 的响应和 turn/started 没有输入，实际 userMessage 的 clientId/content 才能用于关联。队列仍未实现，不能只补一个方法分支或关闭原生自动消费来绕过。
@@ -157,12 +166,12 @@ PostgreSQL 就绪探测改为 127.0.0.1 TCP。事实是一次本地数据库初�
 
 ## 后续必须完成
 
-1. 新增表单改动的完整 make ci-local 和本地 Control 矩阵通过，仍需新提交的两平台 CI 及最终完整协议覆盖；events、approvals 等已完成的专项不能等同完整覆盖通过。
+1. Session 锁修复的本地完整 CI、Control、wire 与 PG 门禁通过，仍需新提交两平台 CI 及完整协议覆盖；events、approvals 等已完成的专项不能等同完整覆盖通过。
 2. `thread/queue/start` 已分类 controlled，但 Controller 仍需接入真实生命周期；Claude 新接口仍需实现及执行证据，不能将分类当成已实现。
-3. writeStdin 已在本地及 CI 真实链路完成；Go 侧 openaiForm 归一化、扩展能力协商及本地 Control 组合通过，仍需新提交的两平台 CI。用户身份验证的可信完成、拒绝及取消链路仍未完成。
+3. writeStdin、Go 侧 openaiForm 归一化与扩展能力协商均有本地及两平台真实链路通过证据。用户身份验证的可信完成、拒绝及取消链路仍未完成。
 4. 新增 ThreadItem、HookMetadata、图片 fileId、异步问题等需要完整跨端行为验收，当前类型检查通过不等于能力验收。
-5. MCP019 在本地和最新两平台 CI 真实通过；MCP017、REVIEW006 在 e5c175f 的两平台 CI 仍失败，不制作自编译 CLI。
-6. Android 错峰后仍在 Maestro 启动时 device offline，需用新增系统/ADB 证据定位；之后复现 database is locked。iOS 继续暂缓，不能将跳过算作完整移动门禁通过。
+5. MCP019 在本地和两平台 CI 真实通过；MCP017、REVIEW006 在最新 d5e8940 的两平台 CI 仍失败，不制作自编译 CLI。
+6. Android 最新 CI 已越过启动和 SSH 设置，失败于计划确认提交按钮超出视口；滚动修复待新提交 GUI 复验。历史 device offline 和 database is locked 尚未证实根因与修复。iOS 继续暂缓，不能将跳过算作完整移动门禁通过。
 7. 保留原交接中的语义专项和未执行方法缺口，完成后再考虑生产门禁。
 
 官方协议参考：[Codex App Server](https://learn.chatgpt.com/docs/app-server)。

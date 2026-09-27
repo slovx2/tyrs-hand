@@ -285,8 +285,9 @@ func (r *Repository) lockWorkspaceSession(ctx context.Context, tx *sql.Tx, sessi
 ) (uuid.UUID, error) {
 	if sessionID != uuid.Nil {
 		var lockedID uuid.UUID
+		// 入队只修改 Session 非键字段；首次建帖持有 Control 时，不能阻断其 Session 外键检查。
 		if err := tx.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
-			WHERE id=$1 FOR UPDATE`, sessionID).Scan(&lockedID); err != nil {
+			WHERE id=$1 FOR NO KEY UPDATE`, sessionID).Scan(&lockedID); err != nil {
 			return uuid.Nil, err
 		}
 		return lockedID, nil
@@ -306,7 +307,7 @@ func (r *Repository) lockWorkspaceSession(ctx context.Context, tx *sql.Tx, sessi
 		}
 		var lockedSession, lockedConversation uuid.UUID
 		if err = tx.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
-			WHERE id=$1 FOR UPDATE`, existingID).Scan(&lockedSession); err != nil {
+			WHERE id=$1 FOR NO KEY UPDATE`, existingID).Scan(&lockedSession); err != nil {
 			return uuid.Nil, err
 		}
 		if err = tx.QueryRowContext(ctx, `SELECT id FROM discord_conversations
@@ -1020,8 +1021,18 @@ func (r *Repository) ReplySatisfied(ctx context.Context, claimed *ClaimedControl
 
 func (r *Repository) fence(ctx context.Context, tx *sql.Tx, claimed *ClaimedControl) error {
 	var exists bool
-	// 与 Desktop 投影及领取保持 control -> intent -> run 顺序，避免确认回合与首次建帖互锁。
+	// 终态会递增 Session 消息序号；先与标题/metadata 串行，再保持 control -> intent -> run 顺序。
+	// 从真实 Run 关联 Session，不能依赖调用方快照是否包含 SessionID；GitHub Run 没有 Session。
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_runs run
+		JOIN codex_thread_controls control ON control.id=run.control_id
+		JOIN workspace_sessions session ON session.id=control.session_id
+		WHERE run.id=$1 AND run.control_id=$2 AND run.primary_intent_id=$3
+		AND run.worker_id IS NOT NULL FOR NO KEY UPDATE OF session)`,
+		claimed.RunID, claimed.ControlID, claimed.ID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_runs run
 		JOIN codex_thread_controls control ON control.id=run.control_id
 		WHERE run.id=$1 AND run.control_id=$2 AND run.primary_intent_id=$3
 		AND run.worker_id IS NOT NULL FOR UPDATE OF control)`,

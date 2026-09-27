@@ -81,6 +81,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     timeout: 120000
 - tapOn:
     id: "interactive:option:0"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:submit"
+    direction: DOWN
 - tapOn:
     id: "interactive:.*:submit"
 - extendedWaitUntil:
@@ -89,6 +93,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - assertVisible: "MOBILE_PLAN_OUTPUT.*"
 - tapOn:
     id: "interactive:option:0"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:submit"
+    direction: DOWN
 - tapOn:
     id: "interactive:.*:submit"
 - extendedWaitUntil:

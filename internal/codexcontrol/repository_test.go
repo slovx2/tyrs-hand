@@ -192,6 +192,9 @@ func TestReconcileExhaustedIntentReturnsControlToIdle(t *testing.T) {
 		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
 	}
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT EXISTS.*FOR NO KEY UPDATE OF session").
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
 		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -233,6 +236,9 @@ func TestReconcileDesktopIntentReturnsControlToIdleImmediately(t *testing.T) {
 		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
 	}
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT EXISTS.*FOR NO KEY UPDATE OF session").
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
 		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -272,6 +278,9 @@ func TestCancelFinishesSteerIntents(t *testing.T) {
 		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
 	}
 	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT EXISTS.*FOR NO KEY UPDATE OF session").
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
 		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
@@ -323,6 +332,9 @@ func TestNonRetryableCodexErrorFinishesImmediatelyAndPersistsDetails(t *testing.
 			encoded := encode(codexError)
 
 			mock.ExpectBegin()
+			mock.ExpectQuery("SELECT EXISTS.*FOR NO KEY UPDATE OF session").
+				WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
+				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(test.sourceType == SourceWorkspace))
 			mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
 				WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))

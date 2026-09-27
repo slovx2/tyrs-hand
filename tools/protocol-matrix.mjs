@@ -7,6 +7,7 @@ import { startControlInfrastructure } from './protocol-control-infra.mjs'
 import { runMigrationMatrix } from './protocol-migration-matrix.mjs'
 import { runRecoveryMatrix } from './protocol-recovery-matrix.mjs'
 import { collectMacNetworkDiagnostics } from './protocol-macos-diagnostics.mjs'
+import { writePostgresDiagnostics } from './protocol-postgres-diagnostics.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
@@ -210,6 +211,15 @@ for (const suite of suites) {
   writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 }
 } finally { infrastructure?.close() }
+if (infrastructure) {
+  try {
+    const database = writePostgresDiagnostics(artifacts, runId)
+    if (!database.passed) runtimeFailures.push({ suite: 'postgres-diagnostics',
+      error: database.errors.join('；') })
+  } catch (error) {
+    runtimeFailures.push({ suite: 'postgres-diagnostics', error: String(error) })
+  }
+}
 collectMacNetworkDiagnostics(artifacts, failedWindows)
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
   const migration = await runMigrationMatrix({ root, artifacts, runId, env })
@@ -218,6 +228,18 @@ if (!controlOnly && !process.argv.includes('--runtime-only')) {
   const recovery = await runRecoveryMatrix({ root, artifacts, runId, env })
   runtimeFailures.push(...recovery.failures)
   runtimeExecutions += recovery.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
+}
+if (controlOnly) {
+  try {
+    const { writeRuntimeWireReport } = await import('./protocol-inventory/runtime-wire.mjs')
+    const wire = writeRuntimeWireReport({ root, directory: artifacts, runId,
+      executions: runtimeExecutions.split('\n').filter(Boolean).map(line => JSON.parse(line)) })
+    if (!wire.passed) runtimeFailures.push({ suite: 'runtime-wire',
+      error: `真实通信校验失败：${wire.errors.length} 项，详见 runtime-wire.json` })
+  } catch (error) {
+    // 校验器或证据读取失败同样失败，并继续保存所有专项的执行结果。
+    runtimeFailures.push({ suite: 'runtime-wire', error: String(error) })
+  }
 }
 if (!runtimeFailures.length) console.log(controlOnly ? '真实 Control、双 SSH、SDK、Discord 审批与重启后的定时任务验收通过；这不代表三端 GUI 或完整协议矩阵通过。' :
   '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')

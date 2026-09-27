@@ -132,6 +132,7 @@ func (s *Server) workerCompleteSessionTitle(c *gin.Context) {
 	var sessionID uuid.UUID
 	var taskRevision, currentRevision int64
 	var titleSource string
+	// 标题只更新 Session 非键字段；保留写互斥，同时允许持有 Control 的事务通过子表外键检查。
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT task.session_id,task.title_revision,
 		session.title_revision,session.title_source
 		FROM workspace_session_title_tasks task
@@ -139,7 +140,7 @@ func (s *Server) workerCompleteSessionTitle(c *gin.Context) {
 		JOIN worker_workspaces workspace ON workspace.id=task.workspace_id
 		WHERE task.id=$1 AND workspace.worker_id=$2 AND session.engine=$4 AND task.status='claimed'
 		  AND task.lease_owner=$2 AND task.lease_token_hash=$3
-		  AND task.lease_expires_at>=now() FOR UPDATE OF task,session`, taskID,
+		  AND task.lease_expires_at>=now() FOR UPDATE OF task FOR NO KEY UPDATE OF session`, taskID,
 		currentWorker(c).ID, security.Digest(request.LeaseToken), currentWorkerEngine(c)).
 		Scan(&sessionID, &taskRevision, &currentRevision, &titleSource)
 	if errors.Is(err, sql.ErrNoRows) {

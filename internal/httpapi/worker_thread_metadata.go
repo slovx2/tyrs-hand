@@ -169,13 +169,14 @@ func (s *Server) lockThreadMetadataParents(c *gin.Context, tx *sql.Tx,
 ) error {
 	var conversationID sql.NullString
 	// Live/客户端入队和标题完成先持有 Session。metadata 不能先占用 Control 再反向等待 Session。
+	// 不修改 Session 键，避免阻塞回合广播和 Desktop Post 的外键 KEY SHARE 锁。
 	err := tx.QueryRowContext(c.Request.Context(), `SELECT control.discord_conversation_id::text
 		FROM codex_thread_controls control JOIN worker_workspaces environment
 			ON environment.id = control.workspace_id
 		JOIN workspace_sessions session ON session.id=control.session_id
 		WHERE control.workspace_id = $1 AND control.external_thread_id = $2
 			AND environment.worker_id = $3 AND control.engine = $4
-		FOR UPDATE OF session`, workspaceID, threadID,
+		FOR NO KEY UPDATE OF session`, workspaceID, threadID,
 		currentWorker(c).ID, currentWorkerEngine(c)).Scan(&conversationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil

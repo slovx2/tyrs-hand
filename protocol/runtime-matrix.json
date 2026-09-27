@@ -771,6 +771,27 @@
       }
     },
     {
+      "method": "configWarning",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "MIGRATION-006",
+          "MIGRATION-007"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ConfigWarningNotification",
+        "response": null
+      }
+    },
+    {
       "method": "deprecationNotice",
       "engines": {
         "codex": "required",

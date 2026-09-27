@@ -58,6 +58,11 @@ jobs:
         run: |
           npm install --global @openai/codex@0.157.1
           npm ci --prefix .local/protocol-adapter
+          npm ci --prefix tools/protocol-inventory
+      - name: Verify Control evidence gates
+        run: |
+          npm test --prefix tools/protocol-inventory
+          node --test tools/protocol-postgres-diagnostics.test.mjs
       - name: Enable isolated test network namespace
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -87,6 +92,8 @@ jobs:
             .artifacts/protocol/runs/*/combination.json
             .artifacts/protocol/runs/*/runtime-failures.json
             .artifacts/protocol/runs/*/executions.jsonl
+            .artifacts/protocol/runs/*/runtime-wire.json
+            .artifacts/protocol/runs/*/postgres-diagnostics.json
           if-no-files-found: warn
   protocol:
     strategy:
@@ -126,7 +133,7 @@ jobs:
       - name: Verify coverage gate itself
         run: |
           npm test --prefix tools/protocol-inventory
-          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs tools/protocol-recovery-matrix.test.mjs
+          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs tools/protocol-recovery-matrix.test.mjs tools/protocol-postgres-diagnostics.test.mjs
       - name: Prepare Linux sandbox dependencies
         if: runner.os == 'Linux'
         run: |
@@ -188,5 +195,6 @@ jobs:
             tyrs-hand/.artifacts/protocol/runs/*/combination.json
             tyrs-hand/.artifacts/protocol/runs/*/runtime-failures.json
             tyrs-hand/.artifacts/protocol/runs/*/executions.jsonl
+            tyrs-hand/.artifacts/protocol/runs/*/postgres-diagnostics.json
             tyrs-hand/.artifacts/protocol/runs/*/coverage.json
           if-no-files-found: warn

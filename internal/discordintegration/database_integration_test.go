@@ -2633,6 +2633,9 @@ func bindDiscordConversationSessionForTest(t *testing.T, db *sql.DB,
 
 func discordDatabase(t *testing.T) *sql.DB {
 	t.Helper()
+	if dsn := os.Getenv("TEST_DATABASE_URL"); dsn != "" {
+		return openDiscordCIDatabase(t, dsn)
+	}
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
