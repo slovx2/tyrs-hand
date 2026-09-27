@@ -34,9 +34,9 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			badRequest(c, errors.New("thread metadata event 无效"))
 			return
 		}
-		if err := s.lockThreadMetadataConversation(c, tx, request.WorkspaceID,
+		if err := s.lockThreadMetadataParents(c, tx, request.WorkspaceID,
 			event.ThreadID); err != nil {
-			problem(c, http.StatusInternalServerError, "锁定 Thread Conversation 失败", err)
+			problem(c, http.StatusInternalServerError, "锁定 Thread 元数据父记录失败", err)
 			return
 		}
 		if event.Kind == "settings" {
@@ -164,21 +164,27 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (s *Server) lockThreadMetadataConversation(c *gin.Context, tx *sql.Tx,
+func (s *Server) lockThreadMetadataParents(c *gin.Context, tx *sql.Tx,
 	workspaceID uuid.UUID, threadID string,
 ) error {
 	var conversationID sql.NullString
+	// Live/客户端入队和标题完成先持有 Session。metadata 不能先占用 Control 再反向等待 Session。
 	err := tx.QueryRowContext(c.Request.Context(), `SELECT control.discord_conversation_id::text
 		FROM codex_thread_controls control JOIN worker_workspaces environment
 			ON environment.id = control.workspace_id
+		JOIN workspace_sessions session ON session.id=control.session_id
 		WHERE control.workspace_id = $1 AND control.external_thread_id = $2
-			AND environment.worker_id = $3 AND control.engine = $4`, workspaceID, threadID,
+			AND environment.worker_id = $3 AND control.engine = $4
+		FOR UPDATE OF session`, workspaceID, threadID,
 		currentWorker(c).ID, currentWorkerEngine(c)).Scan(&conversationID)
-	if errors.Is(err, sql.ErrNoRows) || !conversationID.Valid {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if !conversationID.Valid {
+		return nil
 	}
 	var locked uuid.UUID
 	return tx.QueryRowContext(c.Request.Context(), `SELECT id FROM discord_conversations

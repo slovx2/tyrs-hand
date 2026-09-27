@@ -149,13 +149,18 @@ func startSessionTitleThread(ctx context.Context, client sessionTitleCaller, cwd
 		"serviceTier": "fast", "dynamicTools": []any{},
 		"baseInstructions":      "你是会话标题生成器。只根据用户提供的文本生成标题，不调用工具，不读取文件，不执行任何操作。",
 		"developerInstructions": "输出一个简洁、具体、忠于原意的中文标题。不要添加解释。",
-		"config": map[string]any{"model_reasoning_effort": "low", "service_tier": "fast",
-			"default_tools_enabled": false, "features": map[string]any{"memories": false}},
 	}
 	if engine == runtimeidentity.Claude {
 		params["model"] = "claude-default"
 		delete(params, "serviceTier")
 		params["config"] = map[string]any{"default_tools_enabled": false}
+	} else {
+		config, err := codexSessionTitleConfig(ctx, client, cwd)
+		if err != nil {
+			return "", err
+		}
+		params["config"] = config
+		params["environments"] = []any{}
 	}
 	if err := client.Call(ctx, "thread/start", params, &response); err != nil {
 		return "", err

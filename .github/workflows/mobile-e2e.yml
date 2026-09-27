@@ -167,6 +167,9 @@ jobs:
           adb -s "${ANDROID_SERIAL}" shell settings put global window_animation_scale 0
           adb -s "${ANDROID_SERIAL}" shell settings put global transition_animation_scale 0
           adb -s "${ANDROID_SERIAL}" shell settings put global animator_duration_scale 0
+          # 启动前保留系统日志；应用尚未运行就掉线时，crash buffer 可能仍为空。
+          nohup adb -s "${ANDROID_SERIAL}" logcat -b all -v threadtime \
+            >"${RUNNER_TEMP}/android-system.log" 2>&1 &
       - name: Android 真实双SSH、SDK与计划审批GUI
         env:
           TYRS_HAND_E2E_MAESTRO_BIN: /home/runner/.local/bin/maestro
@@ -181,6 +184,7 @@ jobs:
             .local/e2e/evidence/
             .artifacts/mobile-runtime/
             ${{ runner.temp }}/android-emulator.log
+            ${{ runner.temp }}/android-system.log
             !**/bin/**
             !**/worker/tyrs-hand-worker
             !**/postgres/**

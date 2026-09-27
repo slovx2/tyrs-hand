@@ -19,8 +19,9 @@
 
 ## 完整测试推进（2026-09-27，优先于下文历史验证）
 
-- 最近已结束的 CI 基线：e5c175f，包含 stdin 真实审批与 Control/intent 锁顺序修复；常规 CI 36318253525 全绿。协议 CI 36318253522 的 Linux 与 macOS 14 均只剩 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started）失败，Control-runtime 和 macOS loopback 成功。
-- 最新完整覆盖基线为 e5c175f 的 Linux CI：157 项缺口（runId 06c15c5e-06e4-4f88-991b-36f90658d6c4）。这是 CI 原始 inventory 结果，替代此前 324501c 的 200 项；本地 control-only 子集不用于重算整个项目的缺口数。
+- 最近已结束的 CI 基线：6640499，常规 CI 36321807435 成功。协议 CI 36321807423 的 Control-runtime 和 macOS loopback 成功；macOS 14 仍有 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started），Linux 另有 Codex 表单死锁与 Claude 权限专项跨用例 Discord 请求。后两项已有直接证据和本地修复，需新提交的 CI 复验。
+- 最新完整覆盖基线为 6640499 的 Linux CI：169 项缺口（runId cf6ea44e-8cbe-4667-868c-80332bf03c50）。这是该提交的原始 inventory 结果，替代 d9279e1 的 157 项基线；本地 control-only 子集不用于重算整个项目的缺口数。
+- 标题隔离、数据库隔离、两处锁顺序修复与 Android 诊断改动后的完整 make ci-local 退出 0：Go 单测/race/真实数据库集成、手机 SSH、核心覆盖率 80.7%、构建、Android JS export、浏览器 E2E 5/5。客户端 368 通过、2 个既存跳过，6 个既存 ESLint warning、0 error。最后补充的终端通知清单通过 20 项协议契约及真实组合 wire 重验。日志：.local/validation/2026-09-27-release-goal/title-locks-ci-local.log。仍不代表完整协议或 Android GUI 通过。
 - 前一提交 8e70412：常规 CI 36317234697 全绿；协议 CI 36317234788 的 Linux 与 macOS 14 均只剩 MCP017（分页遗漏）和 REVIEW006（缺少 turn/started）失败。Control-runtime、macOS loopback 成功，恢复/迁移六项不再失败；不能因此宣称完整协议覆盖通过。
 - 原生队列的独立失败验收已复现：空闲线程 queue/add 自动完成真实模型回合，但 Control 没有对应 intent/run。queue/start 的响应和 turn/started 没有输入，实际 userMessage 的 clientId/content 才能用于关联。队列仍未实现，不能只补一个方法分支或关闭原生自动消费来绕过。
 - 队列设计还必须涵盖入队/恢复前的共享并发预留、连续自动回合的独立 Journal、工具/审批的精确回合绑定、绑定身份快照与重启恢复。以上是待实现约束，不是通过证据。
@@ -40,14 +41,37 @@
 
 ## Phase 2：原生回退与 Control 替换
 
-### Android 构建与模拟器错峰（2026-09-27，等待真实 GUI 验收）
+### Codex 标题任务的宿主工具隔离（2026-09-27）
+
+- 真实缺陷：官方 CLI 忽略 default_tools_enabled。旧代码经真实 Control 标题任务执行原生 JS 注册表探针，仍有 16 个宿主工具，包括命令、补丁、图片、目标、协作及继承的 MCP。
+- 标题会话改用官方配置开关与 environments=[]；先读取该辅助目录的有效配置，按字面名称逐项禁用已有 MCP。配置读取失败时不启动标题任务，不修改宿主配置。Claude 保留其有效的 default_tools_enabled 参数。
+- 新增 TITLE-001 正式矩阵专项：真实 SSH 发起普通任务，Control 自动调度标题，官方 CLI 执行注册表探针；修复后宿主工具注册表为空、结构化标题写回成功、Outbox 清零，普通会话仍保留 MCP，配置文件逐字节不变。
+- 官方 gpt-5.6-luna 仍提供无宿主工具的隔离 JS 编排入口 exec/wait；本次验证的是宿主命令、文件、MCP 等能力不可达，不宣称协议中完全没有工具入口。
+- 单测、真实专项及包含数据库隔离和两处锁顺序修复的 Control 组合已通过：13 个专项、14 条引擎执行；21 份真实 wire、1443 条报文通过正式清单与官方 schema 校验。该组合 runId 为 0502d2d9-445b-4b7d-8006-afb7ea47d6cd，PostgreSQL 日志无死锁；完整本地 CI 退出 0。
+- 证据：.local/validation/2026-09-27-release-goal/title-control-baseline/（旧实现真实失败）、title-control-final/（修复后真实通过）。
+
+### Control 专项隔离与并发死锁（2026-09-27）
+
+- 真实验收原先共用数据库，全局 Outbox 可领取前一专项残留消息；唯一 Worker 身份不足以隔离。每个 fixture 现使用同一临时 PostgreSQL 服务内的独立数据库。确定性回归验证后一 fixture 看不到前一条 sentinel，且前一数据未被清空。基础设施专项单独登记，不冒充协议能力覆盖。
+- 6640499 的 Linux PostgreSQL 日志证实标题确认与标题生成存在 Control/Outbox 反向加锁。Apply 和 FailDelivery 现先处理或锁定 Control，再更新 Outbox；仍在同一事务校验租约，旧标题结果/错误不能覆盖新版本，失效租约完整回滚。旧实现四场景全部失败，修复全部通过。
+- 独立数据库组合进一步复现 Live 入队与 metadata 的 Session/Control 死锁。metadata 现先锁 Session，再锁 Conversation/Control；同时修复查询错误被空 conversation 分支吞掉的问题。name/settings/lifecycle 三种真实 API 请求的锁等待回归均有旧失败和修复通过证据。
+- 标题隔离后不再向模型暴露辅助 cwd；Live 模型夹具改按真实 json_schema 输出格式识别标题任务，未恢复宿主环境或减少隔离。
+- 真实 stdin 用例产生的 item/commandExecution/terminalInteraction 已补入正式清单，Codex 关联 APPROVAL-009；Claude 未有对应覆盖，仍保留 required 和空用例。协议 inventory 契约 20/20 通过。
+- 最新组合的 13 个专项和 14 条引擎执行全部通过；21 份 wire 正式校验无报文、schema 或未登记方法错误。它不包含队列失败草稿，不等同完整协议或 GUI 通过。
+- 证据：.local/validation/2026-09-27-release-goal/ 下的 fixture-isolation-baseline/、fixture-isolation-fixed/、thread-name-lock-baseline.log、thread-name-lock-fixed.log、metadata-lock-baseline.log、metadata-lock-fixed.log、title-locks-control-final/。
+
+### Android 构建与模拟器错峰（2026-09-27，GUI 仍失败）
 
 - 事实：既有 CI 在启动模拟器后才执行 Gradle Release 构建，此前 Android 验收出现 device offline。资源竞争是否为掉线根因尚未证明。
 - 工作流改为先准备 SDK/AVD，按已配置的 x86_64 目标构建并校验 APK，再启动模拟器；安装阶段读取真实设备 ABI，重新检查 native-code、全部 .so 目录及 ELF 头，禁止重新构建。
 - 构建脚本新增仅 Android 使用的 --build-only/--install-only；默认本地构建安装流程不变。验收入口拒绝 --build-only，避免只构建后继续使用旧安装。CI 明确指定 emulator-5554，AVD 路径跨步骤保留。
 - 门禁脚本与移动契约 39/39 通过，包括没有设备时可独立构建、安装不重复构建、缺失 APK、ABI 不符、查询失败及真实设备拒绝；Bash 和工作流 YAML 语法检查通过。这些替身测试不计作真实 APK 构建或 Android GUI 通过。
 - 脚本改动后的完整 make ci-local 再次退出 0，包含浏览器 E2E 5/5、核心覆盖率 80.7% 和 Android JS export；这仍不是原生 APK 或模拟器验收。完整日志为 .local/validation/2026-09-27-release-goal/android-stages-ci-local.log。
-- 还需触发只含 Android 的真实 Mobile E2E，确认启动稳定性后继续复现 database is locked。iOS 暂缓，不运行 iOS GUI。
+- 6640499 的真实移动 SSH 预检已通过：双 SSH、计划、权限、审批、六个 MCP 场景、结构化标题、引擎隔离与 wire schema；证据 .artifacts/mobile-runtime/1790514688269/。
+- Android-only Mobile E2E 36321807989 已失败：真实 APK 构建、ABI 校验、模拟器启动和安装均成功；21:35:17 CST，Maestro clearState 后的 am force-stop 返回 device offline，reverse 映射同时丢失，宿主 Control/双 SSH TCP 始终可达。错峰未解决掉线，不能再把资源竞争当作已确认根因。iPhone job 按要求 skipped。
+- 本地只读模拟器用现有 9 月 26 日旧 APK 跑最小启动流程成功，boot ID/adbd PID 稳定；这是诊断，不能作为当前工作树 GUI 验收。测试模拟器已停止。
+- 增加启动前系统 logcat 和连续设备身份采样（get-state、boot ID、uptime、adbd PID），诊断契约 5/5 和真实本地采样通过；这仅提高下一轮取证能力，不宣称掉线修复。database is locked 仍未复现与修复。
+- Android 失败原始证据：.local/validation/2026-09-27-release-goal/android-6640499/；本地最小诊断：android-local-driver/（diagnosticOnly=true）。
 - 证据：.local/validation/2026-09-27-release-goal/android-build-stages-final.log。
 
 ### 扩展 MCP 表单（2026-09-27）
@@ -138,7 +162,7 @@ PostgreSQL 就绪探测改为 127.0.0.1 TCP。事实是一次本地数据库初�
 3. writeStdin 已在本地及 CI 真实链路完成；Go 侧 openaiForm 归一化、扩展能力协商及本地 Control 组合通过，仍需新提交的两平台 CI。用户身份验证的可信完成、拒绝及取消链路仍未完成。
 4. 新增 ThreadItem、HookMetadata、图片 fileId、异步问题等需要完整跨端行为验收，当前类型检查通过不等于能力验收。
 5. MCP019 在本地和最新两平台 CI 真实通过；MCP017、REVIEW006 在 e5c175f 的两平台 CI 仍失败，不制作自编译 CLI。
-6. Android 构建与模拟器错峰，排除 device offline 后复现 database is locked；iOS 继续暂缓。
+6. Android 错峰后仍在 Maestro 启动时 device offline，需用新增系统/ADB 证据定位；之后复现 database is locked。iOS 继续暂缓，不能将跳过算作完整移动门禁通过。
 7. 保留原交接中的语义专项和未执行方法缺口，完成后再考虑生产门禁。
 
 官方协议参考：[Codex App Server](https://learn.chatgpt.com/docs/app-server)。

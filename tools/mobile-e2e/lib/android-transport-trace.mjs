@@ -5,6 +5,19 @@ import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
 
+export async function readAndroidDevice(deviceID, execute = exec) {
+  const [state, identity] = await Promise.allSettled([
+    execute('adb', ['-s', deviceID, 'get-state'], { timeout: 3000 }),
+    execute('adb', ['-s', deviceID, 'shell',
+      'getprop sys.boot_completed; cat /proc/sys/kernel/random/boot_id; cat /proc/uptime; pidof adbd'], { timeout: 3000 }),
+  ])
+  const parts = identity.status === 'fulfilled' ? identity.value.stdout.trim().split(/\r?\n/) : []
+  return { state: state.status === 'fulfilled' ? state.value.stdout.trim() : undefined,
+    stateError: state.status === 'rejected' ? state.reason.message : undefined,
+    bootCompleted: parts[0], bootID: parts[1], uptime: parts[2], adbdPID: parts[3],
+    shellError: identity.status === 'rejected' ? identity.reason.message : undefined }
+}
+
 export function probeTCP(port, timeoutMs = 1000) {
   return new Promise((resolve) => {
     const socket = createConnection({ host: '127.0.0.1', port })
@@ -26,8 +39,9 @@ export function probeTCP(port, timeoutMs = 1000) {
 export class AndroidTransportTrace {
   constructor({ deviceID, ports, path, intervalMs = 2000,
     readReverse = async () => (await exec('adb', ['-s', deviceID, 'reverse', '--list'], { timeout: 3000 })).stdout,
+    readDevice = () => readAndroidDevice(deviceID),
     probe = probeTCP }) {
-    Object.assign(this, { deviceID, ports: [...new Set(ports)], path, intervalMs, readReverse, probe })
+    Object.assign(this, { deviceID, ports: [...new Set(ports)], path, intervalMs, readReverse, readDevice, probe })
     this.name = 'android-transport-trace'
     this.pending = Promise.resolve()
     this.stopped = false
@@ -48,18 +62,19 @@ export class AndroidTransportTrace {
     if (this.stopped) return this.pending
     this.queued++
     const next = this.pending.then(async () => {
-      const [reverse, connections] = await Promise.all([
+      const [reverse, connections, device] = await Promise.all([
         this.readReverse().then((text) => ({ rows: text.trim().split('\n').filter(Boolean)
           .map((line) => line.trim().split(/\s+/).slice(-2)) }),
         (error) => ({ error: error.message })),
         Promise.all(this.ports.map(async (port) => ({ port, ...await this.probe(port) }))),
+        this.readDevice(),
       ])
       const expected = this.ports.map((port) => `tcp:${port}`)
       const mappings = reverse.rows?.filter(([source]) => expected.includes(source)) ?? []
       const missing = this.ports.filter((port) => !mappings.some(([source, target]) =>
         source === `tcp:${port}` && target === `tcp:${port}`))
       await appendFile(this.path, JSON.stringify({ at: new Date().toISOString(), phase,
-        deviceID: this.deviceID, mappings, missing, adbError: reverse.error, hostTCP: connections }) + '\n')
+        deviceID: this.deviceID, device, mappings, missing, adbError: reverse.error, hostTCP: connections }) + '\n')
     }).finally(() => { this.queued-- })
     this.pending = next.catch(() => {})
     return next

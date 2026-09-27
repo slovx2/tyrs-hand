@@ -58,9 +58,7 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	dsn, redisSocket := os.Getenv("TYRS_HAND_TEST_DATABASE_URL"), os.Getenv("TYRS_HAND_TEST_REDIS_SOCKET")
 	require.NotEmpty(t, dsn, "缺少临时 PostgreSQL，不能 skip")
 	require.NotEmpty(t, redisSocket, "缺少临时 Redis，不能 skip")
-	db, err := database.Open(ctx, dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	db := openControlRuntimeDatabase(t, ctx, dsn)
 	require.NoError(t, database.Migrate(ctx, db))
 	cache := redis.NewClient(&redis.Options{Network: "unix", Addr: redisSocket})
 	t.Cleanup(func() { _ = cache.Close() })
@@ -104,7 +102,7 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 		t.Cleanup(func() { stopBackground(); <-done })
 	}
 	registry := workerregistry.NewService(db)
-	// 多个真实专项共享临时数据库；身份唯一化，不清库或复用前一专项的授权。
+	// 身份保持唯一；每个专项使用独立数据库，避免全局 Outbox 领取残留消息。
 	fixtureID := uuid.New()
 	discordIDBase := int64(binary.BigEndian.Uint64(fixtureID[:8]) & ((1 << 62) - 1))
 	guildID := fmt.Sprint(discordIDBase)

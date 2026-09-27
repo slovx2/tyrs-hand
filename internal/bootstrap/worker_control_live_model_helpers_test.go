@@ -61,9 +61,11 @@ func (m *controlLiveModel) respond(t *testing.T, w http.ResponseWriter, r *http.
 	var payload struct {
 		Input json.RawMessage
 		Tools []struct{ Name string }
+		Text  struct{ Format struct{ Type string } }
 	}
 	require.NoError(t, json.Unmarshal(body, &payload))
-	if strings.Contains(string(payload.Input), "/session-title-tasks/") {
+	// 标题使用结构化输出；空执行环境不会向模型暴露临时工作目录。
+	if payload.Text.Format.Type == "json_schema" {
 		m.titleCalls.Add(1)
 		controlLiveText(w, `{"title":"Live 接力回归"}`)
 		return

@@ -45,6 +45,8 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
 const controlSuites = [
+  { name: 'bootstrap-fixture-isolation', pkg: './internal/bootstrap', test: 'TestControlRuntimeFixturesIsolateDatabase',
+    cases: [], engines: [] },
   { name: 'bootstrap-confirmation', pkg: './internal/bootstrap', test: 'TestWorkerControlRemoteConfirmationAfterRegistrationRealSSH',
     cases: ['FAILURE-009'], engines: ['claude-code'] },
   { name: 'bootstrap-control-outage', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudeNetworkOutageRealSSH',
@@ -63,6 +65,8 @@ const controlSuites = [
     cases: ['MCP-014'], engines: ['claude-code'] },
   { name: 'bootstrap-codex-forms', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexFormsRealSSH',
     cases: ['MCP-020'], engines: ['codex'] },
+  { name: 'bootstrap-codex-title', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexTitleIsolationRealSSH',
+    cases: ['TITLE-001'], engines: ['codex'] },
   { name: 'bootstrap-claude-permissions', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudePermissionsRealSSH',
     cases: ['PERMISSION-012'], engines: ['claude-code'] },
   { name: 'bootstrap-live', pkg: './internal/bootstrap', test: 'TestWorkerControlLiveCodexRealSSH',

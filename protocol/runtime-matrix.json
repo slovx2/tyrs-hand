@@ -698,6 +698,7 @@
       },
       "cases": {
         "codex": [
+          "TITLE-001",
           "CONFIG-007",
           "ISOLATION-004"
         ],
@@ -1497,6 +1498,26 @@
         "client/src/features/chat/approvalActions.ts",
         "client/src/types/openapi.ts",
         "web/src/api/schema.ts"
+      ]
+    },
+    {
+      "method": "item/commandExecution/terminalInteraction",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "APPROVAL-009"
+        ],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/TerminalInteractionNotification",
+        "response": null
+      },
+      "callers": [
+        "wire:codex"
       ]
     },
     {
@@ -4184,6 +4205,7 @@
       },
       "cases": {
         "codex": [
+          "TITLE-001",
           "EVENTS-003",
           "SUBMIT-004",
           "PERMISSION-007",
@@ -4685,6 +4707,7 @@
       },
       "cases": {
         "codex": [
+          "TITLE-001",
           "EVENTS-003",
           "SUBMIT-004",
           "PERMISSION-007",

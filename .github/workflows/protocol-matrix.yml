@@ -76,6 +76,18 @@ jobs:
             .artifacts/control-runtime
             .artifacts/protocol
           if-no-files-found: error
+      - name: Preserve compact Control summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: control-runtime-summary
+          path: |
+            .artifacts/protocol/latest.json
+            .artifacts/protocol/runs/*/run.json
+            .artifacts/protocol/runs/*/combination.json
+            .artifacts/protocol/runs/*/runtime-failures.json
+            .artifacts/protocol/runs/*/executions.jsonl
+          if-no-files-found: warn
   protocol:
     strategy:
       fail-fast: false
@@ -165,3 +177,16 @@ jobs:
           name: protocol-${{ matrix.os }}
           path: tyrs-hand/.artifacts/protocol
           if-no-files-found: error
+      - name: Preserve compact protocol summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: protocol-summary-${{ matrix.os }}
+          path: |
+            tyrs-hand/.artifacts/protocol/latest.json
+            tyrs-hand/.artifacts/protocol/runs/*/run.json
+            tyrs-hand/.artifacts/protocol/runs/*/combination.json
+            tyrs-hand/.artifacts/protocol/runs/*/runtime-failures.json
+            tyrs-hand/.artifacts/protocol/runs/*/executions.jsonl
+            tyrs-hand/.artifacts/protocol/runs/*/coverage.json
+          if-no-files-found: warn

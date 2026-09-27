@@ -12,17 +12,30 @@ import (
 )
 
 type titleCaller struct {
-	method string
-	params map[string]any
+	method       string
+	params       map[string]any
+	configError  error
+	configResult any
+	methods      []string
 }
 
 func (c *titleCaller) Call(_ context.Context, method string, params, result any) error {
 	c.method = method
 	c.params = params.(map[string]any)
+	c.methods = append(c.methods, method)
 	var response any
-	if method == "thread/start" {
+	switch method {
+	case "config/read":
+		if c.configError != nil {
+			return c.configError
+		}
+		response = c.configResult
+		if response == nil {
+			response = map[string]any{"config": map[string]any{}}
+		}
+	case "thread/start":
 		response = map[string]any{"thread": map[string]any{"id": "title-thread"}}
-	} else {
+	default:
 		response = map[string]any{"turn": map[string]any{"id": "title-turn"}}
 	}
 	encoded, _ := json.Marshal(response)
@@ -40,7 +53,32 @@ func TestSessionTitleThreadIsEphemeralAndRestricted(t *testing.T) {
 	require.Equal(t, "never", caller.params["approvalPolicy"])
 	require.Equal(t, "read-only", caller.params["sandbox"])
 	require.Empty(t, caller.params["dynamicTools"])
-	require.Equal(t, false, caller.params["config"].(map[string]any)["default_tools_enabled"])
+	require.Equal(t, []string{"config/read", "thread/start"}, caller.methods)
+	require.Equal(t, []any{}, caller.params["environments"])
+	config := caller.params["config"].(map[string]any)
+	require.NotContains(t, config, "default_tools_enabled")
+	require.Equal(t, "disabled", config["web_search"])
+}
+
+func TestSessionTitleDisablesEveryInheritedMCPServer(t *testing.T) {
+	caller := &titleCaller{configResult: map[string]any{"config": map[string]any{
+		"mcp_servers": map[string]any{"fixture.with.dot": map[string]any{"enabled": true},
+			"disabled": map[string]any{"enabled": false}},
+	}}}
+	_, err := startSessionTitleThread(t.Context(), caller, t.TempDir(), runtimeidentity.Codex)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"fixture.with.dot": map[string]any{"enabled": false},
+		"disabled": map[string]any{"enabled": false}}, caller.params["config"].(map[string]any)["mcp_servers"])
+}
+
+func TestSessionTitleDoesNotStartWithoutToolBoundary(t *testing.T) {
+	for _, caller := range []*titleCaller{
+		{configError: errors.New("配置读取失败")}, {configResult: map[string]any{}},
+	} {
+		_, err := startSessionTitleThread(t.Context(), caller, t.TempDir(), runtimeidentity.Codex)
+		require.ErrorContains(t, err, "工具边界失败")
+		require.Equal(t, []string{"config/read"}, caller.methods)
+	}
 }
 
 func TestClaudeSessionTitleUsesNativeModelConfiguration(t *testing.T) {

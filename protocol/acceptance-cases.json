@@ -1,6 +1,7 @@
 {
   "formatVersion": 1,
   "groups": [
+    {"id":"TITLE","description":"真实Control标题任务经官方CLI隔离宿主命令、文件、MCP和其他工具，原生工具注册表为空、结构化标题写回且宿主配置不变","cases":["TITLE-001"],"caseEngines":{"TITLE-001":["codex"]}},
     {"id":"PLUGIN","description":"002 Codex真SSH本地插件发现、安装缓存和技能真实写入、重启后执行及卸载持久化，错误安装无副作用","cases":["PLUGIN-002"],"caseEngines":{"PLUGIN-002":["codex"]}},
     {"id": "REVIEW", "description": "真实Claude审查读取文件、原生独立会话及父历史不变，参数和并发拒绝，成功/失败/中断退出事件闭合；004真实SSH与重启历史对账；005真实审查SIGKILL后退出标记幂等恢复且不补造工具结果；006Codex真实SSH审查读取、独立会话和重启历史", "cases": ["REVIEW-001", "REVIEW-002", "REVIEW-003", "REVIEW-004", "REVIEW-005", "REVIEW-006"], "caseEngines": {"REVIEW-001": ["claude-code"], "REVIEW-002": ["claude-code"], "REVIEW-003": ["claude-code"], "REVIEW-004": ["claude-code"], "REVIEW-005": ["claude-code"], "REVIEW-006": ["codex"]}},
     {"id": "ACCOUNT", "description": "Codex API-key 原生登录通知、真实模型鉴权与限额事件、重启持久和退出清理；002 Claude真实SDK限额快照与显式凭据隔离；003 Claude真SSH限额通知和读取、同账户多会话及重启未知", "cases": ["ACCOUNT-001", "ACCOUNT-002", "ACCOUNT-003"], "caseEngines": {"ACCOUNT-001": ["codex"], "ACCOUNT-002": ["claude-code"], "ACCOUNT-003": ["claude-code"]}},

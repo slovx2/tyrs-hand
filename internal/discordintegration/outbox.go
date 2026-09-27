@@ -273,6 +273,25 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// 标题生成和人工改名均先更新 Control，再入队；确认也必须使用相同锁顺序。
+	// 后续租约校验失败会回滚整个事务，不会提前确认标题。
+	if strings.HasPrefix(item.OperationKey, "thread-name:") {
+		var sent struct {
+			ControlID string `json:"controlId"`
+			Name      string `json:"threadName"`
+			Revision  int64  `json:"revision"`
+		}
+		if json.Unmarshal(item.Payload, &sent) == nil && sent.ControlID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+				applied_thread_name = $2, applied_thread_name_revision = $3,
+				thread_name_last_error = NULL, updated_at = now()
+				WHERE id = $1 AND desired_thread_name_revision = $3`,
+				sent.ControlID, sent.Name, sent.Revision)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	var desktopRequestID uuid.UUID
 	projectionKey, projectionExists := "", false
 	if strings.HasPrefix(item.OperationKey, "projection:") {
@@ -517,23 +536,6 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			return err
 		}
 	}
-	if strings.HasPrefix(item.OperationKey, "thread-name:") {
-		var sent struct {
-			ControlID string `json:"controlId"`
-			Name      string `json:"threadName"`
-			Revision  int64  `json:"revision"`
-		}
-		if json.Unmarshal(item.Payload, &sent) == nil && sent.ControlID != "" {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
-				applied_thread_name = $2, applied_thread_name_revision = $3,
-				thread_name_last_error = NULL, updated_at = now()
-				WHERE id = $1 AND desired_thread_name_revision = $3`,
-				sent.ControlID, sent.Name, sent.Revision)
-			if err != nil {
-				return err
-			}
-		}
-	}
 	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle-card:") {
 		var sent struct {
 			ConversationID string `json:"conversationId"`
@@ -702,6 +704,13 @@ func (s *SQLoutbox) FailDelivery(ctx context.Context, item OutboxItem, cause err
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if strings.HasPrefix(item.OperationKey, "thread-name:") {
+		// 失败确认同样先锁 Control；旧投递被更新版本替代时，仍由后续状态校验决定是否记错。
+		if _, err := tx.ExecContext(ctx, "SELECT id FROM codex_thread_controls WHERE id=$1 FOR UPDATE",
+			strings.TrimPrefix(item.OperationKey, "thread-name:")); err != nil {
+			return err
+		}
+	}
 	var status string
 	err = tx.QueryRowContext(ctx, `UPDATE integration_outbox SET
 		status = CASE WHEN request_revision=$4 THEN 'failed' ELSE 'pending' END,
