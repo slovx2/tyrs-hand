@@ -5,7 +5,7 @@ import { approvalActions } from "./approvalActions";
 
 type CommandRequest = Extract<ServerRequest, { method: "item/commandExecution/requestApproval" }>;
 function command(params: Partial<CommandRequest["params"]> = {}): CommandRequest {
-  return { id: "approval-1", method: "item/commandExecution/requestApproval", params: {
+  return { id: "approval-1", method: "item/commandExecution/requestApproval", params: { kind: "command",
     threadId: "thread", turnId: "turn", itemId: "item", startedAtMs: 1, environmentId: null,
     command: "git status", ...params,
   } };

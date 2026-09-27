@@ -41,8 +41,10 @@ export function projectUserMessage(item: UserMessage): UserMessagePresentation {
     }
     if (input.type === "image") {
       hasStructuredImage = true;
-      attachments.push(attachment(`${item.id}:image:${index}`, filename(input.url), input.url,
-        true));
+      attachments.push("url" in input
+        ? attachment(`${item.id}:image:${index}`, filename(input.url), input.url, true)
+        : { key: `${item.id}:image:${index}`, name: `图片（${input.fileId}）`, kind: "image",
+          uri: null, remotePath: null });
     } else if (input.type === "localImage") {
       hasStructuredImage = true;
       attachments.push(attachment(`${item.id}:localImage:${index}`, filename(input.path),

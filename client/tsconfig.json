@@ -10,7 +10,7 @@
         "src/*"
       ],
       "@codex-app-server/*": [
-        "../protocol/codex-app-server/0.147.0/typescript/*"
+        "../protocol/codex-app-server/0.157.1/typescript/*"
       ]
     }
   },

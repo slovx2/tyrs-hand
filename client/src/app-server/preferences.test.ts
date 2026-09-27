@@ -8,7 +8,7 @@ const remembered: TurnPreferences = { model: "gpt-remembered", effort: "max",
   serviceTier: "fast", collaborationMode: "plan", permissions: ":workspace" };
 
 function model(id: string, isDefault = false): Model {
-  return { id, model: id, upgrade: null, upgradeInfo: null, availabilityNux: null,
+  return { multiAgentVersion: null, availableAccessPrograms: null, id, model: id, upgrade: null, upgradeInfo: null, availabilityNux: null,
     displayName: id, description: id, modelSpecialty: null, hidden: false,
     supportedReasoningEfforts: [{ reasoningEffort: "high", description: "high" }],
     defaultReasoningEffort: "high", inputModalities: ["text"], supportsPersonality: false,

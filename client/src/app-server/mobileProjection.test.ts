@@ -10,7 +10,7 @@ describe("移动端官方 Item 投影", () => {
       command(),
       { type: "fileChange", id: "file", status: "completed",
         changes: [{ path: "client/App.tsx", kind: "update", diff: "large private diff" }] },
-      { type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
+      { mcpAppUi: null, type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
         status: "failed", arguments: { path: "/secret" }, appContext: null, pluginId: null,
         readOnlyHint: true, result: { content: ["secret"], structuredContent: null, _meta: null },
         error: { message: "private error" }, durationMs: 5 },
@@ -24,7 +24,7 @@ describe("移动端官方 Item 投影", () => {
         results: [{ title: "hidden result" }] },
       { type: "imageGeneration", id: "image", status: "completed",
         revisedPrompt: "hidden prompt", result: "base64-output", savedPath: "/tmp/image.png" },
-      { type: "agentMessage", id: "answer", text: "done", phase: "final_answer",
+      { delivery: null, questions: null, type: "agentMessage", id: "answer", text: "done", phase: "final_answer",
         memoryCitation: null },
     ] as ThreadItem[];
     const turn: Turn = { id: "turn", status: "completed", items, itemsView: "full",

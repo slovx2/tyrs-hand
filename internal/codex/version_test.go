@@ -12,17 +12,17 @@ import (
 func TestValidateVersion(t *testing.T) {
 	dir := t.TempDir()
 	valid := filepath.Join(dir, "valid-codex")
-	require.NoError(t, os.WriteFile(valid, []byte("#!/bin/sh\nprintf 'codex-cli 0.147.0\\n'\n"), 0o700))
+	require.NoError(t, os.WriteFile(valid, []byte("#!/bin/sh\nprintf 'codex-cli 0.157.1\\n'\n"), 0o700))
 	require.NoError(t, ValidateVersion(context.Background(), valid))
 	newer := filepath.Join(dir, "newer-codex")
-	require.NoError(t, os.WriteFile(newer, []byte("#!/bin/sh\nprintf 'codex-cli 0.149.1\\n'\n"), 0o700))
-	require.NoError(t, ValidateVersion(context.Background(), newer))
+	require.NoError(t, os.WriteFile(newer, []byte("#!/bin/sh\nprintf 'codex-cli 0.158.0\\n'\n"), 0o700))
+	require.ErrorContains(t, ValidateVersion(context.Background(), newer), "恰好为 "+RequiredVersion)
 	old := filepath.Join(dir, "old-codex")
 	require.NoError(t, os.WriteFile(old, []byte("#!/bin/sh\nprintf 'codex-cli 0.146.9\\n'\n"), 0o700))
 	require.Error(t, ValidateVersion(context.Background(), old))
 	prerelease := filepath.Join(dir, "prerelease-codex")
 	require.NoError(t, os.WriteFile(prerelease,
-		[]byte("#!/bin/sh\nprintf 'codex-cli 0.147.0-beta.1\\n'\n"), 0o700))
+		[]byte("#!/bin/sh\nprintf 'codex-cli 0.157.1-beta.1\\n'\n"), 0o700))
 	require.Error(t, ValidateVersion(context.Background(), prerelease))
 	invalid := filepath.Join(dir, "invalid-codex")
 	require.NoError(t, os.WriteFile(invalid, []byte("#!/bin/sh\nprintf 'unknown\\n'\n"), 0o700))
@@ -30,13 +30,16 @@ func TestValidateVersion(t *testing.T) {
 	require.Error(t, ValidateVersion(context.Background(), filepath.Join(dir, "missing")))
 }
 
-func TestIsVersionAtLeast(t *testing.T) {
-	require.True(t, IsVersionAtLeast("0.147.0", "0.147.0"))
-	require.True(t, IsVersionAtLeast("0.149.1", "0.147.0"))
-	require.True(t, IsVersionAtLeast("1.0.0", "0.147.0"))
-	require.False(t, IsVersionAtLeast("0.146.9", "0.147.0"))
-	require.False(t, IsVersionAtLeast("0.147.0-beta.1", "0.147.0"))
-	require.False(t, IsVersionAtLeast("unknown", "0.147.0"))
+func TestIsSupportedVersion(t *testing.T) {
+	require.True(t, IsSupportedVersion(RequiredVersion))
+	for _, version := range []string{
+		"0.147.0", "0.157.0", "0.157.2", "0.158.0", "1.0.0",
+		"0.157.1-beta.1", "0.158.0-alpha.1", "0.157.1+custom", "v0.157.1", "unknown", "",
+	} {
+		t.Run(version, func(t *testing.T) {
+			require.False(t, IsSupportedVersion(version))
+		})
+	}
 }
 
 func TestVersionProbeSeparatesWarningsFromVersion(t *testing.T) {
@@ -44,10 +47,10 @@ func TestVersionProbeSeparatesWarningsFromVersion(t *testing.T) {
 		name, stdout, stderr string
 		valid                bool
 	}{
-		{"stderr-warning", "codex-cli 0.147.0", "WARNING: unable to create PATH aliases", true},
-		{"old-version-with-warning", "codex-cli 0.146.9", "WARNING: codex-cli 0.147.0", false},
-		{"stderr-only-version", "", "codex-cli 0.147.0", false},
-		{"invalid-stdout", "unexpected output", "codex-cli 0.147.0", false},
+		{"stderr-warning", "codex-cli 0.157.1", "WARNING: unable to create PATH aliases", true},
+		{"old-version-with-warning", "codex-cli 0.146.9", "WARNING: codex-cli 0.157.1", false},
+		{"stderr-only-version", "", "codex-cli 0.157.1", false},
+		{"invalid-stdout", "unexpected output", "codex-cli 0.157.1", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "codex")
@@ -56,7 +59,7 @@ func TestVersionProbeSeparatesWarningsFromVersion(t *testing.T) {
 			version, err := ValidatedVersion(t.Context(), path)
 			if test.valid {
 				require.NoError(t, err)
-				require.Equal(t, "0.147.0", version)
+				require.Equal(t, "0.157.1", version)
 			} else {
 				require.Error(t, err)
 				require.Empty(t, version)

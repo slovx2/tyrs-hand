@@ -22,7 +22,7 @@ func TestDiscordRuntimeCreationPreferencesAndReplyIsolation(t *testing.T) {
 	manager := &Manager{db: db}
 	service := NewConversationService(db)
 	_, err = db.ExecContext(ctx, `INSERT INTO worker_runtimes(worker_id,engine,enabled,status,ssh_listen_address,
- protocol_version,heartbeat_at,model_catalog) VALUES ($1,'claude-code',true,'running',':3333','0.147.0',now(),
+ protocol_version,heartbeat_at,model_catalog) VALUES ($1,'claude-code',true,'running',':3333','0.157.1',now(),
  '{"data":[{"id":"claude-only","isDefault":true}]}');`, seed.workerID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `UPDATE worker_runtimes SET model_catalog='{"data":[{"id":"codex-only"}]}'

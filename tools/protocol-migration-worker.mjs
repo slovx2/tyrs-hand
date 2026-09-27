@@ -71,7 +71,7 @@ stream_max_retries=0
 `, { mode: 0o600 })
     const real = { codex: process.env.TYRS_HAND_TEST_CODEX_BIN ?? 'codex',
       'claude-code': resolve(this.adapter, 'scripts/worker-runtime') }
-    assert.equal(output(real.codex, ['--version']), 'codex-cli 0.147.0')
+    assert.equal(output(real.codex, ['--version']), 'codex-cli 0.157.1')
     this.runtimeBins = {}
     for (const engine of ['codex', 'claude-code']) {
       const config = resolve(this.root, `${engine}-recorder.json`)

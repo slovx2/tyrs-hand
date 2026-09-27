@@ -13,7 +13,7 @@ const connection: SSHConnection = { kind: "ssh", profileId: "claude-profile", en
   workerId: "worker-1", name: "Claude", active: true, machineFingerprint: "fingerprint", controls: [],
   host: "localhost", port: 3333, user: "worker", keyRef: "key", hostFingerprint: "fingerprint" };
 const endpoint = { url: "ws://127.0.0.1:1234/token", token: "virtual-token",
-  runtime: { workerId: "worker-1", engine: "claude-code", protocolVersion: "0.147.0",
+  runtime: { workerId: "worker-1", engine: "claude-code", protocolVersion: "0.157.1",
     status: "running", capabilities: [], releaseReady: false } };
 
 beforeEach(() => {

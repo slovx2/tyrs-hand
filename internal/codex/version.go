@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-
-	"golang.org/x/mod/semver"
 )
 
-const RequiredVersion = "0.147.0"
+const RequiredVersion = "0.157.1"
 
 func ValidateVersion(ctx context.Context, bin string) error {
 	_, err := ValidatedVersion(ctx, bin)
@@ -25,18 +23,13 @@ func ValidatedVersion(ctx context.Context, bin string) (string, error) {
 	}
 	actual := strings.TrimSpace(string(output))
 	version := strings.TrimPrefix(actual, "codex-cli ")
-	if !IsVersionAtLeast(version, RequiredVersion) {
-		return "", fmt.Errorf("要求 Codex 版本 >= %s，当前为 %s", RequiredVersion, actual)
+	if !IsSupportedVersion(version) {
+		return "", fmt.Errorf("要求 Codex 版本恰好为 %s，当前为 %s", RequiredVersion, actual)
 	}
 	return version, nil
 }
 
-// IsVersionAtLeast 判断 Codex 版本是否达到最低要求。预发布版本不会被视为对应稳定版本。
-func IsVersionAtLeast(actual, minimum string) bool {
-	actual = "v" + strings.TrimPrefix(strings.TrimSpace(actual), "v")
-	minimum = "v" + strings.TrimPrefix(strings.TrimSpace(minimum), "v")
-	if !semver.IsValid(actual) || !semver.IsValid(minimum) {
-		return false
-	}
-	return semver.Compare(actual, minimum) >= 0
+// IsSupportedVersion 只接受经过协议验收的精确稳定版，防止新版删除接口后仍通过探测。
+func IsSupportedVersion(actual string) bool {
+	return actual == RequiredVersion
 }

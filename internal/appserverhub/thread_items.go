@@ -88,7 +88,7 @@ func (q threadItemsQuery) turnFilter() string {
 	return *q.TurnID
 }
 
-// Codex 0.147.0 的 thread/items/list 明确返回 -32601；从原生完整 Turn 历史分页读取，
+// Codex 0.157.1 的 thread/items/list 明确返回 -32601；从原生完整 Turn 历史分页读取，
 // 保留每个原始 item，不创建会话、Turn、模型请求或任何预制历史。
 func (r *Hub) listNativeThreadItems(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
 	query, cursor, err := decodeThreadItemsQuery(raw)

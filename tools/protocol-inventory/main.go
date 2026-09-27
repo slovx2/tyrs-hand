@@ -26,7 +26,7 @@ func main() {
 	var usages []usage
 	known := map[string]bool{}
 	for _, name := range []string{"ServerRequest", "ServerNotification", "ClientNotification"} {
-		data, err := os.ReadFile(filepath.Join("protocol/codex-app-server/0.147.0/json-schema", name+".json"))
+		data, err := os.ReadFile(filepath.Join("protocol/codex-app-server/0.157.1/json-schema", name+".json"))
 		if err != nil {
 			panic(err)
 		}

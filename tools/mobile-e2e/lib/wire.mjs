@@ -5,7 +5,7 @@ import { schemaIndex, payloadValidator } from '../../protocol-inventory/schema.m
 import { mobileWireSemantics } from './semantics.mjs'
 
 export async function validateRuntimeWire(repoRoot, runDir, { requireMobileScenarios = false } = {}) {
-  const index = schemaIndex(resolve(repoRoot, 'protocol/codex-app-server/0.147.0/json-schema'),
+  const index = schemaIndex(resolve(repoRoot, 'protocol/codex-app-server/0.157.1/json-schema'),
     resolve(repoRoot, 'protocol/extensions'))
   const validate = payloadValidator(index)
   const report = { passed: false, engines: {}, errors: [] }

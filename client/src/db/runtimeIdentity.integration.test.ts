@@ -84,7 +84,7 @@ describe("MIGRATION / ISOLATION：真实 SQLite 运行时身份", () => {
     await saveSSHConnection(sshInput);
     await assertSeparateClaude();
     const runtime = { workerId: "worker-1", engine: "claude-code" as const,
-      protocolVersion: "0.147.0" as const, status: "running" as const, capabilities: [], releaseReady: false };
+      protocolVersion: "0.157.1" as const, status: "running" as const, capabilities: [], releaseReady: false };
     await expect(bindRuntimeIdentity("codex-profile", runtime)).rejects.toThrow("不一致");
     await expect(bindRuntimeIdentity("claude-profile", { ...runtime, workerId: "worker-2" })).rejects.toThrow("不一致");
     await expect(bindRuntimeIdentity("claude-profile", runtime)).resolves.toBeUndefined();

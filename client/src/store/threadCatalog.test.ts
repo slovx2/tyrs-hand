@@ -28,10 +28,10 @@ describe("官方会话目录合并", () => {
 
 function record(id: string, updatedAt: number,
   history: "loaded" | "summary" = "summary"): ThreadRecord {
-  const thread: Thread = { id, sessionId: id, forkedFromId: null, parentThreadId: null,
+  const thread: Thread = { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id, sessionId: id, forkedFromId: null, parentThreadId: null,
     preview: id, ephemeral: false, section: null, sectionEnteredAt: null, historyMode: "legacy",
     modelProvider: "openai", createdAt: 1, updatedAt, recencyAt: updatedAt,
-    status: { type: "idle" }, path: null, cwd: "/workspace", cliVersion: "0.147.0",
+    status: { type: "idle" }, path: null, cwd: "/workspace", cliVersion: "0.157.1",
     source: "appServer", canAcceptDirectInput: true, threadSource: null, agentNickname: null,
     agentRole: null, gitInfo: null, name: null, turns: [], extra: null };
   return { thread, archived: false, workspaceId: null, projectId: null,

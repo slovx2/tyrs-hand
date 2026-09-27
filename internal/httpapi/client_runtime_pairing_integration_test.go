@@ -20,7 +20,7 @@ func seedClientRuntime(t *testing.T, db *sql.DB, workerID uuid.UUID, engine, fin
 	t.Helper()
 	_, err := db.ExecContext(t.Context(), `INSERT INTO worker_runtimes(
  worker_id,engine,enabled,status,ssh_listen_address,ssh_host_key_fingerprint,protocol_version)
- VALUES ($1,$2,true,'running',':3333',$3,'0.147.0')
+ VALUES ($1,$2,true,'running',':3333',$3,'0.157.1')
  ON CONFLICT(worker_id,engine) DO UPDATE SET ssh_host_key_fingerprint=EXCLUDED.ssh_host_key_fingerprint`,
 		workerID, engine, fingerprint)
 	require.NoError(t, err)

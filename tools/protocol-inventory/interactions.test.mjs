@@ -4,7 +4,7 @@ import { protocolCoverage } from './coverage.mjs'
 import { schemaIndex, payloadValidator } from './schema.mjs'
 import { resolve } from 'node:path'
 
-const index = schemaIndex(resolve(import.meta.dirname, '../../protocol/codex-app-server/0.147.0/json-schema'))
+const index = schemaIndex(resolve(import.meta.dirname, '../../protocol/codex-app-server/0.157.1/json-schema'))
 const approval = 'item/fileChange/requestApproval'
 const resolved = 'serverRequest/resolved'
 const methods = [approval, resolved].map(method => ({ method, schema: index.get(method).references,

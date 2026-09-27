@@ -109,7 +109,7 @@ class PreviewSocket implements AppServerSocket {
         limit: Number(params.limit ?? 0) });
     }
     const value = control(this.serverId);
-    if (method === "initialize") { this.emit({ id, result: { userAgent: "preview/0.147.0",
+    if (method === "initialize") { this.emit({ id, result: { userAgent: "preview/0.157.1",
       platformFamily: "unix", platformOs: "preview" } }); return; }
     if (method === "thread/list") {
       const archived = params.archived === true;
@@ -257,7 +257,7 @@ class PreviewSocket implements AppServerSocket {
       const thread = requireThread(control(this.serverId), threadId);
       const turn = [...thread.turns].reverse().find((item) => item.status === "inProgress");
       if (!turn) return;
-      const item: Turn["items"][number] = { type: "agentMessage", id: nextId(), text,
+      const item: Turn["items"][number] = { delivery: null, questions: null, type: "agentMessage", id: nextId(), text,
         phase: "final_answer", memoryCitation: null };
       turn.items.push(item);
       turn.status = "completed"; turn.completedAt = Math.floor(Date.now() / 1000);
@@ -274,7 +274,7 @@ class PreviewSocket implements AppServerSocket {
     const thread = requireThread(control(this.serverId), threadId);
     const turn = thread.turns.find((item) => item.id === turnId);
     if (!turn) return;
-    const item: Turn["items"][number] = { type: "agentMessage", id: nextId(), text: "",
+    const item: Turn["items"][number] = { delivery: null, questions: null, type: "agentMessage", id: nextId(), text: "",
       phase: "commentary", memoryCitation: null };
     turn.items.push(item);
     this.emit({ method: "item/started", params: {
@@ -296,7 +296,7 @@ class PreviewSocket implements AppServerSocket {
       threadId, turnId, item: structuredClone(item),
     } });
 
-    const finalItem: Turn["items"][number] = { type: "agentMessage", id: nextId(),
+    const finalItem: Turn["items"][number] = { delivery: null, questions: null, type: "agentMessage", id: nextId(),
       text: "## 流式输出完成\n\n轻量文本已经切换为完整 Markdown。",
       phase: "final_answer", memoryCitation: null };
     turn.items.push(finalItem);
@@ -338,7 +338,7 @@ class PreviewSocket implements AppServerSocket {
         params: { threadId, turnId: turn.id, item: structuredClone(command) } }));
     });
     apply(previewActivityTimelineMs.finalStarted, (_thread, turn) => {
-      turn.items.push({ type: "agentMessage", id: "agent-running-final",
+      turn.items.push({ delivery: null, questions: null, type: "agentMessage", id: "agent-running-final",
         text: "最终回答开始后，处理过程应当已经自动收起。",
         phase: "final_answer", memoryCitation: null });
       return { method: "item/agentMessage/delta", params: { threadId, turnId: turn.id,
@@ -407,10 +407,10 @@ function newThread(cwd: string, ephemeral = false,
   historyMode: Thread["historyMode"] = "legacy"): Thread {
   const now = Math.floor(Date.now() / 1000);
   const id = nextId();
-  return { id, extra: null, sessionId: id, forkedFromId: null, parentThreadId: null,
+  return { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id, extra: null, sessionId: id, forkedFromId: null, parentThreadId: null,
     preview: "新的预览任务", ephemeral, section: null, sectionEnteredAt: null,
     historyMode, modelProvider: "openai", createdAt: now, updatedAt: now,
-    recencyAt: now, status: { type: "idle" }, path: null, cwd, cliVersion: "0.147.0",
+    recencyAt: now, status: { type: "idle" }, path: null, cwd, cliVersion: "0.157.1",
     source: "appServer", canAcceptDirectInput: true, threadSource: null, agentNickname: null,
     agentRole: null, gitInfo: null, name: null, turns: [] };
 }

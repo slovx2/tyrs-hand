@@ -45,7 +45,7 @@ describe("会话滚动跟随状态机", () => {
       processId: null, source: "agent", status: "inProgress", commandActions: [],
       aggregatedOutput: null, exitCode: null, durationMs: null, pluginId: null, scriptPath: null });
     expect(latestTurnPhase(value)).toBe("prework");
-    value.items.push({ type: "agentMessage", id: "answer", text: "done",
+    value.items.push({ delivery: null, questions: null, type: "agentMessage", id: "answer", text: "done",
       phase: "final_answer", memoryCitation: null });
     expect(latestTurnPhase(value)).toBe("final_answer");
   });

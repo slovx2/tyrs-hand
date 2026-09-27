@@ -15,7 +15,7 @@ describe("Thread 最近页缓存", () => {
     const record = loadedRecord([turn(1)]);
     record.thread.historyMode = "paginated";
     const user = { type: "userMessage" as const, id: "user", clientId: null, content: [] };
-    const commentary = { type: "agentMessage" as const, id: "commentary", text: "working",
+    const commentary = { delivery: null, questions: null, type: "agentMessage" as const, id: "commentary", text: "working",
       phase: "commentary" as const, memoryCitation: null };
     record.thread.turns[0]!.items = [user, command("tool"), commentary];
     const cached = cacheableThreadRecord(record).thread.turns[0]!;
@@ -72,11 +72,11 @@ function loadedRecord(turns: Turn[]): ThreadRecord {
 }
 
 function thread(turns: Turn[]): Thread {
-  return { id: "thread-1", sessionId: "session-1", forkedFromId: null,
+  return { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id: "thread-1", sessionId: "session-1", forkedFromId: null,
     parentThreadId: null, preview: "thread", ephemeral: false, section: null,
     sectionEnteredAt: null, modelProvider: "openai", createdAt: 1, updatedAt: 2,
     recencyAt: 2, status: { type: "idle" }, path: null, cwd: "/workspace",
-    cliVersion: "0.147.0", source: "appServer", threadSource: null,
+    cliVersion: "0.157.1", source: "appServer", threadSource: null,
     agentNickname: null, agentRole: null, gitInfo: null, name: null, turns, extra: null,
     historyMode: "legacy", canAcceptDirectInput: true };
 }

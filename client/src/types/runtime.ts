@@ -6,7 +6,7 @@ export type Engine = z.infer<typeof engineSchema>;
 export const runtimeInfoSchema = z.object({
   workerId: z.string().min(1),
   engine: engineSchema,
-  protocolVersion: z.literal("0.147.0"),
+  protocolVersion: z.literal("0.157.1"),
   status: z.enum(["running", "unavailable", "stopped"]),
   capabilities: z.array(z.string()).nullable(),
   releaseReady: z.boolean(),

@@ -314,10 +314,10 @@ function deferred<Value>(): { promise: Promise<Value>; resolve: (value: Value) =
 }
 
 function thread(id: string): Thread {
-  return { id, sessionId: id, forkedFromId: null, parentThreadId: null, preview: "",
+  return { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id, sessionId: id, forkedFromId: null, parentThreadId: null, preview: "",
     ephemeral: false, section: null, sectionEnteredAt: null, modelProvider: "openai",
     createdAt: 1, updatedAt: 1, recencyAt: 1, status: { type: "idle" }, path: null,
-    cwd: "/workspace", cliVersion: "0.147.0", source: "appServer", threadSource: null,
+    cwd: "/workspace", cliVersion: "0.157.1", source: "appServer", threadSource: null,
     agentNickname: null, agentRole: null, gitInfo: null, name: null, turns: [], extra: null,
     historyMode: "legacy", canAcceptDirectInput: true };
 }

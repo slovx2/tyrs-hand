@@ -12,7 +12,7 @@ describe("原生 Thread 通知 reducer", () => {
     let current = record([]);
     for (const mode of ["plan", "default"] as const) {
       const event: ServerNotification = { method: "thread/settings/updated", params: {
-        threadId: "thread", threadSettings: { cwd: "/workspace", approvalPolicy: "never",
+        threadId: "thread", threadSettings: { disabledPluginIds: [], cwd: "/workspace", approvalPolicy: "never",
           approvalsReviewer: "user", sandboxPolicy: { type: "dangerFullAccess" },
           activePermissionProfile: { id: ":danger-full-access", extends: null },
           model: "claude-sonnet-4-6", modelProvider: "anthropic", serviceTier: null,
@@ -122,11 +122,11 @@ describe("原生 Thread 通知 reducer", () => {
 });
 
 function record(turns: Turn[]): ThreadRecord {
-  const thread: Thread = { id: "thread", sessionId: "thread", forkedFromId: null,
+  const thread: Thread = { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id: "thread", sessionId: "thread", forkedFromId: null,
     parentThreadId: null, preview: "thread", ephemeral: false, section: null,
     sectionEnteredAt: null, historyMode: "paginated", modelProvider: "openai", createdAt: 1,
     updatedAt: 2, recencyAt: 2, status: { type: "idle" }, path: null, cwd: "/workspace",
-    cliVersion: "0.147.0", source: "appServer", canAcceptDirectInput: true,
+    cliVersion: "0.157.1", source: "appServer", canAcceptDirectInput: true,
     threadSource: null, agentNickname: null, agentRole: null, gitInfo: null, name: null,
     turns, extra: null };
   return { thread, archived: false, workspaceId: null, projectId: "project",
@@ -147,7 +147,7 @@ function user(id: string, clientId: string | null): ThreadItem {
 function agent(id: string, text: string,
   phase: "commentary" | "final_answer" = "final_answer"):
   Extract<ThreadItem, { type: "agentMessage" }> {
-  return { type: "agentMessage", id, text, phase, memoryCitation: null };
+  return { delivery: null, questions: null, type: "agentMessage", id, text, phase, memoryCitation: null };
 }
 
 function command(id: string, status: "inProgress" | "completed"): ThreadItem {

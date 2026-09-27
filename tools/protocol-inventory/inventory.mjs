@@ -8,7 +8,7 @@ import { protocolCoverage, semanticCoverage } from './coverage.mjs'
 const root = resolve(import.meta.dirname, '../..')
 const require = createRequire(import.meta.url)
 const ts = require('typescript')
-const index = schemaIndex(join(root, 'protocol/codex-app-server/0.147.0/json-schema'), join(root, 'protocol/extensions'))
+const index = schemaIndex(join(root, 'protocol/codex-app-server/0.157.1/json-schema'), join(root, 'protocol/extensions'))
 const usages = JSON.parse(execFileSync('go', ['run', './tools/protocol-inventory'], { cwd: root, encoding: 'utf8' }))
 function walk(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -65,7 +65,7 @@ if (process.argv.includes('--update')) {
     callers: [...new Set([...(previous.methods.find(entry => entry.method === method)?.callers ?? []),
       ...usages.filter(entry => entry.method === method).map(entry => entry.file)])],
   }))
-  writeFileSync(manifestPath, JSON.stringify({ protocolVersion: '0.147.0', releaseReady: false, methods }, null, 2) + '\n')
+  writeFileSync(manifestPath, JSON.stringify({ protocolVersion: '0.157.1', releaseReady: false, methods }, null, 2) + '\n')
   process.exit(0)
 }
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))

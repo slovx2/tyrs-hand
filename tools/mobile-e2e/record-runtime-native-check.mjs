@@ -23,9 +23,9 @@ async function rows(path) {
 }
 for (const mode of ['drain', 'timeout', 'business']) {
   test(`真实 Codex 录制器关闭边界：${mode}`, { timeout: 12_000 }, async () => {
-    assert.ok(native, '必须显式指定固定0.147.0原生二进制 TYRS_HAND_TEST_CODEX_NATIVE_BIN')
+    assert.ok(native, '必须显式指定固定0.157.1原生二进制 TYRS_HAND_TEST_CODEX_NATIVE_BIN')
     const root = await mkdtemp('/tmp/tyrs-recorder-native-')
-    assert.equal(execFileSync(native, ['--version'], { encoding: 'utf8', env: { HOME: root, PATH: process.env.PATH } }).trim(), 'codex-cli 0.147.0')
+    assert.equal(execFileSync(native, ['--version'], { encoding: 'utf8', env: { HOME: root, PATH: process.env.PATH } }).trim(), 'codex-cli 0.157.1')
     const socketPath = resolve(root, 'runtime.sock'), trace = resolve(root, 'wire.jsonl')
     await writeFile(resolve(root, 'config.toml'), 'model="mock-model"\nmodel_provider="mock"\n[model_providers.mock]\nname="Mock"\nbase_url="http://127.0.0.1:9/v1"\nwire_api="responses"\n')
     await writeFile(resolve(root, 'recorder.json'), JSON.stringify({ engine: 'codex', binary: native, wsModule, trace }))

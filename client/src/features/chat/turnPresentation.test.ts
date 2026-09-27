@@ -10,6 +10,15 @@ import { createToolGroup, formatDuration, mixedToolGroupTitle, projectTurnPresen
   type ToolItem } from "./turnPresentation";
 
 describe("官方 Turn 移动展示投影", () => {
+  it("新增函数输出可进入工具组并保留结果条目", () => {
+    const item: ToolItem = { type: "functionCallOutput", id: "output", name: "lookup",
+      namespace: "catalog", output: "已找到" };
+    const result = projectTurnPresentation(turn("completed", [item]));
+    expect(result.blocks[0]).toMatchObject({ kind: "tools", items: [item], running: false });
+    expect(toolOperationLines(item)).toEqual([{ key: "output", text: "已接收工具结果 catalog · lookup",
+      running: false, failed: false }]);
+  });
+
   it("保持 steer 顺序，并让 commentary 与用户输入切断连续工具组", () => {
     const value = turn("inProgress", [
       user("user-1", "开始"),
@@ -273,7 +282,7 @@ describe("官方 Turn 移动展示投影", () => {
       durationMs: 10, contentItems: [
         { type: "inputImage", imageUrl: "data:image/png;base64,AAAA" },
       ] } as ToolItem;
-    const answer = { type: "agentMessage", id: "answer", phase: "final_answer",
+    const answer = { delivery: null, questions: null, type: "agentMessage", id: "answer", phase: "final_answer",
       text: "已生成。\n\n![生成的图片](/worker/private/image.png)",
       memoryCitation: null } as ThreadItem;
     const result = projectTurnPresentation(turn("completed", [image, answer]));
@@ -291,7 +300,7 @@ describe("官方 Turn 移动展示投影", () => {
       { path: "a.ts", kind: { type: "update", move_path: null }, diff: "" },
       { path: "b.ts", kind: { type: "create" }, diff: "" },
     ] } as ToolItem;
-    const mcp = { type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
+    const mcp = { mcpAppUi: null, type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
       status: "completed", arguments: null, appContext: null, pluginId: null,
       readOnlyHint: true, result: null, error: null, durationMs: 2 } as ToolItem;
 
@@ -315,7 +324,7 @@ describe("官方 Turn 移动展示投影", () => {
   });
 
   it("展开内容只描述操作，不包含工具输出或错误正文", () => {
-    const item = { type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
+    const item = { mcpAppUi: null, type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
       status: "failed", arguments: null, appContext: null, pluginId: null, readOnlyHint: true,
       result: null, error: null, durationMs: 2 } as ThreadItem;
     expect(toolOperationLines(item as Parameters<typeof toolOperationLines>[0]))
@@ -394,7 +403,7 @@ function user(id: string, text: string): ThreadItem {
 }
 
 function agent(id: string, text: string, phase: "commentary" | "final_answer" | null): ThreadItem {
-  return { type: "agentMessage", id, text, phase, memoryCitation: null };
+  return { delivery: null, questions: null, type: "agentMessage", id, text, phase, memoryCitation: null };
 }
 
 function command(id: string, status: "inProgress" | "completed" | "failed" = "completed"):

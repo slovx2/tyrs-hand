@@ -4,7 +4,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 codex_bin="${1:-codex}"
-version="0.147.0"
+version="0.157.1"
 output="${root}/protocol/codex-app-server/${version}"
 
 actual="$(${codex_bin} --version)"

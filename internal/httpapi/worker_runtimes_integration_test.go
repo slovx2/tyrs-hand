@@ -27,7 +27,7 @@ func testRuntimeReport(engine runtimeidentity.Engine, fingerprint string) worker
 	}
 	return workerprotocol.RuntimeReport{
 		Engine: engine, Status: "running", SSHListenAddress: address,
-		SSHHostKeyFingerprint: fingerprint, ProtocolVersion: "0.147.0",
+		SSHHostKeyFingerprint: fingerprint, ProtocolVersion: "0.157.1",
 		Build: workerprotocol.RuntimeBuild{CLIBuild: "test-cli"}, Capabilities: []string{},
 		ModelCatalog: json.RawMessage(`{"data":[]}`),
 	}

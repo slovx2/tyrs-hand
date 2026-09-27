@@ -29,7 +29,7 @@ test('Maestro 与运行时依赖全部固定', async () => {
   assert.match(control, /redis:8\.4\.0-bookworm@sha256:[0-9a-f]{64}/)
   const dependencies = JSON.parse(await readFile(
     resolve(root, 'deploy/worker/dependencies.json'), 'utf8'))
-  assert.equal(dependencies.codexMinimumVersion, '0.147.0')
+  assert.equal(dependencies.codexVersion, '0.157.1')
   const native = await readFile(resolve(root, 'tools/mobile-e2e/install-native-services.sh'), 'utf8')
   assert.match(native, /d95663fbbf3a80f81a9d98d895266bdcb74ba274bcc04ef6d76630a72dee016f/)
   assert.match(native, /ca909aa15252f2ecb3a048cd086469827d636bf8334f50bb94d03fba4bfc56e8/)

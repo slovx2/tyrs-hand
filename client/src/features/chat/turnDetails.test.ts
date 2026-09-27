@@ -5,7 +5,7 @@ import { TurnDetails, turnExpanded, turnWithDetails } from "./turnDetails";
 
 const turn = (status: MobileTurn["status"] = "completed"): MobileTurn => ({ id: "turn", status,
   items: [], itemsView: "summary", error: null, startedAt: null, completedAt: null, durationMs: null });
-const message = (id: string, text = id) => ({ type: "agentMessage" as const, id, text,
+const message = (id: string, text = id) => ({ delivery: null, questions: null, type: "agentMessage" as const, id, text,
   phase: "commentary" as const, memoryCitation: null });
 
 describe("页面级详情分页", () => {

@@ -1,7 +1,115 @@
 {
-  "protocolVersion": "0.147.0",
+  "protocolVersion": "0.157.1",
   "releaseReady": false,
   "methods": [
+    {
+      "method": "account/bedrock/discover",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/BedrockDiscoverParams",
+        "response": "v2/BedrockDiscoverResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "account/bedrock/setup",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/BedrockSetupParams",
+        "response": "v2/BedrockSetupResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "account/gatewayOAuth/cancel",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": "v2/GatewayOAuthCancelResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "account/gatewayOAuth/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/GatewayOAuthChangedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "account/gatewayOAuth/login",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": "v2/GatewayOAuthLoginResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "account/gatewayOAuth/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": "v2/GatewayOAuthReadResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
     {
       "method": "account/login/cancel",
       "engines": {
@@ -365,6 +473,24 @@
       "callers": [
         "client/src/app-server/officialClient.ts",
         "internal/appserverhub/routing.go"
+      ]
+    },
+    {
+      "method": "autoApprovalReview/strictReviewRequired",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/StrictReviewRequiredNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
       ]
     },
     {
@@ -1840,6 +1966,60 @@
       ]
     },
     {
+      "method": "mcpServer/event/stream/notification",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/McpServerEventStreamNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "mcpServer/event/stream/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/McpServerEventStreamStartParams",
+        "response": "v2/McpServerEventStreamStartResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "mcpServer/event/stream/stop",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/McpServerEventStreamStopParams",
+        "response": "v2/McpServerEventStreamStopResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
       "method": "mcpServer/oauth/login",
       "engines": {
         "codex": "required",
@@ -1983,6 +2163,24 @@
       }
     },
     {
+      "method": "memory/status",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/MemoryStatusParams",
+        "response": "v2/MemoryStatusResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
       "method": "model/list",
       "engines": {
         "codex": "required",
@@ -2006,6 +2204,42 @@
         "params": "ClientRequest.json#/definitions/ModelListParams",
         "response": "v2/ModelListResponse.json"
       }
+    },
+    {
+      "method": "modelProvider/authRecoveryCompleted",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/AuthRecoveryNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "modelProvider/authRecoveryStarted",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/AuthRecoveryNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
     },
     {
       "method": "modelProvider/capabilities/read",
@@ -2158,6 +2392,24 @@
       "reasons": {
         "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
       }
+    },
+    {
+      "method": "plugin/reconcile",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/PluginReconcileParams",
+        "response": "v2/PluginReconcileResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
     },
     {
       "method": "plugin/share/checkout",
@@ -2489,6 +2741,150 @@
       ]
     },
     {
+      "method": "project/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ProjectChangedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "project/create",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectCreateParams",
+        "response": "v2/ProjectCreateResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "project/delete",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectDeleteParams",
+        "response": "v2/ProjectDeleteResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "project/import",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectImportParams",
+        "response": "v2/ProjectImportResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "project/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectListParams",
+        "response": "v2/ProjectListResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "project/move",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectMoveParams",
+        "response": "v2/ProjectMoveResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "project/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectReadParams",
+        "response": "v2/ProjectReadResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "project/update",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ProjectUpdateParams",
+        "response": "v2/ProjectUpdateResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
       "method": "remoteControl/status/changed",
       "engines": {
         "codex": "required",
@@ -2532,6 +2928,24 @@
       }
     },
     {
+      "method": "rollout/compress",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": "v2/RolloutCompressResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
       "method": "runtime/info",
       "engines": {
         "codex": "required",
@@ -2558,6 +2972,24 @@
         "params": "extensions/runtime-info.json#/params",
         "response": "extensions/runtime-info.json#/response"
       }
+    },
+    {
+      "method": "server/diagnostics",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ServerDiagnosticsParams",
+        "response": "v2/ServerDiagnosticsResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
     },
     {
       "method": "serverRequest/resolved",
@@ -2767,6 +3199,78 @@
         "params": "ServerNotification.json#/definitions/ThreadArchivedNotification",
         "response": null
       }
+    },
+    {
+      "method": "thread/attachment/add",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadAttachmentAddParams",
+        "response": "v2/ThreadAttachmentAddResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/attachment/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadAttachmentListParams",
+        "response": "v2/ThreadAttachmentListResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/attachment/remove",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadAttachmentRemoveParams",
+        "response": "v2/ThreadAttachmentRemoveResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/attachment/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadAttachmentUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
     },
     {
       "method": "thread/closed",
@@ -3213,6 +3717,150 @@
       }
     },
     {
+      "method": "thread/project/updated",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadProjectUpdatedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "thread/queue/add",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadQueueAddParams",
+        "response": "v2/ThreadQueueAddResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/queue/changed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadQueueChangedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "thread/queue/delete",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadQueueDeleteParams",
+        "response": "v2/ThreadQueueDeleteResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/queue/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadQueueListParams",
+        "response": "v2/ThreadQueueListResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/queue/reorder",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadQueueReorderParams",
+        "response": "v2/ThreadQueueReorderResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/queue/start",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadQueueStartParams",
+        "response": "v2/ThreadQueueStartResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/queue/update",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadQueueUpdateParams",
+        "response": "v2/ThreadQueueUpdateResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
       "method": "thread/read",
       "engines": {
         "codex": "required",
@@ -3264,6 +3912,60 @@
       }
     },
     {
+      "method": "thread/realtime/item/completed",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadRealtimeItemCompletedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "thread/realtime/item/started",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadRealtimeItemStartedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
+      "method": "thread/realtime/item/transcript/delta",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadRealtimeItemTranscriptDeltaNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
       "method": "thread/resume",
       "engines": {
         "codex": "required",
@@ -3307,6 +4009,42 @@
       }
     },
     {
+      "method": "thread/revert",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadRevertParams",
+        "response": "v2/ThreadRevertResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "thread/reverted",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ServerNotification.json#/definitions/ThreadRevertedNotification",
+        "response": null
+      },
+      "callers": [
+        "schema:ServerNotification"
+      ]
+    },
+    {
       "method": "thread/rollback",
       "engines": {
         "codex": "required",
@@ -3327,8 +4065,8 @@
         "wire:claude-code"
       ],
       "schema": {
-        "params": "ClientRequest.json#/definitions/ThreadRollbackParams",
-        "response": "v2/ThreadRollbackResponse.json"
+        "params": "extensions/thread-rollback.json#/params",
+        "response": "v2/ThreadReadResponse.json"
       }
     },
     {
@@ -3565,6 +4303,24 @@
       "callers": [
         "wire:claude-code",
         "wire:codex"
+      ]
+    },
+    {
+      "method": "thread/timeline/list",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/ThreadTimelineListParams",
+        "response": "v2/ThreadTimelineListResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
       ]
     },
     {
@@ -3902,6 +4658,24 @@
       }
     },
     {
+      "method": "turn/settings/update",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/TurnSettingsUpdateParams",
+        "response": "v2/TurnSettingsUpdateResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
       "method": "turn/start",
       "engines": {
         "codex": "required",
@@ -4038,6 +4812,96 @@
         "params": "ClientRequest.json#/definitions/TurnSteerParams",
         "response": "v2/TurnSteerResponse.json"
       }
+    },
+    {
+      "method": "userVerification/cancel",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/UserVerificationCancelParams",
+        "response": "v2/UserVerificationCancelResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "userVerification/delete",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/UserVerificationDeleteParams",
+        "response": "v2/UserVerificationDeleteResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "userVerification/enroll",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/UserVerificationEnrollParams",
+        "response": "v2/UserVerificationEnrollResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "userVerification/status",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/UserVerificationStatusParams",
+        "response": "v2/UserVerificationStatusResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
+    },
+    {
+      "method": "userVerification/verify",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [],
+        "claude-code": []
+      },
+      "schema": {
+        "params": "ClientRequest.json#/definitions/UserVerificationVerifyParams",
+        "response": "v2/UserVerificationVerifyResponse.json"
+      },
+      "callers": [
+        "internal/appserverhub/methods.go"
+      ]
     },
     {
       "method": "warning",

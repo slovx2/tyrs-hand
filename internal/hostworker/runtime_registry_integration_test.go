@@ -408,7 +408,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 				require.Equal(t, filepath.Join(entry.Runtime.EntryBin(), "codex"), strings.TrimSpace(string(output)))
 			}
 			if strings.HasSuffix(command, "--version") {
-				require.Equal(t, "codex-cli 0.147.0\n", string(output))
+				require.Equal(t, "codex-cli 0.157.1\n", string(output))
 			}
 		}
 		session, err := connection.NewSession()
@@ -425,7 +425,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		var live RuntimeInfo
 		require.NoError(t, client.Call(ctx, "runtime/info", map[string]any{}, &live))
 		require.Equal(t, engine, live.Engine)
-		require.Equal(t, "0.147.0", live.ProtocolVersion)
+		require.Equal(t, "0.157.1", live.ProtocolVersion)
 		require.Equal(t, entry.Runtime.Info().CLIBuild, live.CLIBuild)
 		if engine == runtimeidentity.Codex {
 			require.Equal(t, "one-worker", live.WorkerID)

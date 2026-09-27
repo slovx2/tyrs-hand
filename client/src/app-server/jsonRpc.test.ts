@@ -50,7 +50,7 @@ async function initialize(): Promise<{ client: CodexJsonRpcClient; socket: FakeS
     capabilities: { experimentalApi: true, extensions: { "openai/form": {} } },
   } });
   socket.receive({ id: socket.sent[0]!.id, result: {
-    userAgent: "codex/0.147.0", codexHome: "/tmp/codex", platformFamily: "unix", platformOs: "linux",
+    userAgent: "codex/0.157.1", codexHome: "/tmp/codex", platformFamily: "unix", platformOs: "linux",
   } });
   await opening;
   expect(socket.sent[1]).toEqual({ method: "initialized" });

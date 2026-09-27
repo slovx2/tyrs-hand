@@ -199,7 +199,7 @@ func headerHasToken(value, token string) bool {
 	return false
 }
 
-// React Native Android 的 OkHttp 会固定请求 permessage-deflate，而 Codex 0.147.0
+// React Native Android 的 OkHttp 会固定请求 permessage-deflate，而 Codex 0.157.1
 // 的 Unix WebSocket 不接受扩展协商。只删除这个 HTTP 握手能力声明；101 之后的
 // WebSocket 帧和官方 JSON-RPC 字节仍然透明转发。
 func appServerUpgradeHeader(header []byte) []byte {

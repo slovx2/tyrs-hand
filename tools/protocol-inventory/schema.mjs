@@ -22,6 +22,10 @@ export function schemaIndex(root, extensionsRoot) {
     'config/value/write': 'ConfigWriteResponse',
     'config/batchWrite': 'ConfigWriteResponse',
     'externalAgentConfig/import/readHistories': 'ExternalAgentConfigImportHistoriesReadResponse',
+    'account/gatewayOAuth/read': 'GatewayOAuthReadResponse',
+    'account/gatewayOAuth/login': 'GatewayOAuthLoginResponse',
+    'account/gatewayOAuth/cancel': 'GatewayOAuthCancelResponse',
+    'rollout/compress': 'RolloutCompressResponse',
   }
   for (const kind of ['ClientRequest', 'ServerRequest', 'ClientNotification', 'ServerNotification']) {
     const schema = JSON.parse(readFileSync(join(root, `${kind}.json`), 'utf8'))
@@ -39,9 +43,12 @@ export function schemaIndex(root, extensionsRoot) {
   if (extensionsRoot) for (const file of readdirSync(extensionsRoot).filter(name => name.endsWith('.json'))) {
     const extension = JSON.parse(readFileSync(join(extensionsRoot, file), 'utf8'))
     if (index.has(extension.method)) throw new Error(`扩展不能覆盖原生 schema: ${extension.method}`)
-    index.set(extension.method, { ...extension, references: {
-      params: `extensions/${file}#/params`, response: `extensions/${file}#/response`,
-    } })
+    index.set(extension.method, { ...extension,
+      response: extension.responseFile
+        ? JSON.parse(readFileSync(join(root, extension.responseFile), 'utf8')) : extension.response,
+      references: {
+        params: `extensions/${file}#/params`, response: extension.responseFile ?? `extensions/${file}#/response`,
+      } })
   }
   return index
 }

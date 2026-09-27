@@ -10,7 +10,7 @@ import { collectMcpValues, initialMcpValues, mcpUrl, parseMcpJson, prepareMcpFor
 
 type Request = Extract<ServerRequest, { method: "mcpServer/elicitation/request" }>;
 type Props = { request: Request; onAnswer: (result: unknown) => void };
-type FormParams = Exclude<Request["params"], { mode: "url" }>;
+type FormParams = Extract<Request["params"], { mode: "form" | "openai/form" | "openaiForm" }>;
 
 export function McpElicitationCard({ request, onAnswer }: Props) {
   const { params } = request;
@@ -21,7 +21,8 @@ export function McpElicitationCard({ request, onAnswer }: Props) {
   return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
     <Title>MCP 需要你的确认</Title>
     <Muted selectable>服务：{params.serverName}</Muted>
-    <Muted selectable>{params.message}</Muted>
+    <Muted selectable>{params.mode === "openai/userVerification"
+      ? `${params.title}\n${params.description}` : params.message}</Muted>
     {params.mode === "url" ? <>
       <Muted selectable>{url ?? "链接无效或不安全，无法继续。"}</Muted>
       <Muted>打开链接并完成页面操作后，返回确认继续。</Muted>
@@ -32,7 +33,9 @@ export function McpElicitationCard({ request, onAnswer }: Props) {
       {error && <Muted>{error}</Muted>}
       <Button title="已完成，继续" disabled={!url}
         testID={`interactive:${String(request.id)}:accept`} onPress={() => answer("accept")} />
-    </> : <McpForm params={params} id={String(request.id)} onAccept={(value) => answer("accept", value)} />}
+    </> : params.mode === "openai/userVerification"
+      ? <Muted>此验证需要运行环境的身份验证能力，请在支持的桌面端完成。</Muted>
+      : <McpForm params={params} id={String(request.id)} onAccept={(value) => answer("accept", value)} />}
     <View style={styles.actions}>
       <Button title="拒绝" variant="secondary" testID={`interactive:${String(request.id)}:decline`}
         onPress={() => answer("decline")} />

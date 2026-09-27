@@ -4,7 +4,7 @@ import type { Model } from "@codex-app-server/v2/Model";
 import { defaultLiveCodexEffort, defaultLiveCodexModel, resolveLiveCodexPreferences } from "./liveCodexPreferences";
 
 function model(id: string, efforts: string[], extra: Partial<Model> = {}): Model {
-  return {
+  return { multiAgentVersion: null, availableAccessPrograms: null,
     id, model: id, upgrade: null, upgradeInfo: null, availabilityNux: null,
     displayName: id, description: id, modelSpecialty: null, hidden: false,
     supportedReasoningEfforts: efforts.map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),

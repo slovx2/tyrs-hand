@@ -27,7 +27,7 @@ test('语义专项按声明引擎验收，不能由另一引擎、旧报告或�
 
 test('MCP reload 的 null 参数与官方响应均进行真实 schema 校验', () => {
   const root = resolve(import.meta.dirname, '../..')
-  const validate = payloadValidator(schemaIndex(resolve(root, 'protocol/codex-app-server/0.147.0/json-schema')))
+  const validate = payloadValidator(schemaIndex(resolve(root, 'protocol/codex-app-server/0.157.1/json-schema')))
   validate('config/mcpServer/reload', 'params', null)
   validate('config/mcpServer/reload', 'response', {})
   assert.throws(() => validate('config/mcpServer/reload', 'params', {}))
@@ -36,7 +36,7 @@ test('MCP reload 的 null 参数与官方响应均进行真实 schema 校验', (
 
 test('配置写入共用响应及要求查询的 null 参数使用官方 schema', () => {
   const root = resolve(import.meta.dirname, '../..')
-  const index = schemaIndex(resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'))
+  const index = schemaIndex(resolve(root, 'protocol/codex-app-server/0.157.1/json-schema'))
   const validate = payloadValidator(index)
   for (const method of ['config/value/write', 'config/batchWrite']) {
     assert.equal(index.get(method).references.response, 'v2/ConfigWriteResponse.json')
@@ -53,14 +53,14 @@ test('配置写入共用响应及要求查询的 null 参数使用官方 schema'
 test('运行时扩展必须校验真实身份字段与版本，不能仅凭方法名计覆盖', () => {
   const root = resolve(import.meta.dirname, '../..')
   const validate = payloadValidator(schemaIndex(
-    resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'), resolve(root, 'protocol/extensions')))
+    resolve(root, 'protocol/codex-app-server/0.157.1/json-schema'), resolve(root, 'protocol/extensions')))
   validate('runtime/info', 'params', {})
   assert.throws(() => validate('runtime/info', 'params', { engine: 'claude-code' }))
-  const codex = { engine: 'codex', protocolVersion: '0.147.0', cliBuild: 'codex-cli 0.147.0',
+  const codex = { engine: 'codex', protocolVersion: '0.157.1', cliBuild: 'codex-cli 0.157.1',
     capabilities: [], releaseReady: true, workerId: 'worker', status: 'running' }
   validate('runtime/info', 'response', codex)
   assert.throws(() => validate('runtime/info', 'response', { ...codex, workerId: undefined }))
-  const claude = { engine: 'claude-code', protocolVersion: '0.147.0', cliBuild: '2.1.282 (Claude Code)',
+  const claude = { engine: 'claude-code', protocolVersion: '0.157.1', cliBuild: '2.1.282 (Claude Code)',
     capabilities: [], releaseReady: false, nodeVersion: '24.14.0', sdkVersion: '0.3.282', cliSha256: 'a'.repeat(64) }
   validate('runtime/info', 'response', claude)
   assert.throws(() => validate('runtime/info', 'response', { ...claude, cliSha256: 'unverified' }))

@@ -56,7 +56,7 @@ jobs:
           path: .local/protocol-adapter
       - name: Install native SDK and CLI
         run: |
-          npm install --global @openai/codex@0.147.0
+          npm install --global @openai/codex@0.157.1
           npm ci --prefix .local/protocol-adapter
       - name: Enable isolated test network namespace
         run: |
@@ -107,7 +107,7 @@ jobs:
           path: claude-codex
       - name: Install exact dependencies
         run: |
-          npm install --global @openai/codex@0.147.0
+          npm install --global @openai/codex@0.157.1
           npm ci --prefix ../claude-codex
           npm ci --prefix tools/protocol-inventory
           go mod download
@@ -156,7 +156,7 @@ jobs:
         if: runner.os == 'macOS'
         env:
           PROTOCOL_ARTIFACT_DIR: ${{ github.workspace }}/tyrs-hand/.artifacts/protocol/macos-sdk
-          CODEX_SCHEMA_DIR: ${{ github.workspace }}/tyrs-hand/protocol/codex-app-server/0.147.0/json-schema
+          CODEX_SCHEMA_DIR: ${{ github.workspace }}/tyrs-hand/protocol/codex-app-server/0.157.1/json-schema
         run: npm run test:protocol --prefix ../claude-codex
       - name: Preserve failure and coverage evidence
         if: always()

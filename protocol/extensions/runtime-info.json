@@ -7,7 +7,7 @@
     "required": ["engine", "protocolVersion", "cliBuild", "capabilities", "releaseReady"],
     "properties": {
       "engine": { "enum": ["codex", "claude-code"] },
-      "protocolVersion": { "const": "0.147.0" },
+      "protocolVersion": { "const": "0.157.1" },
       "cliBuild": { "type": "string", "minLength": 1 },
       "capabilities": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
       "releaseReady": { "type": "boolean" },

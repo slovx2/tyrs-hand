@@ -80,7 +80,7 @@ func TestLoopbackRelaysWorkerSSHProxy(t *testing.T) {
 		Runtime: mobileWebSocketRuntime{}, Logger: zap.NewNop(),
 		RuntimeInfo: func() hostworker.RuntimeInfo {
 			return hostworker.RuntimeInfo{Identity: runtimeidentity.Identity{WorkerID: "test-worker", Engine: runtimeidentity.Codex},
-				ProtocolVersion: "0.147.0", Status: "running", Capabilities: []string{}, ReleaseReady: true}
+				ProtocolVersion: "0.157.1", Status: "running", Capabilities: []string{}, ReleaseReady: true}
 		},
 	})
 	require.NoError(t, err)

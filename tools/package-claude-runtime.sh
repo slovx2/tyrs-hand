@@ -32,7 +32,7 @@ exec "$runtime_root/bin/node" "$runtime_root/lib/dist/src/adapter.mjs" "$@"
 WRAPPER
 chmod 0755 "$stage/claude-runtime/bin/claude-codex" "$stage/claude-runtime/bin/node"
 env -i PATH=/usr/bin:/bin HOME="$stage/home" "$stage/claude-runtime/bin/claude-codex" --runtime-info > "$stage/claude-runtime/build.json"
-node -e 'const fs=require("node:fs"); const build=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(build.nodeVersion!=="24.14.0" || build.sdkVersion!=="0.3.282" || build.protocolVersion!=="0.147.0" || !build.cliSha256) process.exit(1)' "$stage/claude-runtime/build.json"
+node -e 'const fs=require("node:fs"); const build=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(build.nodeVersion!=="24.14.0" || build.sdkVersion!=="0.3.282" || build.protocolVersion!=="0.157.1" || !build.cliSha256) process.exit(1)' "$stage/claude-runtime/build.json"
 asset="claude-codex_${actual_commit}_linux_amd64.tar.gz"
 tar -C "$stage" -czf "$artifact_dir/$asset" claude-runtime
 (cd "$artifact_dir" && sha256sum "$asset" > "$asset.sha256")

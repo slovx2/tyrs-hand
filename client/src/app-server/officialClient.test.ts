@@ -156,7 +156,7 @@ describe("OfficialAppServerClient", () => {
           } } });
         queueMicrotask(() => {
           rpc.emitNotification({ method: "item/completed", params: { threadId: "title-thread",
-            turnId: "title-turn", item: { type: "agentMessage", id: "title-item",
+            turnId: "title-turn", item: { delivery: null, questions: null, type: "agentMessage", id: "title-item",
               text: JSON.stringify({ title: "修复移动端协议回归", description: "移动端协议和滚动" }),
               phase: "final_answer", memoryCitation: null }, completedAtMs: 1 } });
           rpc.emitNotification({ method: "turn/completed", params: { threadId: "title-thread",
@@ -275,7 +275,7 @@ describe("OfficialAppServerClient", () => {
 
   it("legacy resume 直接请求 full，并把倒序响应转成时间正序", async () => {
     const turns = Array.from({ length: 7 }, (_, index) =>
-      officialTurn(`turn-${index + 1}`, "completed", [{ type: "agentMessage",
+      officialTurn(`turn-${index + 1}`, "completed", [{ delivery: null, questions: null, type: "agentMessage",
         id: `item-${index + 1}`, text: `answer-${index + 1}`,
         phase: "final_answer", memoryCitation: null }]));
     const rpc = new FakeRpc((method, params) => {
@@ -300,9 +300,9 @@ describe("OfficialAppServerClient", () => {
   });
 
   it("legacy 旧页沿用官方游标、直接请求 full 并保持时间正序", async () => {
-    const turns = [officialTurn("turn-1", "completed", [{ type: "agentMessage", id: "item-1",
+    const turns = [officialTurn("turn-1", "completed", [{ delivery: null, questions: null, type: "agentMessage", id: "item-1",
       text: "one", phase: "final_answer", memoryCitation: null }]),
-    officialTurn("turn-2", "completed", [{ type: "agentMessage", id: "item-2",
+    officialTurn("turn-2", "completed", [{ delivery: null, questions: null, type: "agentMessage", id: "item-2",
       text: "two", phase: "final_answer", memoryCitation: null }])];
     const rpc = new FakeRpc((method, params) => {
       if (method === "thread/turns/list") {
@@ -321,7 +321,7 @@ describe("OfficialAppServerClient", () => {
   });
 
   it("paginated 会话先读取 Turn 壳，再按 Turn 读取完整 Item", async () => {
-    const turns = [officialTurn("turn-1", "completed", [{ type: "agentMessage", id: "item-1",
+    const turns = [officialTurn("turn-1", "completed", [{ delivery: null, questions: null, type: "agentMessage", id: "item-1",
       text: "one", phase: "final_answer", memoryCitation: null }])];
     const rpc = new FakeRpc((method, params) => {
       if (method === "thread/turns/list") {
@@ -714,7 +714,7 @@ describe("OfficialAppServerClient", () => {
     const thread = officialThread([
       officialTurn("turn-old", "completed", [{ type: "plan", id: "plan-old", text: "old" }]),
       officialTurn("turn-running", "inProgress", [{ type: "plan", id: "plan-running", text: "draft" }]),
-      officialTurn("turn-new", "completed", [{ type: "agentMessage", id: "answer", text: "done",
+      officialTurn("turn-new", "completed", [{ delivery: null, questions: null, type: "agentMessage", id: "answer", text: "done",
         phase: "final_answer", memoryCitation: null }, { type: "plan", id: "plan-new", text: "new" }]),
     ]);
     expect(latestCompletedPlan(thread)).toEqual({ turnId: "turn-new", itemId: "plan-new", text: "new" });
@@ -752,7 +752,7 @@ describe("移动端摘要与详情请求边界", () => {
 
   it("指定 Turn 只取 50 条；倒序响应转换为时间正序，不自动继续取页", async () => {
     const rpc = new FakeRpc(() => ({ data: ["new", "old"].map((id) => ({ turnId: "target",
-      item: { type: "agentMessage", id, text: id, phase: "commentary", memoryCitation: null } })),
+      item: { delivery: null, questions: null, type: "agentMessage", id, text: id, phase: "commentary", memoryCitation: null } })),
     nextCursor: "more", backwardsCursor: null }));
     const client = new OfficialAppServerClient("profile", "codex", rpc, new MemoryJournal());
     const page = await client.listTurnItems("thread-1", "target", null, "desc");
@@ -764,12 +764,12 @@ describe("移动端摘要与详情请求边界", () => {
 });
 
 function officialThread(turns: Thread["turns"]): Thread {
-  return { id: "thread-1", sessionId: "session-1", forkedFromId: null, parentThreadId: null,
+  return { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id: "thread-1", sessionId: "session-1", forkedFromId: null, parentThreadId: null,
     preview: "thread", ephemeral: false, section: null, sectionEnteredAt: null, modelProvider: "openai",
     createdAt: 1, updatedAt: 2, recencyAt: 2, status: { type: turns.some((turn) =>
       turn.status === "inProgress") ? "active" : "idle", ...(turns.some((turn) =>
       turn.status === "inProgress") ? { activeFlags: [] } : {}) } as Thread["status"], path: null,
-    cwd: "/workspace", cliVersion: "0.147.0", source: "appServer", threadSource: null,
+    cwd: "/workspace", cliVersion: "0.157.1", source: "appServer", threadSource: null,
     agentNickname: null, agentRole: null, gitInfo: null, name: null, turns, extra: null,
     historyMode: "legacy", canAcceptDirectInput: true };
 }

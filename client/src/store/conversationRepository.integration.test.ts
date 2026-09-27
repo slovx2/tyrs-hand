@@ -134,14 +134,14 @@ describe("会话分页 Repository", () => {
         cwd: "/workspace", processId: null, source: "agent", status: "completed",
         commandActions: [], aggregatedOutput: null, exitCode: 0, durationMs: null,
         pluginId: null, scriptPath: null },
-      { type: "agentMessage", id: "native-answer", text: "answer",
+      { delivery: null, questions: null, type: "agentMessage", id: "native-answer", text: "answer",
         phase: "final_answer", memoryCitation: null },
     ];
     const resumed = turn(1, "completed", "unused");
     resumed.items = [
       { type: "userMessage", id: "item-0", clientId: null,
         content: [{ type: "text", text: "执行检查", text_elements: [] }] },
-      { type: "agentMessage", id: "item-1", text: "answer",
+      { delivery: null, questions: null, type: "agentMessage", id: "item-1", text: "answer",
         phase: "final_answer", memoryCitation: null },
     ];
     client.resume = async () => ({ thread: thread(threadId, [resumed]),
@@ -301,7 +301,7 @@ describe("会话分页 Repository", () => {
       const threadId = "thread-native-stream";
       const client = new FakeOfficialClient();
       const active = turn(1, "inProgress", "streaming");
-      active.items[0] = { type: "agentMessage", id: "answer", text: "", phase: "final_answer",
+      active.items[0] = { delivery: null, questions: null, type: "agentMessage", id: "answer", text: "", phase: "final_answer",
         memoryCitation: null };
       client.resume = async () => ({ thread: thread(threadId, [active]), page: page([active], null) });
       client.listPage = async () => page([active], null);
@@ -376,16 +376,16 @@ function turns(first: number, last: number): Turn[] {
 }
 
 function turn(index: number, status: Turn["status"] = "completed", marker = String(index)): Turn {
-  return { id: `turn-${index}`, status, items: [{ type: "agentMessage", id: `item:${marker}`,
+  return { id: `turn-${index}`, status, items: [{ delivery: null, questions: null, type: "agentMessage", id: `item:${marker}`,
     text: marker, phase: "final_answer", memoryCitation: null }], itemsView: "full", error: null,
   startedAt: index, completedAt: status === "inProgress" ? null : index, durationMs: null };
 }
 
 function thread(id: string, value: Turn[]): Thread {
-  return { id, sessionId: id, forkedFromId: null, parentThreadId: null, preview: id,
+  return { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id, sessionId: id, forkedFromId: null, parentThreadId: null, preview: id,
     ephemeral: false, section: null, sectionEnteredAt: null, modelProvider: "openai", createdAt: 1,
     updatedAt: 2, recencyAt: 2, status: { type: "idle" }, path: null, cwd: "/workspace",
-    cliVersion: "0.147.0", source: "appServer", threadSource: null, agentNickname: null,
+    cliVersion: "0.157.1", source: "appServer", threadSource: null, agentNickname: null,
     agentRole: null, gitInfo: null, name: null, turns: value, extra: null, historyMode: "legacy",
     canAcceptDirectInput: true };
 }

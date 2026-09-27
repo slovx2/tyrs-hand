@@ -58,7 +58,7 @@ export function createPreviewSeed(): PreviewSeed {
   const failed = thread(previewSessionIds.failed, "/preview/workspaces/tyrs-hand",
     "执行失败：依赖服务不可用", [{ id: "turn-failed", status: "failed",
       items: [user("user-failed", "preview-failed", "运行验证")], itemsView: "full",
-      error: { message: "无法连接模型服务，请检查网络后重试。", codexErrorInfo: null,
+      error: { misalignment: null, message: "无法连接模型服务，请检查网络后重试。", codexErrorInfo: null,
         additionalDetails: null }, startedAt: now - 50, completedAt: now - 45, durationMs: 5000 }], now - 30);
   const markdown = thread(previewSessionIds.markdown, "/preview/workspaces/tyrs-hand",
     "Markdown 与工具状态", [turn("turn-markdown", "completed", [
@@ -164,7 +164,7 @@ export function createPreviewSeed(): PreviewSeed {
         "远程开发示例", "/preview/remote/host-worker")], threads: [secondary],
         archivedThreadIds: [], requests: [] },
     },
-    models: [{ id: "gpt-5.6-sol", model: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
+    models: [{ multiAgentVersion: null, availableAccessPrograms: null, id: "gpt-5.6-sol", model: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
       description: "预览模型", modelSpecialty: null, hidden: false, upgrade: null,
       upgradeInfo: null, availabilityNux: null, supportedReasoningEfforts: [
         { reasoningEffort: "high", description: "深入推理" },
@@ -210,12 +210,12 @@ function project(workspaceId: string, projectId: string, name: string,
 }
 
 function thread(id: string, cwd: string, name: string, turns: Turn[], updatedAt: number): Thread {
-  return { id, extra: null, sessionId: id, forkedFromId: null, parentThreadId: null,
+  return { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null, id, extra: null, sessionId: id, forkedFromId: null, parentThreadId: null,
     preview: name, ephemeral: false, section: null, sectionEnteredAt: null, historyMode: "legacy",
     modelProvider: "openai", createdAt: updatedAt - 60, updatedAt, recencyAt: updatedAt,
     status: turns.some((item) => item.status === "inProgress")
       ? { type: "active", activeFlags: [] } : { type: "idle" }, path: null, cwd,
-    cliVersion: "0.147.0", source: "appServer", canAcceptDirectInput: true,
+    cliVersion: "0.157.1", source: "appServer", canAcceptDirectInput: true,
     threadSource: null, agentNickname: null, agentRole: null, gitInfo: null, name, turns };
 }
 
@@ -232,7 +232,7 @@ function user(id: string, clientId: string, text: string): Turn["items"][number]
 
 function agent(id: string, text: string, phase: "commentary" | "final_answer"):
   Turn["items"][number] {
-  return { type: "agentMessage", id, text, phase, memoryCitation: null };
+  return { delivery: null, questions: null, type: "agentMessage", id, text, phase, memoryCitation: null };
 }
 
 function command(id: string, status: "inProgress" | "completed", output: string):
@@ -251,7 +251,7 @@ function fileChange(id: string, paths: string[]): Turn["items"][number] {
 }
 
 function mcpToolCall(id: string): Turn["items"][number] {
-  return { type: "mcpToolCall", id, server: "filesystem", tool: "read_file",
+  return { mcpAppUi: null, type: "mcpToolCall", id, server: "filesystem", tool: "read_file",
     status: "completed", arguments: null, appContext: null, pluginId: null, readOnlyHint: true,
     result: null, error: null, durationMs: 250 };
 }

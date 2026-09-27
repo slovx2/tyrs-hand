@@ -131,7 +131,7 @@ async function lateControlAnswer(request, generation) {
 
 // 校验真实消息schema；只把确定被本次SIGKILL截断的精确旧回调记为终止，绝不补造响应。
 async function validateWire() {
-  const index = schemaIndex(resolve(repo, 'protocol/codex-app-server/0.147.0/json-schema'), resolve(repo, 'protocol/extensions'))
+  const index = schemaIndex(resolve(repo, 'protocol/codex-app-server/0.157.1/json-schema'), resolve(repo, 'protocol/extensions'))
   const validate = payloadValidator(index)
   const result = { passed: false, engines: {}, errors: [], processTerminatedCallbacks: [] }
   for (const engine of ['codex', 'claude-code']) {

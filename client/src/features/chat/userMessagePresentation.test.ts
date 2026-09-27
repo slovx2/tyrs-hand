@@ -4,6 +4,13 @@ import { describe, expect, it } from "vitest";
 import { parseLegacyAttachmentMessage, projectUserMessage } from "./userMessagePresentation";
 
 describe("用户消息图片投影", () => {
+  it("fileId 图片保留附件标识，不将 ID 当成可下载地址", () => {
+    const result = projectUserMessage({ type: "userMessage", id: "user", clientId: null,
+      content: [{ type: "image", fileId: "file-image-1" }] });
+    expect(result.attachments).toEqual([{ key: "user:image:0", name: "图片（file-image-1）",
+      kind: "image", uri: null, remotePath: null }]);
+  });
+
   it("解析桌面 legacy 附件包装并只保留真实请求正文", () => {
     const result = parseLegacyAttachmentMessage(`
 # Files mentioned by the user:

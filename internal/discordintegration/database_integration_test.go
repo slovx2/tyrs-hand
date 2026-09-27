@@ -1695,7 +1695,7 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 	seed.workerID = workerID
 	_, runtimeErr := db.ExecContext(ctx, `INSERT INTO worker_runtimes(worker_id,engine,enabled,status,
  ssh_listen_address,protocol_version,heartbeat_at,model_catalog)
- VALUES ($1,'codex',true,'running',':2222','0.147.0',now(),'{"data":[]}')`, workerID)
+ VALUES ($1,'codex',true,'running',':2222','0.157.1',now(),'{"data":[]}')`, workerID)
 	require.NoError(t, runtimeErr)
 
 	_, err := db.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value) VALUES

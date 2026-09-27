@@ -23,7 +23,7 @@ func TestDiscordProjectionUsesPersistedEngineAcrossRefreshAndReply(t *testing.T)
 	seed := seedDiscordManagerData(t, db)
 	_, err = db.ExecContext(ctx, `INSERT INTO worker_runtimes(worker_id,engine,enabled,status,
 		ssh_listen_address,protocol_version,heartbeat_at)
-		VALUES ($1,'claude-code',true,'running',':3333','0.147.0',now())`, seed.workerID)
+		VALUES ($1,'claude-code',true,'running',':3333','0.157.1',now())`, seed.workerID)
 	require.NoError(t, err)
 	service := NewConversationService(db)
 	for _, engine := range []runtimeidentity.Engine{runtimeidentity.Claude, runtimeidentity.Codex} {

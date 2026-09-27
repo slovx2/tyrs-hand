@@ -105,7 +105,7 @@ describe("官方 Turn 分页合并", () => {
   });
 
   it("活动快照的短文本不能截断已揭示前缀，完成 Item 使用权威正文", () => {
-    const streamed = { type: "agentMessage", id: "answer", text: "已经揭示的流式文本",
+    const streamed = { delivery: null, questions: null, type: "agentMessage", id: "answer", text: "已经揭示的流式文本",
       phase: "final_answer", memoryCitation: null } as const;
     const stale = { ...streamed, text: "已经揭示" };
     const final = { ...streamed, text: "最终权威正文" };
@@ -233,7 +233,7 @@ function page(turns: Turn[], nextCursor: string | null): OfficialTurnPage {
 }
 
 function turn(id: string, status: Turn["status"] = "completed", marker = id): Turn {
-  return { id, status, items: [{ type: "agentMessage", id: `item:${marker}`,
+  return { id, status, items: [{ delivery: null, questions: null, type: "agentMessage", id: `item:${marker}`,
     text: marker, phase: "final_answer", memoryCitation: null }], itemsView: "full",
   error: null, startedAt: 1, completedAt: status === "inProgress" ? null : 2, durationMs: null };
 }
@@ -252,5 +252,5 @@ function user(id: string, clientId: string | null, text: string): Turn["items"][
 
 function agent(id: string, text: string, phase: "commentary" | "final_answer"):
   Turn["items"][number] {
-  return { type: "agentMessage", id, text, phase, memoryCitation: null };
+  return { delivery: null, questions: null, type: "agentMessage", id, text, phase, memoryCitation: null };
 }

@@ -12,8 +12,8 @@ func TestRuntimeReportsRejectAmbiguousIdentity(t *testing.T) {
 	const key = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	valid := workerprotocol.RuntimeReport{Engine: runtimeidentity.Codex,
 		SSHListenAddress: ":2222", SSHHostKeyFingerprint: key, Status: "running",
-		ProtocolVersion: "0.147.0", Capabilities: []string{},
-		Build: workerprotocol.RuntimeBuild{CLIBuild: "0.147.0"}}
+		ProtocolVersion: "0.157.1", Capabilities: []string{},
+		Build: workerprotocol.RuntimeBuild{CLIBuild: "0.157.1"}}
 	require.NoError(t, validateRuntimeReports([]workerprotocol.RuntimeReport{valid}, key))
 	for _, test := range []struct {
 		name   string

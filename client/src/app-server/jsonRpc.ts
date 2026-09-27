@@ -5,7 +5,7 @@ import type { ServerNotification } from "@codex-app-server/ServerNotification";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
 import { traceInteraction } from "@/preview/perf";
 
-export const CODEX_APP_SERVER_VERSION = "0.147.0";
+export const CODEX_APP_SERVER_VERSION = "0.157.1";
 
 export type SocketMessageEvent = { data: unknown };
 export type SocketCloseEvent = { code?: number; reason?: string };
@@ -169,7 +169,7 @@ export class CodexJsonRpcClient {
       capabilities: {
         experimentalApi: true,
         requestAttestation: false,
-        // Codex 0.147.0 的原生 MCP 协商使用空对象声明 openai/form。
+        // Codex 0.157.1 的原生 MCP 协商使用空对象声明 openai/form。
         extensions: { "openai/form": {} },
         optOutNotificationMethods: null,
       },

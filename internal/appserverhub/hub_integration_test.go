@@ -768,16 +768,19 @@ func TestHubArchivesImmediatelyWhenIdleAndUnarchivesForEveryClient(t *testing.T)
 	second := connectDesktop(t, hub.SocketPath())
 	first.initialize(t, 1)
 	second.initialize(t, 1)
+	events := worker.Subscribe(codex.ThreadFilter{})
+	t.Cleanup(events.Close)
 
 	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
 		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
 	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	// RPC 响应不保证异步通知已完成分发；显式消费创建事件后再测试归档顺序。
+	created := receiveEvent(t, events.Events())
+	require.Equal(t, "thread/started", created.Method)
+	require.Equal(t, threadID, responseThreadID(t, created.Params))
 	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
 		Params: mustJSON(map[string]string{"threadId": threadID})})
 	require.Nil(t, second.response(t, rawID(2)).Error)
-	events := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
-	t.Cleanup(events.Close)
-
 	first.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
 		Params: mustJSON(map[string]string{"threadId": threadID})})
 	require.Nil(t, first.response(t, rawID(3)).Error)

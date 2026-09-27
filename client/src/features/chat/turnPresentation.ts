@@ -259,6 +259,9 @@ export function toolOperationLines(item: ToolItem, inferStatelessRunning = false
   const running = isToolRunning(item) || inferStatelessRunning && item.type === "webSearch";
   const failed = isToolFailed(item);
   switch (item.type) {
+  case "functionCallOutput":
+    return [operation(item.id, `已接收工具结果 ${item.namespace ? `${item.namespace} · ` : ""}${item.name}`,
+      false, false)];
   case "commandExecution":
     return [operation(item.id, `${actionPrefix("运行", running, failed)} ${item.command}`,
       running, failed)];
@@ -342,6 +345,7 @@ function toolGroupCategory(items: ToolItem[]): ToolGroupCategory {
 
 function toolItemCategory(item: ToolItem): ToolGroupCategory {
   switch (item.type) {
+  case "functionCallOutput": return "dynamic";
   case "commandExecution": return "command";
   case "fileChange": return "file";
   case "webSearch": return "search";
@@ -393,6 +397,10 @@ function collabOperation(tool: Extract<ToolItem, { type: "collabAgentToolCall" }
   switch (tool) {
   case "spawnAgent": return `${prefix}启动协作任务`;
   case "sendInput": return `${prefix}向协作任务发送消息`;
+  case "sendMessage": return `${prefix}向协作任务发送消息`;
+  case "followupTask": return `${prefix}安排后续协作任务`;
+  case "interruptAgent": return `${prefix}中断协作任务`;
+  case "listAgents": return `${prefix}查看协作任务`;
   case "resumeAgent": return `${prefix}恢复协作任务`;
   case "wait": return `${prefix}等待协作任务`;
   case "closeAgent": return `${prefix}关闭协作任务`;
@@ -404,6 +412,7 @@ function subAgentOperation(kind: Extract<ToolItem, { type: "subAgentActivity" }>
   case "started": return "已启动协作任务";
   case "interacted": return "已更新协作任务";
   case "interrupted": return "已中断协作任务";
+  case "completed": return "已完成协作任务";
   }
 }
 

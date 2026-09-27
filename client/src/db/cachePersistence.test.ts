@@ -83,7 +83,7 @@ describe("会话目录批量缓存", () => {
 function record(id: string): ThreadRecord {
   return {
     archived: false, workspaceId: null, projectId: "project-1", history: { kind: "summary" },
-    thread: {
+    thread: { environments: null, projectId: null, model: null, reasoningEffort: null, originator: null, daybreakEnabled: null,
       id, sessionId: id, forkedFromId: null, parentThreadId: null, preview: "测试内容",
       ephemeral: false, section: null, sectionEnteredAt: null, modelProvider: "test",
       createdAt: 1, updatedAt: 2, recencyAt: 2, status: { type: "idle" }, path: null,

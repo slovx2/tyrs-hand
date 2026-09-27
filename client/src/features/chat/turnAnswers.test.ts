@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MobileTurn } from "@/app-server/types";
 import { visibleTurnAnswers } from "./turnAnswers";
 
-const unknown = { type: "agentMessage" as const, id: "answer", text: "完成的正文",
+const unknown = { delivery: null, questions: null, type: "agentMessage" as const, id: "answer", text: "完成的正文",
   phase: null, memoryCitation: null };
 const turn: MobileTurn = { id: "turn", status: "completed", items: [unknown], itemsView: "summary",
   error: null, startedAt: null, completedAt: null, durationMs: null };

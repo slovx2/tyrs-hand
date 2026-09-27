@@ -74,7 +74,7 @@ describe("会话 FlashList Row 稳定性", () => {
 
   it("缺少 phase 的完成回答首屏可见，详情分页和重复展开不丢失或重复正文", async () => {
     const value = fixtureTurn();
-    const answer = { type: "agentMessage" as const, id: "unlabelled-answer", phase: null,
+    const answer = { delivery: null, questions: null, type: "agentMessage" as const, id: "unlabelled-answer", phase: null,
       text: "已完成提交和测试。", memoryCitation: null };
     const user = value.items[0]!;
     value.items = [user, answer];
@@ -105,7 +105,7 @@ describe("会话 FlashList Row 稳定性", () => {
   });
 
   it("null phase 流式消息完成后收起，回答仍保留在外层", () => {
-    const running = { ...turn("running", "inProgress"), items: [{ type: "agentMessage" as const,
+    const running = { ...turn("running", "inProgress"), items: [{ delivery: null, questions: null, type: "agentMessage" as const,
       id: "answer", phase: null, text: "完整回答", memoryCitation: null }] };
     const before = conversationRows([running], []);
     expect(before.find((row) => row.kind === "activity")).toMatchObject({ expanded: true });

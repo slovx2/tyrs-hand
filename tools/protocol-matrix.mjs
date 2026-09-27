@@ -21,7 +21,7 @@ mkdirSync(artifacts, { recursive: true })
 writeFileSync(resolve(artifactsRoot, 'latest.json'), JSON.stringify({ runId, directory: artifacts,
   scope: controlOnly ? 'control-runtime-e2e' : process.argv.includes('--runtime-only') ? 'runtime-only' : 'full-matrix' }))
 const env = { ...process.env, PROTOCOL_ARTIFACT_DIR: artifacts,
-  CODEX_SCHEMA_DIR: resolve(root, 'protocol/codex-app-server/0.147.0/json-schema'),
+  CODEX_SCHEMA_DIR: resolve(root, 'protocol/codex-app-server/0.157.1/json-schema'),
   PROTOCOL_RUN_ID: runId, TYRS_HAND_TEST_CODEX_BIN: codex,
   TYRS_HAND_TEST_CLAUDE_BIN: resolve(adapter, 'scripts/worker-runtime'),
 }
@@ -29,7 +29,7 @@ writeFileSync(resolve(artifacts, 'run.json'), JSON.stringify({ runId: env.PROTOC
 const run = (command, args, cwd = root) => execFileSync(command, args, { cwd, env, stdio: 'inherit' })
 const output = (command, args, cwd = root) => execFileSync(command, args, { cwd, env, encoding: 'utf8' }).trim()
 const version = output(codex, ['--version'])
-if (version !== 'codex-cli 0.147.0') throw new Error(`Codex 测试 CLI 版本错误: ${version}`)
+if (version !== 'codex-cli 0.157.1') throw new Error(`Codex 测试 CLI 版本错误: ${version}`)
 const pin = JSON.parse(readFileSync(resolve(root, 'protocol/adapter-lock.json'), 'utf8'))
 const actual = output('git', ['rev-parse', 'HEAD'], adapter)
 if (actual !== pin.commit) throw new Error(`适配器 commit 不匹配: ${actual}; 预期 ${pin.commit}`)

@@ -14,8 +14,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const minimumCodexVersion = codex.RequiredVersion
-
 type sshOptions struct {
 	host                    string
 	port                    int
@@ -130,8 +128,8 @@ func ensureRemoteDaemon(client *ssh.Client) error {
 	}
 	reportedVersion := strings.TrimPrefix(version, "codex-cli ")
 	reportedVersion = strings.TrimPrefix(reportedVersion, "codex ")
-	if !codex.IsVersionAtLeast(reportedVersion, minimumCodexVersion) {
-		return fmt.Errorf("远端 Codex 版本必须 >= %s，当前为 %q", minimumCodexVersion, version)
+	if !codex.IsSupportedVersion(reportedVersion) {
+		return fmt.Errorf("远端 Codex 版本必须恰好为 %s，当前为 %q", codex.RequiredVersion, version)
 	}
 	if output, err := commandOutput(client, "codex app-server daemon start"); err != nil {
 		return fmt.Errorf("启动远端 Codex App Server daemon: %w (%s)", err, output)

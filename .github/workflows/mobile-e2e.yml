@@ -49,7 +49,7 @@ jobs:
         with: { node-version: "24.14.0" }
       - name: 安装精确工具链
         run: |
-          npm install --global pnpm@11.14.0 @openai/codex@0.147.0
+          npm install --global pnpm@11.14.0 @openai/codex@0.157.1
           echo "TYRS_HAND_TEST_CODEX_BIN=$(command -v codex)" >> "${GITHUB_ENV}"
           ./tools/mobile-e2e/install-maestro.sh
       - id: adapter
@@ -190,7 +190,7 @@ jobs:
         with: { node-version: "24.14.0" }
       - name: 安装并验证精确工具链
         run: |
-          npm install --global pnpm@11.14.0 @openai/codex@0.147.0
+          npm install --global pnpm@11.14.0 @openai/codex@0.157.1
           gem install cocoapods --version 1.16.2 --no-document
           test "$(pod _1.16.2_ --version)" = 1.16.2
           echo "TYRS_HAND_TEST_CODEX_BIN=$(command -v codex)" >> "${GITHUB_ENV}"
