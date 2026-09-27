@@ -29,7 +29,7 @@ async function androidBuildFixture(options = {}) {
     "if (name === 'pnpm' && args[0] === '--version') console.log('11.14.0');",
     "if (name === 'adb' && args[0] === 'devices') console.log('emulator-5554\\tdevice');",
     "if (name === 'adb' && args.includes('getprop')) {",
-    "  process.stdout.write(process.env.BUILD_GATE_ABI + '\\r\\n');",
+    "  process.stdout.write(process.env.BUILD_GATE_DEVICE_ABI + '\\r\\n');",
     '  process.exit(Number(process.env.BUILD_GATE_QUERY_STATUS || 0));',
     '}',
     "if (name === 'gradlew') {",
@@ -53,9 +53,11 @@ async function androidBuildFixture(options = {}) {
     await writeFile(path, stub, { mode: 0o755 })
   }
   const abi = options.abi ?? 'x86_64'
-  const result = spawnSync('bash', [script, 'android'], { encoding: 'utf8', env: { ...process.env,
-    PATH: bin + ':' + process.env.PATH, ANDROID_HOME: sdk, ANDROID_SERIAL: 'emulator-5554',
+  const env = { ...process.env,
+    PATH: bin + ':' + process.env.PATH, ANDROID_HOME: sdk, ANDROID_SERIAL: options.serial ?? 'emulator-5554',
+    TYRS_HAND_E2E_ANDROID_ABI: options.targetABI ?? abi,
     BUILD_GATE_TRACE: trace, BUILD_GATE_ABI: abi,
+    BUILD_GATE_DEVICE_ABI: options.deviceABI ?? abi,
     BUILD_GATE_QUERY_STATUS: String(options.queryStatus ?? 0),
     BUILD_GATE_AAPT_STATUS: String(options.aaptStatus ?? 0),
     BUILD_GATE_UNZIP_STATUS: String(options.unzipStatus ?? 0),
@@ -63,10 +65,18 @@ async function androidBuildFixture(options = {}) {
     BUILD_GATE_ELF_TRUNCATED: options.elfTruncated ? '1' : '',
     BUILD_GATE_NATIVE_CODE: options.nativeCode ?? `native-code: '${abi}'`,
     BUILD_GATE_LIBRARIES: options.libraries ?? `AndroidManifest.xml\nlib/${abi}/libreactnative.so\nlib/${abi}/libtyrs.so`,
-  } })
+  }
+  const results = []
+  for (const mode of options.modes ?? ['build-install']) {
+    const args = [script, 'android', ...(mode === 'build-install' ? [] : [mode])]
+    const result = spawnSync('bash', args, { encoding: 'utf8', env })
+    results.push(result)
+    if (result.status !== 0) break
+  }
+  const result = results.at(-1)
   const commands = (await readFile(trace, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
   await rm(directory, { recursive: true, force: true })
-  return { result, commands }
+  return { result, results, commands }
 }
 
 test('Android 按实际目标 ABI 构建并验证 APK 后才向同一模拟器安装', async () => {
@@ -93,6 +103,52 @@ test('Android ABI 查询失败、为空或不支持时不能启动 Gradle 或安
     assert.equal(commands.some(command => command.name === 'gradlew'), false)
     assert.equal(commands.some(command => command.name === 'adb' && command.args.includes('install')), false)
   }
+})
+
+test('Android 独立构建不连接设备，安装阶段按真实 ABI 复核且不重新构建', async () => {
+  const built = await androidBuildFixture({ modes: ['--build-only'] })
+  assert.equal(built.result.status, 0, built.result.stderr)
+  assert.equal(built.commands.some(command => command.name === 'adb'), false)
+  assert.match(built.result.stdout, /"nativeLibraries":2,"passed":true/)
+  const { result, results, commands } = await androidBuildFixture({ modes: ['--build-only', '--install-only'] })
+  assert.equal(results.length, 2)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(commands.filter(command => command.name === 'gradlew').length, 1)
+  assert.equal(commands.filter(command => command.name === 'pnpm' && command.args.includes('prebuild')).length, 1)
+  const build = commands.findIndex(command => command.name === 'gradlew')
+  const query = commands.findIndex(command => command.name === 'adb' && command.args.includes('getprop'))
+  const inspections = commands.flatMap((command, index) => command.name === 'aapt' ? [index] : [])
+  const install = commands.findIndex(command => command.name === 'adb' && command.args.includes('install'))
+  assert.equal(inspections.length, 2)
+  assert.ok(build < inspections[0] && inspections[0] < query && query < inspections[1] && inspections[1] < install)
+})
+
+test('Android 独立构建必须显式指定合法 ABI', async () => {
+  for (const targetABI of ['', 'riscv64', 'x86_64 arm64-v8a']) {
+    const { result, commands } = await androidBuildFixture({ modes: ['--build-only'], targetABI })
+    assert.notEqual(result.status, 0)
+    assert.equal(commands.some(command => command.name === 'gradlew' || command.name === 'adb'), false)
+  }
+})
+
+test('Android 安装阶段拒绝缺失 APK、不同 ABI、设备查询失败和真实设备', async () => {
+  for (const options of [
+    { modes: ['--install-only'] },
+    { modes: ['--build-only', '--install-only'], deviceABI: 'arm64-v8a' },
+    { modes: ['--build-only', '--install-only'], queryStatus: 1 },
+    { modes: ['--build-only', '--install-only'], serial: 'physical-device' },
+  ]) {
+    const { result, commands } = await androidBuildFixture(options)
+    assert.notEqual(result.status, 0)
+    assert.equal(commands.some(command => command.name === 'adb' && command.args.includes('install')), false)
+    if (options.modes.length === 1) assert.equal(commands.some(command => command.name === 'pnpm' || command.name === 'gradlew'), false)
+  }
+})
+
+test('验收入口拒绝只构建后直接使用旧安装继续运行', () => {
+  const result = spawnSync('bash', [resolve(root, 'tools/mobile-e2e/run.sh'), 'android', '--build-only'], { encoding: 'utf8' })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /验收必须安装本轮 APK/)
 })
 
 test('Android APK native-code 和全部 so 必须与目标 ABI 一致', async () => {

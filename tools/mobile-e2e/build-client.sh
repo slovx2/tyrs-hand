@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-platform="${1:?用法：build-client.sh android|ios}"
+platform="${1:?用法：build-client.sh android|ios [--build-only|--install-only]}"
+mode="${2:-build-install}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 client="${root}/client"
 app_id="com.tyrshand.app.dev"
@@ -10,14 +11,24 @@ if [[ "${platform}" != "android" && "${platform}" != "ios" ]]; then
   echo "平台必须是 android 或 ios" >&2
   exit 1
 fi
-if [[ "$(pnpm --version)" != "11.14.0" ]]; then
-  echo "需要 pnpm 11.14.0" >&2
+if [[ $# -gt 2 || ( "${mode}" != "build-install" && "${mode}" != "--build-only" && "${mode}" != "--install-only" ) ]]; then
+  echo "只支持 --build-only 或 --install-only" >&2
   exit 1
 fi
+if [[ "${platform}" != "android" && "${mode}" != "build-install" ]]; then
+  echo "分离构建与安装仅用于 Android" >&2
+  exit 1
+fi
+if [[ "${mode}" != "--install-only" ]]; then
+  if [[ "$(pnpm --version)" != "11.14.0" ]]; then
+    echo "需要 pnpm 11.14.0" >&2
+    exit 1
+  fi
 
-pnpm --dir "${client}" install --frozen-lockfile
-export EXPO_PUBLIC_TYRS_HAND_PREVIEW_PERF=true
-APP_ENV=development pnpm --dir "${client}" exec expo prebuild --clean --platform "${platform}" --no-install
+  pnpm --dir "${client}" install --frozen-lockfile
+  export EXPO_PUBLIC_TYRS_HAND_PREVIEW_PERF=true
+  APP_ENV=development pnpm --dir "${client}" exec expo prebuild --clean --platform "${platform}" --no-install
+fi
 
 if [[ "${platform}" == "android" ]]; then
   android_sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
@@ -29,32 +40,39 @@ if [[ "${platform}" == "android" ]]; then
     exit 1
   fi
   export ANDROID_HOME="${android_sdk_root}"
-  android_serial="${ANDROID_SERIAL:-}"
-  if [[ -z "${android_serial}" ]]; then
-    android_emulators="$(adb devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1 }')"
-    android_emulator_count="$(printf '%s\n' "${android_emulators}" | awk 'NF { count++ } END { print count + 0 }')"
-    if [[ "${android_emulator_count}" -ne 1 ]]; then
-      echo "需要且只能有一个 Android 模拟器在线；不会向真实设备安装 E2E 应用" >&2
+  if [[ "${mode}" == "--build-only" ]]; then
+    # CI 在模拟器启动前按已配置的目标构建；安装时仍查询真实设备 ABI 并复核 APK。
+    android_abi="${TYRS_HAND_E2E_ANDROID_ABI:?独立构建必须指定 TYRS_HAND_E2E_ANDROID_ABI}"
+  else
+    android_serial="${ANDROID_SERIAL:-}"
+    if [[ -z "${android_serial}" ]]; then
+      android_emulators="$(adb devices | awk '$1 ~ /^emulator-/ && $2 == "device" { print $1 }')"
+      android_emulator_count="$(printf '%s\n' "${android_emulators}" | awk 'NF { count++ } END { print count + 0 }')"
+      if [[ "${android_emulator_count}" -ne 1 ]]; then
+        echo "需要且只能有一个 Android 模拟器在线；不会向真实设备安装 E2E 应用" >&2
+        exit 1
+      fi
+      android_serial="${android_emulators}"
+    fi
+    if [[ "${android_serial}" != emulator-* ]]; then
+      echo "ANDROID_SERIAL 必须指向 emulator-*，不会向真实设备安装 E2E 应用" >&2
       exit 1
     fi
-    android_serial="${android_emulators}"
+    export ANDROID_SERIAL="${android_serial}"
+    # 只按实际模拟器 ABI 构建或安装，避免无关架构的 native debug metadata 合并耗尽堆。
+    android_abi="$(adb -s "${android_serial}" shell getprop ro.product.cpu.abi)"
+    android_abi="${android_abi//$'\r'/}"
   fi
-  if [[ "${android_serial}" != emulator-* ]]; then
-    echo "ANDROID_SERIAL 必须指向 emulator-*，不会向真实设备安装 E2E 应用" >&2
-    exit 1
-  fi
-  export ANDROID_SERIAL="${android_serial}"
-  # 只按实际模拟器 ABI 构建，避免无关架构的 native debug metadata 合并耗尽堆。
-  android_abi="$(adb -s "${android_serial}" shell getprop ro.product.cpu.abi)"
-  android_abi="${android_abi//$'\r'/}"
   case "${android_abi}" in
     arm64-v8a|armeabi-v7a|x86|x86_64) ;;
     *) echo "模拟器返回空或不支持的 Android ABI" >&2; exit 1 ;;
   esac
-  (
-    cd "${client}/android"
-    ./gradlew --no-daemon --stacktrace "-PreactNativeArchitectures=${android_abi}" assembleRelease
-  )
+  if [[ "${mode}" != "--install-only" ]]; then
+    (
+      cd "${client}/android"
+      ./gradlew --no-daemon --stacktrace "-PreactNativeArchitectures=${android_abi}" assembleRelease
+    )
+  fi
   apk="${client}/android/app/build/outputs/apk/release/app-release.apk"
   test -f "${apk}"
   # Gradle 准备完 SDK 后，使用固定 React Native 0.81.5 对应的 buildTools 检查产物。
@@ -105,6 +123,9 @@ async function verifyLibrary(library) {
     nativeLibraries: libraries.length, passed: true }));
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS
+  if [[ "${mode}" == "--build-only" ]]; then
+    exit 0
+  fi
   adb -s "${android_serial}" install -r "${apk}"
   adb -s "${android_serial}" shell pm path "${app_id}" >/dev/null
   exit 0

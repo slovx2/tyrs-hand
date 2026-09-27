@@ -40,6 +40,16 @@
 
 ## Phase 2：原生回退与 Control 替换
 
+### Android 构建与模拟器错峰（2026-09-27，等待真实 GUI 验收）
+
+- 事实：既有 CI 在启动模拟器后才执行 Gradle Release 构建，此前 Android 验收出现 device offline。资源竞争是否为掉线根因尚未证明。
+- 工作流改为先准备 SDK/AVD，按已配置的 x86_64 目标构建并校验 APK，再启动模拟器；安装阶段读取真实设备 ABI，重新检查 native-code、全部 .so 目录及 ELF 头，禁止重新构建。
+- 构建脚本新增仅 Android 使用的 --build-only/--install-only；默认本地构建安装流程不变。验收入口拒绝 --build-only，避免只构建后继续使用旧安装。CI 明确指定 emulator-5554，AVD 路径跨步骤保留。
+- 门禁脚本与移动契约 39/39 通过，包括没有设备时可独立构建、安装不重复构建、缺失 APK、ABI 不符、查询失败及真实设备拒绝；Bash 和工作流 YAML 语法检查通过。这些替身测试不计作真实 APK 构建或 Android GUI 通过。
+- 脚本改动后的完整 make ci-local 再次退出 0，包含浏览器 E2E 5/5、核心覆盖率 80.7% 和 Android JS export；这仍不是原生 APK 或模拟器验收。完整日志为 .local/validation/2026-09-27-release-goal/android-stages-ci-local.log。
+- 还需触发只含 Android 的真实 Mobile E2E，确认启动稳定性后继续复现 database is locked。iOS 暂缓，不运行 iOS GUI。
+- 证据：.local/validation/2026-09-27-release-goal/android-build-stages-final.log。
+
 ### 扩展 MCP 表单（2026-09-27）
 
 - 修复两个实际缺陷：Go 归一化拒绝官方 openaiForm；Worker 初始化未声明扩展表单能力，导致官方 CLI 对扩展 MCP 方法返回 -32601。
