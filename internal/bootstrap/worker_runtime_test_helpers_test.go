@@ -116,6 +116,12 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 			cases = []string{"FAILURE-009"}
 		}
 	}
+	if t.Name() == "TestWorkerControlClaudeNetworkOutageRealSSH" {
+		cases = []string{}
+		if engine == runtimeidentity.Claude {
+			cases = []string{"FAILURE-005"}
+		}
+	}
 	if t.Name() == "TestWorkerControlRealSSHBothEngines" {
 		cases = []string{"CHANNELS-002"}
 		if engine == runtimeidentity.Claude {

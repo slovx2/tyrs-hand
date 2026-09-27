@@ -126,6 +126,9 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 			return plan, fmt.Errorf("持久化 Desktop Run Journal: %w", err)
 		}
 		state.reporter.holdRegistration()
+		state.reporter.journal.mu.Lock()
+		state.reporter.journal.AppServerGeneration = c.workspace.currentGeneration()
+		state.reporter.journal.mu.Unlock()
 		if c.processor.coordinator != nil {
 			c.processor.coordinator.register(state.reporter.journal, state.commands)
 		}
@@ -145,8 +148,19 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 					return codex.TextToolResult("Workspace 绑定已失效，Control 工具不可用", false), nil
 				}
 				if request.Namespace != nil && (*request.Namespace == "tyrs_hand" || request.Tool == "publish_branch") {
-					if err := state.reporter.waitControlRegistration(ctx); err != nil {
-						return codex.ToolCallResult{}, err
+					// 定时任务等工具的状态只存在于 Control；断联时尽快返回工具错误，不能让 SSH 回合无限等待登记。
+					waitTimeout := c.processor.cfg.ControlTimeout
+					if waitTimeout <= 0 {
+						waitTimeout = 30 * time.Second
+					}
+					waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
+					err := state.reporter.waitControlRegistration(waitCtx)
+					cancel()
+					if err != nil {
+						if ctx.Err() != nil {
+							return codex.ToolCallResult{}, ctx.Err()
+						}
+						return codex.TextToolResult("Control 暂不可达，该工具需要 Control 在线后重试", false), nil
 					}
 				}
 				return c.processor.handleRemoteHostDiscordTool(ctx, runtime.task,
@@ -448,14 +462,24 @@ func (c *desktopController) ResolveInteractive(ctx context.Context,
 		WorkspaceID: c.workspace.runtime.WorkspaceID, ThreadID: threadID,
 		TurnID: turnID, ItemID: itemID, Surface: "desktop", Answer: answer,
 	}
+	// SSH 必须能脱离 Control 独立运行：除答案本身无效外，Control 的任何失败都转为离线答案，
+	// 可靠持久化后立即放行原生工具，恢复后补报；冲突只记录，不改判本地结果。
+	offline := func() (bool, json.RawMessage, error) {
+		normalized, persistErr := c.persistOfflineInteractive(ctx, request, input)
+		if persistErr != nil {
+			return false, nil, persistErr
+		}
+		return true, normalized, nil
+	}
 	state, err := c.answerDesktopInteractive(ctx, input)
 	if err != nil {
-		if ctx.Err() != nil || definitiveInteractiveError(err) {
+		if ctx.Err() != nil {
+			return false, nil, ctx.Err()
+		}
+		if controlHTTPStatus(err) == http.StatusBadRequest {
 			return false, nil, err
 		}
-		// Control 不可用不能让用户刚刚提交的 Desktop 答案失效；后台继续补记仲裁结果。
-		go c.compensateDesktopInteractive(input)
-		return true, answer, nil
+		return offline()
 	}
 	if !state.Accepted {
 		return false, nil, nil
@@ -464,12 +488,28 @@ func (c *desktopController) ResolveInteractive(ctx context.Context,
 		if !waitContext(ctx, 250*time.Millisecond) {
 			return false, nil, ctx.Err()
 		}
-		state, err = c.processor.client.InteractiveState(ctx, state.ID)
+		requestCtx, cancel := context.WithTimeout(ctx, c.desktopInteractiveTimeout())
+		state, err = c.processor.client.InteractiveState(requestCtx, state.ID)
+		cancel()
 		if err != nil {
-			return false, nil, err
+			if ctx.Err() != nil {
+				return false, nil, ctx.Err()
+			}
+			// Control 已接受本端答案；等待调度槽期间断联也不能卡住 SSH。
+			return offline()
 		}
 	}
 	return true, state.Answer, nil
+}
+
+// 交互回答是 SSH 用户正在等待的同步路径，单次 Control 请求不能沿用 30 秒通用超时。
+const desktopInteractiveControlTimeout = 5 * time.Second
+
+func (c *desktopController) desktopInteractiveTimeout() time.Duration {
+	if timeout := c.processor.cfg.ControlTimeout; timeout > 0 && timeout < desktopInteractiveControlTimeout {
+		return timeout
+	}
+	return desktopInteractiveControlTimeout
 }
 
 type desktopRuntimeInjection struct {
@@ -1273,14 +1313,14 @@ func (c *desktopController) answerDesktopInteractive(ctx context.Context,
 	var state workerprotocol.InteractiveState
 	var err error
 	for attempt := 0; attempt < 8; attempt++ {
-		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+		requestCtx, cancel := context.WithTimeout(ctx, c.desktopInteractiveTimeout())
 		state, err = c.processor.client.AnswerInteractive(requestCtx, input)
 		cancel()
 		if err == nil {
 			return state, nil
 		}
-		var response *workerprotocol.HTTPError
-		if definitiveInteractiveError(err) && (!errors.As(err, &response) || response.StatusCode != http.StatusNotFound) {
+		// 仅 404 可能是交互登记尚未到达 Control，短暂重试；网络失败和其他状态立即交给离线路径。
+		if controlHTTPStatus(err) != http.StatusNotFound {
 			break
 		}
 		if !waitContext(ctx, 100*time.Millisecond) {
@@ -1294,22 +1334,6 @@ func definitiveInteractiveError(err error) bool {
 	var response *workerprotocol.HTTPError
 	return errors.As(err, &response) && response.StatusCode >= 400 && response.StatusCode < 500 &&
 		response.StatusCode != http.StatusRequestTimeout && response.StatusCode != http.StatusTooManyRequests
-}
-
-func (c *desktopController) compensateDesktopInteractive(input workerprotocol.InteractiveAnswerRequest) {
-	ctx, cancel := context.WithTimeout(c.processor.workspaces.ctx, time.Minute)
-	defer cancel()
-	for ctx.Err() == nil {
-		requestCtx, requestCancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-		_, err := c.processor.client.AnswerInteractive(requestCtx, input)
-		requestCancel()
-		if err == nil || definitiveInteractiveError(err) {
-			return
-		}
-		if !waitContext(ctx, time.Second) {
-			return
-		}
-	}
 }
 
 func desktopRequestKey(method string, values ...json.RawMessage) string {
@@ -1420,7 +1444,14 @@ func (r *desktopEventReporter) Flush() {
 }
 
 func (r *desktopEventReporter) flushLocked() {
-	if r.journal.ControlAbandoned || r.registrationPendingLocked() || len(r.journal.PendingEvents) == 0 {
+	if r.journal.ControlAbandoned || r.registrationPendingLocked() {
+		return
+	}
+	if err := flushDesktopInteractiveLocked(r.ctx, r.processor.client, r.processor.journals,
+		r.journal, r.processor.cfg.ControlTimeout); err != nil {
+		return
+	}
+	if len(r.journal.PendingEvents) == 0 {
 		return
 	}
 	if err := r.saveLocked(); err != nil {
@@ -1477,6 +1508,17 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 		r.journal.mu.Unlock()
 		if persistErr != nil {
 			if !waitContext(r.ctx, desktopEventFlushInterval) {
+				return
+			}
+			continue
+		}
+		r.journal.mu.Lock()
+		approvalErr := flushDesktopInteractiveLocked(r.ctx, r.processor.client, r.processor.journals,
+			r.journal, r.processor.cfg.ControlTimeout)
+		r.journal.mu.Unlock()
+		if approvalErr != nil {
+			if !waitScheduledControlRetry(r.ctx, r.processor.journals, r.journal,
+				r.processor.logger, approvalErr) {
 				return
 			}
 			continue

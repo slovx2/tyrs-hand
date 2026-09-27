@@ -47,6 +47,8 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 const controlSuites = [
   { name: 'bootstrap-confirmation', pkg: './internal/bootstrap', test: 'TestWorkerControlRemoteConfirmationAfterRegistrationRealSSH',
     cases: ['FAILURE-009'], engines: ['claude-code'] },
+  { name: 'bootstrap-control-outage', pkg: './internal/bootstrap', test: 'TestWorkerControlClaudeNetworkOutageRealSSH',
+    cases: ['FAILURE-005'], engines: ['claude-code'] },
   { name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
     cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
   { name: 'bootstrap-mcp', pkg: './internal/bootstrap', test: 'TestWorkerControlMcpRealSSH',

@@ -327,6 +327,16 @@ func (r *runtimeExecutor) deliverTerminal(ctx context.Context, journal *runJourn
 				continue
 			}
 		}
+		journal.mu.Lock()
+		// 离线审批先补报，冲突仅追加事件；随后照常上传事件并提交真实终态。
+		approvalErr := flushDesktopInteractiveLocked(ctx, r.client, r.journals, journal, r.cfg.ControlTimeout)
+		journal.mu.Unlock()
+		if approvalErr != nil {
+			if !waitScheduledControlRetry(ctx, r.journals, journal, logger, approvalErr) {
+				return
+			}
+			continue
+		}
 		flushErr := r.flushEvents(ctx, journal, logger)
 		var completeErr error
 		if !journal.TerminalDelivered {
