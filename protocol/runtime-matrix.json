@@ -36,7 +36,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CAPABILITY-003"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -48,7 +50,8 @@
       },
       "callers": [
         "internal/appserverhub/methods.go",
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "reasons": {
         "claude-code": "Codex 的 Amazon Bedrock 提供方认证；Claude 使用独立 provider 配置，适配器以 -32004 明确拒绝且不调用模型"
@@ -163,7 +166,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CAPABILITY-003"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -171,7 +176,8 @@
       },
       "callers": [
         "internal/appserverhub/methods.go",
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/CancelLoginAccountParams",
@@ -3659,7 +3665,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CAPABILITY-003"
+        ],
         "claude-code": [
           "SESSION-001",
           "SESSION-002",
@@ -3667,7 +3675,8 @@
         ]
       },
       "callers": [
-        "wire:claude-code"
+        "wire:claude-code",
+        "wire:codex"
       ],
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadClosedNotification",

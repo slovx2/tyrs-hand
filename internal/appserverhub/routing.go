@@ -264,8 +264,15 @@ func (r *Hub) unsubscribe(ctx context.Context, source *session,
 		}
 		return json.Marshal(map[string]string{"status": status})
 	}
+	// 原生随后向退订方发送 thread/closed；该会话已不再订阅，须记住退订方才能如实转交。
+	r.mu.Lock()
+	r.closingThreads[threadID] = source
+	r.mu.Unlock()
 	var result json.RawMessage
 	if err := r.upstream.Call(ctx, "thread/unsubscribe", params, &result); err != nil {
+		r.mu.Lock()
+		delete(r.closingThreads, threadID)
+		r.mu.Unlock()
 		return nil, err
 	}
 	return result, nil
@@ -360,6 +367,14 @@ func (r *Hub) forwardEvent(event codex.Event) {
 	ephemeral := r.isEphemeral(threadID)
 	r.mu.Lock()
 	sessions := make([]*session, 0, len(r.sessions))
+	var closing *session
+	if event.Method == "thread/closed" {
+		closing = r.closingThreads[threadID]
+		delete(r.closingThreads, threadID)
+		if closing != nil && r.sessions[closing.id] != closing {
+			closing = nil
+		}
+	}
 	for _, item := range r.sessions {
 		if item.role == RoleWorker {
 			if !ephemeral {
@@ -370,7 +385,7 @@ func (r *Hub) forwardEvent(event codex.Event) {
 		// 普通会话的创建与删除都影响列表，即使客户端已退出正文订阅也要通知。
 		listChanged := event.Method == "thread/started" || event.Method == "thread/deleted"
 		if threadID == "" || (listChanged && !ephemeral) ||
-			item.subscribed(threadID) {
+			item.subscribed(threadID) || item == closing {
 			sessions = append(sessions, item)
 		}
 	}

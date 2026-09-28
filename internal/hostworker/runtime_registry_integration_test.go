@@ -437,6 +437,14 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if codexTurnSettings {
 				configuration = "features.step_model_switching = true\nmodel_reasoning_effort = \"low\"\nmodel_reasoning_summary = \"auto\"\n" + configuration
 			}
+			if codexSurface {
+				// 缩短原生会话卸载延迟以观察 thread/closed；伪造的 AWS 凭据仅供 Bedrock 本地配置，不访问网络。
+				configuration = "thread_unload_delay_secs = 1\n" + configuration
+				require.NoError(t, os.MkdirAll(filepath.Join(home, ".aws"), 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(home, ".aws", "credentials"),
+					[]byte("[default]\naws_access_key_id = AKIATESTNOTASECRET00\naws_secret_access_key = test-not-a-secret\n"), 0o600))
+				require.NoError(t, os.WriteFile(filepath.Join(home, ".aws", "config"), []byte("[default]\nregion = us-east-1\n"), 0o600))
+			}
 			if isolationOnly {
 				configuration += "env_key = \"TYRS_HAND_MODEL_API_KEY\"\n"
 				require.NoError(t, os.WriteFile(envFile, []byte("TYRS_HAND_MODEL_API_KEY=isolation-codex-key\n"), 0o600))

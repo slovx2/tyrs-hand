@@ -349,6 +349,8 @@ func (c *connection) handle(message Message) {
 		_ = json.Unmarshal(message.Params, &params)
 		delete(c.subscriptions, params.ThreadID)
 		c.respond(message.ID, map[string]string{"status": "unsubscribed"})
+		// 与原生一致：退订的连接随后收到该会话的关闭通知（原生在卸载延迟到期后发送）。
+		c.write(map[string]any{"method": "thread/closed", "params": map[string]any{"threadId": params.ThreadID}})
 	case "turn/start":
 		var params struct {
 			ThreadID            string `json:"threadId"`

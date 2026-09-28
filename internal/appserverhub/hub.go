@@ -27,6 +27,7 @@ type Hub struct {
 	interactionChanged      chan struct{}
 	toolThreads             map[string]*toolThreadState
 	ephemeralThreads        map[string]bool
+	closingThreads          map[string]*session
 	knownThreads            map[string]bool
 	unclassifiedThreadGuard bool
 	unclassifiedEvents      []unclassifiedThreadEvent
@@ -63,6 +64,7 @@ func Start(ctx context.Context, options Options) (*Hub, error) {
 		threadStarts:        make(map[*pendingThreadStart]bool),
 		threadStartsChanged: make(chan struct{}, 1),
 		ephemeralThreads:    make(map[string]bool),
+		closingThreads:      make(map[string]*session),
 		knownThreads:        make(map[string]bool),
 		archiveOperations:   make(map[string]*archiveOperation), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
