@@ -26,6 +26,9 @@ export function schemaIndex(root, extensionsRoot) {
     'account/gatewayOAuth/login': 'GatewayOAuthLoginResponse',
     'account/gatewayOAuth/cancel': 'GatewayOAuthCancelResponse',
     'rollout/compress': 'RolloutCompressResponse',
+    'windowsSandbox/readiness': 'WindowsSandboxReadinessResponse',
+    'account/usage/read': 'GetAccountTokenUsageResponse',
+    'account/workspaceMessages/read': 'GetWorkspaceMessagesResponse',
   }
   for (const kind of ['ClientRequest', 'ServerRequest', 'ClientNotification', 'ServerNotification']) {
     const schema = JSON.parse(readFileSync(join(root, `${kind}.json`), 'utf8'))

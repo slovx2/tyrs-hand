@@ -61,6 +61,10 @@ func TestRuntimeApprovalLifecycleRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "approval-lifecycle")
 }
 
+func TestRuntimeCapabilitySurfaceRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "capability-surface")
+}
+
 func TestRuntimeClaudeEventKindsRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "claude-event-kinds")
 }
@@ -106,6 +110,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	mcpNative := mode == "mcp-native-isolation"
 	claudeCrash := mode == "claude-runtime-crash"
 	eventKinds := mode == "claude-event-kinds"
+	codexSurface := mode == "capability-surface"
 	approvalArbitration := mode == "approval-arbitration"
 	permissionGrants := mode == "permission-grants"
 	experimentalFeatures := mode == "experimental-features"
@@ -340,6 +345,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 				claudeCrashFixture.model(t, w, request, engine, body)
 				return
 			}
+			if codexSurface {
+				t.Errorf("外围能力调用不能请求模型: %s", engine)
+				http.Error(w, "unexpected model request", http.StatusBadRequest)
+				return
+			}
 			if eventKinds {
 				require.Equal(t, runtimeidentity.Claude, engine, "Claude 事件回合不能请求另一引擎")
 				eventKindsFixture.model(t, w, body)
@@ -532,7 +542,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || permissionChanges || crossEntry || mcpNative || claudeCrash || eventKinds || approvalArbitration || claudeTimeline {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || permissionChanges || crossEntry || mcpNative || claudeCrash || eventKinds || codexSurface || approvalArbitration || claudeTimeline {
 			continue
 		}
 		if commandPermissions {
@@ -751,6 +761,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if planOnly {
 		verifyRuntimePlanApproval(t, ctx, clients[runtimeidentity.Claude], plan)
 		require.Equal(t, int64(8), modelCalls.Load(), "只能执行已脚本化的计划与审批模型请求")
+		return
+	}
+	if codexSurface {
+		verifyRuntimeCapabilitySurface(t, ctx, clients)
+		require.Zero(t, modelCalls.Load(), "外围能力调用不能请求模型")
 		return
 	}
 	if eventKinds {

@@ -26,7 +26,7 @@ func verifyClaudeInapplicableCapabilities(t *testing.T, ctx context.Context, cli
 		Params json.RawMessage `json:"params"`
 	}
 	require.NoError(t, json.Unmarshal(data, &cases))
-	require.Len(t, cases, 21)
+	require.Len(t, cases, 37)
 	for _, item := range cases {
 		var result any
 		err := client.Call(ctx, item.Method, item.Params, &result)

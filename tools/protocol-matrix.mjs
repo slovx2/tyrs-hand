@@ -204,6 +204,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['APPROVAL-005'], engines: ['claude-code'] },
   { name: 'approval-arbitration', pkg: './internal/hostworker', test: 'TestRuntimeApprovalArbitrationRealSSH',
     cases: ['APPROVAL-001'], engines: ['claude-code'] },
+  { name: 'capability-surface', pkg: './internal/hostworker', test: 'TestRuntimeCapabilitySurfaceRealSSH',
+    cases: ['CAPABILITY-003'], engines: ['codex', 'claude-code'] },
   { name: 'claude-event-kinds', pkg: './internal/hostworker', test: 'TestRuntimeClaudeEventKindsRealSSH',
     cases: ['EVENTS-001'], engines: ['claude-code'] },
   { name: 'claude-runtime-crash', pkg: './internal/hostworker', test: 'TestRuntimeClaudeCrashRealSSH',

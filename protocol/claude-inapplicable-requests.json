@@ -19,5 +19,21 @@
   { "method": "plugin/share/save", "params": { "pluginPath": "/tmp/test-plugin" } },
   { "method": "plugin/share/updateTargets", "params": { "remotePluginId": "test", "discoverability": "PRIVATE", "shareTargets": [] } },
   { "method": "plugin/skill/read", "params": { "remoteMarketplaceName": "test", "remotePluginId": "test", "skillName": "test" } },
-  { "method": "plugin/uninstall", "params": { "pluginId": "test" } }
+  { "method": "plugin/uninstall", "params": { "pluginId": "test" } },
+  { "method": "account/bedrock/discover", "params": {} },
+  { "method": "account/bedrock/setup", "params": { "type": "profile", "profile": "test", "region": "us-east-1" } },
+  { "method": "account/gatewayOAuth/login", "params": null },
+  { "method": "account/gatewayOAuth/cancel", "params": null },
+  { "method": "account/gatewayOAuth/read", "params": null },
+  { "method": "app/installed", "params": {} },
+  { "method": "app/read", "params": { "appIds": [] } },
+  { "method": "memory/status", "params": {} },
+  { "method": "plugin/reconcile", "params": {} },
+  { "method": "rollout/compress", "params": null },
+  { "method": "userVerification/status", "params": {} },
+  { "method": "userVerification/enroll", "params": {} },
+  { "method": "userVerification/delete", "params": {} },
+  { "method": "userVerification/verify", "params": { "challenge": "test", "title": "test", "description": "test" } },
+  { "method": "userVerification/cancel", "params": { "requestId": "test" } },
+  { "method": "externalAgentConfig/import", "params": { "migrationItems": [] } }
 ]

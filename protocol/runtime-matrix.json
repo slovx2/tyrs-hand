@@ -6,55 +6,80 @@
       "method": "account/bedrock/discover",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/BedrockDiscoverParams",
         "response": "v2/BedrockDiscoverResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "Codex 的 Amazon Bedrock 提供方认证；Claude 使用独立 provider 配置，适配器以 -32004 明确拒绝且不调用模型"
+      }
     },
     {
       "method": "account/bedrock/setup",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/BedrockSetupParams",
         "response": "v2/BedrockSetupResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "Codex 的 Amazon Bedrock 提供方认证；Claude 使用独立 provider 配置，适配器以 -32004 明确拒绝且不调用模型"
+      }
     },
     {
       "method": "account/gatewayOAuth/cancel",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json",
         "response": "v2/GatewayOAuthCancelResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "OpenAI Gateway OAuth 认证；Claude 使用独立 provider 凭据，适配器以 -32004 明确拒绝且不调用模型"
+      }
     },
     {
       "method": "account/gatewayOAuth/changed",
@@ -78,37 +103,53 @@
       "method": "account/gatewayOAuth/login",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json",
         "response": "v2/GatewayOAuthLoginResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "OpenAI Gateway OAuth 认证；Claude 使用独立 provider 凭据，适配器以 -32004 明确拒绝且不调用模型"
+      }
     },
     {
       "method": "account/gatewayOAuth/read",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json",
         "response": "v2/GatewayOAuthReadResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "OpenAI Gateway OAuth 认证；Claude 使用独立 provider 凭据，适配器以 -32004 明确拒绝且不调用模型"
+      }
     },
     {
       "method": "account/login/cancel",
@@ -378,7 +419,7 @@
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/GetAccountTokenUsageResponse.json"
       },
       "reasons": {
         "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
@@ -399,25 +440,34 @@
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/GetWorkspaceMessagesResponse.json"
       }
     },
     {
       "method": "app/installed",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/AppsInstalledParams",
         "response": "v2/AppsInstalledResponse.json"
+      },
+      "reasons": {
+        "claude-code": "ChatGPT 连接器详情属于 OpenAI 专属能力；Claude 的连接器列表如实为空，详情请求以 -32004 明确拒绝"
       }
     },
     {
@@ -427,11 +477,16 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-003"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/AppsListParams",
@@ -442,18 +497,27 @@
       "method": "app/read",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/AppsReadParams",
         "response": "v2/AppsReadResponse.json"
+      },
+      "reasons": {
+        "claude-code": "ChatGPT 连接器详情属于 OpenAI 专属能力；Claude 的连接器列表如实为空，详情请求以 -32004 明确拒绝"
       }
     },
     {
@@ -941,10 +1005,13 @@
         "codex": [
           "MIGRATION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-003"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ExternalAgentConfigDetectParams",
@@ -955,20 +1022,27 @@
       "method": "externalAgentConfig/import",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "MIGRATION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ExternalAgentConfigImportParams",
         "response": "v2/ExternalAgentConfigImportResponse.json"
+      },
+      "reasons": {
+        "claude-code": "外部代理配置导入 Codex；Claude 不执行导入且不伪造成功，以 -32004 明确拒绝"
       }
     },
     {
@@ -1957,7 +2031,9 @@
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "CAPABILITY-003"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2211,19 +2287,28 @@
       "method": "memory/status",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/MemoryStatusParams",
         "response": "v2/MemoryStatusResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "Codex 记忆 v2 整合状态；Claude 记忆由原生 CLAUDE.md 承载，适配器以 -32004 明确拒绝"
+      }
     },
     {
       "method": "model/list",
@@ -2442,19 +2527,28 @@
       "method": "plugin/reconcile",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/PluginReconcileParams",
         "response": "v2/PluginReconcileResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "Codex 插件市场对账；Claude 不提供 Codex 插件体系，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "plugin/share/checkout",
@@ -3011,19 +3105,28 @@
       "method": "rollout/compress",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json",
         "response": "v2/RolloutCompressResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "Codex rollout 文件压缩；Claude 会话由原生 SDK 存储，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "runtime/info",
@@ -4923,91 +5026,130 @@
       "method": "userVerification/cancel",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/UserVerificationCancelParams",
         "response": "v2/UserVerificationCancelResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "userVerification/delete",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/UserVerificationDeleteParams",
         "response": "v2/UserVerificationDeleteResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "userVerification/enroll",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/UserVerificationEnrollParams",
         "response": "v2/UserVerificationEnrollResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "userVerification/status",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/UserVerificationStatusParams",
         "response": "v2/UserVerificationStatusResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "userVerification/verify",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/UserVerificationVerifyParams",
         "response": "v2/UserVerificationVerifyResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "warning",
@@ -5041,15 +5183,20 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-003"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json",
-        "response": null
+        "response": "v2/WindowsSandboxReadinessResponse.json"
       }
     },
     {
@@ -5059,15 +5206,43 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-003"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/WindowsSandboxSetupStartParams",
         "response": "v2/WindowsSandboxSetupStartResponse.json"
+      }
+    },
+    {
+      "method": "windowsSandbox/setupCompleted",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": []
+      },
+      "callers": [
+        "wire:codex"
+      ],
+      "schema": {
+        "params": "ServerNotification.json#/definitions/WindowsSandboxSetupCompletedNotification",
+        "response": null
+      },
+      "reasons": {
+        "claude-code": "Claude 的 windowsSandbox/setupStart 如实返回未启动，不产生 Windows 沙箱完成通知"
       }
     }
   ]
