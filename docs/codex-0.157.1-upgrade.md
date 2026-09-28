@@ -2,6 +2,45 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：门禁分类收口与剩余上游缺口（2026-09-29）
+
+本节优先于下方所有历史状态。验证仍以本地 Linux 为主（见下一节运行器），推送前先跑通本地完整常规 CI（`.local/linux-matrix/ci-local/run.sh`）。
+
+### 用户本轮决定（2026-09-29）
+
+- **不适用的服务端消息不做门禁**：通知与服务端请求由运行时单向下发，某引擎从不产生时无法取得 -32004 证据。登记为 `not-applicable`、写明原因并挂占位用例 `NA-SERVER-MESSAGE` 后直接通过。占位的自洽校验见 `tools/protocol-inventory/not-applicable-server-messages.test.mjs`。客户端请求的不适用仍须真实 -32004 证据。
+- **明确不支持、去掉门禁**：新增分类 `unsupported`，挂占位用例 `UNSUPPORTED-NO-GATE` 并写明原因。清单须与 `tools/protocol-inventory/unsupported-capabilities.test.mjs` 的 `decided` 完全一致，新增项必须先取得用户决定。目前均为 Codex 侧：
+  - ChatGPT 登录态方法：用量、限额、工作区消息、重置额度、充值提醒；
+  - 插件分享与远端插件技能，以及 provider 认证恢复通知；
+  - realtime 语音条目；
+  - `feedback/upload`；
+  - Touch ID 用户验证；
+  - 插件市场的 add/remove/upgrade；
+  - Gateway OAuth 登录及其状态通知；
+  - Guardian 放行与自动审批复核。
+  运行时行为不变，Hub 仍原样透传给 Codex。
+
+### 本轮修复
+
+- **Hub 吞掉临时会话的 `thread/closed`**：最后一个客户端退订临时会话时，Hub 会把退订转给上游，但上游随后发来的 `thread/closed` 已没有订阅者。现在该通知转交给发起退订的会话（f0efbca）。CAPABILITY-003 已补 `thread/closed`、`account/login/cancel`、`account/bedrock/setup` 的真实证据。
+- **Discord 回复与元数据补报死锁**：锁序统一为先 Session 后 Conversation（486da59），有确定性复现专项。
+- **测试竞态**（均为测试问题，非产品缺陷）：
+  - `TestRunnerDispatchesBothEnginesOnceWithSharedBudget`：改为等 Journal 删除后再停止；此前 race 下约 1/100 失败，现在 200 次通过。
+  - ISOLATION-002：Codex 0.157.1 在回合进行中轮询 `thread/read(includeTurns)` 会出现两种情况：
+    - 会话元数据尚未落入状态库，返回 `-32601 list_turns is not supported yet`；
+    - 持久历史仍为 inProgress 而线程已不活跃时，回合被规整为 `interrupted`。
+    改为以 `turn/completed` 事件为准，本地 20/20 通过。其余用 `waitSessionTurn` 轮询 Codex 的专项如出现同类偶发，按同法处理。
+
+### 剩余缺口
+
+旧产物按新规则离线重算为 21 项，其中大部分只是旧产物缺少本轮新增的证据。重跑完整矩阵后，预期只剩上游原生问题：
+
+- `thread/timeline/list` 的 3 项 schema 差异；
+- REVIEW-006 与 `review/start@codex`：review 缺少 turn/started；
+- MCP-017：旧版 `tools/list` 分页丢 cursor。
+
+以上问题不修改官方 CLI，也不放宽门禁。
+
 ## 最新接续：本地 Linux 完整矩阵与语义缺口补齐（2026-09-28 晚）
 
 本节优先于下方所有历史状态。用户要求：尽量在本地暴露问题，不要每次推 GitHub CI；Android UI 自动化和 macOS 暂时跳过，其他继续推进。本轮所有提交**均在本地、尚未推送**。
