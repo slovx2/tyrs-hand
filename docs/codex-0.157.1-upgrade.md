@@ -2,6 +2,19 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：Claude 附件持久化与 60fcf16 完整结果
+
+2026-09-28：适配器 **fe30b9bdbbf65dcfd23910269615a4bcb3982517** 已提交推送，主库更新精确锁定及四个附件方法的 Claude 验收登记。生产未变更，完整测试/部署/验证目标 active。
+
+- 新增 ATTACHMENT-002，修前真实 SDK/CLI 回合明确返回 `thread/attachment/add` 未实现。现真实 SQLite 唯一键 `(threadId, attachmentType, identityKey)` 支持幂等创建，重复添加保留原 payload，包含 null/false/0/空字符串等 JSON 值；仅真实创建和删除通知，稳定分页绑定线程，删除会话在事务内清理附件。
+- 用例验证两个真实模型回合、并发重复添加、类型及线程隔离、limit=1 完整分页、删除分页边界后继续、跨线程游标及无效参数拒绝、三次重启持久、历史及源文件不变。模型仅回环 Mock，不宣称图片上传或 fileId 下载。
+- 适配器完整 **349/349、0 skipped**，build/typecheck/check 通过；check 仍为 99 warnings/97 infos、无 error。仅回环沙箱专项的正式 wire/schema 通过：runId **346e29a7-4931-4b50-86b9-f4fed47bd3a2**，**1 执行/4 wire/169 报文/102 证据/0 错误**。正式协议 runner 已包含此用例，主库 inventory 契约 24/24。
+- 60fcf16 常规 CI **36387466142 success**，协议 **36387466138 failure**。最新 Linux 完整 runId **8e397c41-804e-4308-bcff-ddb2d1457a27** 的基线为 **135 = 122 未登记 + 3 schema 错误 + 10 必需语义**，PG 无死锁。原生附件登记已计入，时间线三个 schema 错误在 Linux 同样复现；运行时仍 MCP017/REVIEW006 失败。本轮 Claude 附件尚未计入该旧基线，不直接减去四项冒充新全量结果。
+- 该轮 Control-runtime **faffa529-19e9-4970-b592-01934aaf26fb** 通过：21 执行/39 wire/2060 报文/1791 证据/0 错误。macOS14 **f9b05cb4-e024-4a78-b1d5-b22c3468a92b** 五项失败，parallel-approvals 和 files 的原始 job 日志明确回环 TCP `operation not permitted`；turn-control 原始 Claude wire 明确返回 API EPERM，另两项为既知 MCP017/REVIEW006。macOS15 comparison 的原始 report 明确本轮 6000/6000、passed=true，仅证明该探针通过，不消除 macOS14 业务失败，具体拒绝规则仍未证明。
+- 更新 pin 后的主库完整 **make ci-local 退出 0**（2026-09-28T08:22:22Z 核实），Go/race/数据库与协议集成、移动 SSH、客户端、Android export、构建和 Web 浏览器 **5/5** 通过。两个保护文件哈希未变，不改不提交；Android GUI 自动化 skip，手工 required，原计时器手工长等待证据保持不变。
+
+证据根 `.local/validation/2026-09-27-release-goal/`：`claude-attachments-before.log`、`claude-attachments-full.log`、`claude-attachments-native/`、`claude-attachments-final/`、`protocol-60-summary.json`、`ci-60/`。默认人工交互计时器已移除；原生时间线 schema、MCP017、REVIEW006、macOS 网络原因、可信 userVerification、图片 fileId 和剩余完整协议缺口仍须解决，不能部署生产。
+
 ## 最新接续：附件验收、时间线 schema 差异和回环诊断
 
 2026-09-28：基于已推送的 29d8482，适配器仍固定且干净为 f667d85；生产未变更，完整测试/部署/验证目标 active。此段优先于下文旧基线。

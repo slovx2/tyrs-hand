@@ -3270,7 +3270,9 @@
         "codex": [
           "ATTACHMENT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "ATTACHMENT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadAttachmentAddParams",
@@ -3290,7 +3292,9 @@
         "codex": [
           "ATTACHMENT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "ATTACHMENT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadAttachmentListParams",
@@ -3310,7 +3314,9 @@
         "codex": [
           "ATTACHMENT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "ATTACHMENT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadAttachmentRemoveParams",
@@ -3330,7 +3336,9 @@
         "codex": [
           "ATTACHMENT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "ATTACHMENT-002"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadAttachmentUpdatedNotification",
