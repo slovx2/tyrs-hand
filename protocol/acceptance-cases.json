@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "groups": [
     {"id":"ATTACHMENT","description":"001 Codex真SSH附件元数据；002 Claude真实SDK回合附件元数据创建、身份幂等、分页、跨类型及线程隔离、真实通知、重启持久、删除保留历史和源文件及删除会话清理；不代表fileId图片下载","cases":["ATTACHMENT-001","ATTACHMENT-002"],"caseEngines":{"ATTACHMENT-001":["codex"],"ATTACHMENT-002":["claude-code"]}},
-    {"id":"PROJECT","description":"001 Codex真SSH原生项目增删改查、幂等创建与导入、分页重排、线程归属迁移和通知、重启持久化与删除保留历史；模型为回环Mock，Claude仅初始化不计覆盖","cases":["PROJECT-001"],"caseEngines":{"PROJECT-001":["codex"]}},
+    {"id":"PROJECT","description":"001 Codex真SSH原生项目；002 Claude真实SDK项目幂等增删改查、分页重排、线程归属、临时归属不落盘、归档最近活动排序、通知、重启及删除保留历史；003 SQLite故障回滚完整导入且不发虚假通知。模型为回环Mock","cases":["PROJECT-001","PROJECT-002","PROJECT-003"],"caseEngines":{"PROJECT-001":["codex"],"PROJECT-002":["claude-code"],"PROJECT-003":["claude-code"]}},
     {"id":"TITLE","description":"真实Control标题任务经官方CLI隔离宿主命令、文件、MCP和其他工具，原生工具注册表为空、结构化标题写回且宿主配置不变","cases":["TITLE-001"],"caseEngines":{"TITLE-001":["codex"]}},
     {"id":"PLUGIN","description":"002 Codex真SSH本地插件发现、安装缓存和技能真实写入、重启后执行及卸载持久化，错误安装无副作用","cases":["PLUGIN-002"],"caseEngines":{"PLUGIN-002":["codex"]}},
     {"id": "REVIEW", "description": "真实Claude审查读取文件、原生独立会话及父历史不变，参数和并发拒绝，成功/失败/中断退出事件闭合；004真实SSH与重启历史对账；005真实审查SIGKILL后退出标记幂等恢复且不补造工具结果；006Codex真实SSH审查读取、独立会话和重启历史", "cases": ["REVIEW-001", "REVIEW-002", "REVIEW-003", "REVIEW-004", "REVIEW-005", "REVIEW-006"], "caseEngines": {"REVIEW-001": ["claude-code"], "REVIEW-002": ["claude-code"], "REVIEW-003": ["claude-code"], "REVIEW-004": ["claude-code"], "REVIEW-005": ["claude-code"], "REVIEW-006": ["codex"]}},

@@ -2794,7 +2794,10 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002",
+          "PROJECT-003"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ProjectChangedNotification",
@@ -2814,7 +2817,9 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectCreateParams",
@@ -2834,7 +2839,9 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectDeleteParams",
@@ -2854,7 +2861,10 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002",
+          "PROJECT-003"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectImportParams",
@@ -2874,7 +2884,10 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002",
+          "PROJECT-003"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectListParams",
@@ -2894,7 +2907,9 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectMoveParams",
@@ -2914,7 +2929,9 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectReadParams",
@@ -2934,7 +2951,9 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ProjectUpdateParams",
@@ -3802,7 +3821,10 @@
         "codex": [
           "PROJECT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "PROJECT-002",
+          "PROJECT-003"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadProjectUpdatedNotification",

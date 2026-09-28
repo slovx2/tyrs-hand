@@ -20,16 +20,22 @@ import (
 
 func TestRecoveredRemoteTerminalReplaysObservedIdentityBeforeCompletion(t *testing.T) {
 	for _, failure := range []struct {
-		action string
-		status int
+		action     string
+		status     int
+		slowEvents bool
 	}{
-		{"decide", http.StatusServiceUnavailable}, {"thread", http.StatusServiceUnavailable},
-		{"submission", http.StatusServiceUnavailable}, {"confirm", http.StatusServiceUnavailable},
-		{"heartbeat", http.StatusServiceUnavailable}, {"confirm", http.StatusForbidden},
-		{"confirm", http.StatusConflict}, {"", http.StatusOK},
+		{action: "decide", status: http.StatusServiceUnavailable}, {action: "thread", status: http.StatusServiceUnavailable},
+		{action: "submission", status: http.StatusServiceUnavailable}, {action: "confirm", status: http.StatusServiceUnavailable},
+		{action: "heartbeat", status: http.StatusServiceUnavailable}, {action: "confirm", status: http.StatusForbidden},
+		{action: "confirm", status: http.StatusConflict}, {status: http.StatusOK},
+		{status: http.StatusOK, slowEvents: true},
 	} {
 		unavailable := failure.action
-		t.Run("unavailable-"+unavailable+"-"+http.StatusText(failure.status), func(t *testing.T) {
+		name := "unavailable-" + unavailable + "-" + http.StatusText(failure.status)
+		if failure.slowEvents {
+			name += "-slow-events"
+		}
+		t.Run(name, func(t *testing.T) {
 			var mu sync.Mutex
 			var calls []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -53,6 +59,10 @@ func TestRecoveredRemoteTerminalReplaysObservedIdentityBeforeCompletion(t *testi
 					case "confirm":
 						require.Equal(t, "observed-confirmation", payload.TurnID)
 					}
+				}
+				if failure.slowEvents && action == "events" {
+					// 合法响应超过旧100ms总期限，仍应继续提交终态。
+					time.Sleep(150 * time.Millisecond)
 				}
 				if action == unavailable {
 					http.Error(w, "identity replay rejected", failure.status)
@@ -82,9 +92,36 @@ func TestRecoveredRemoteTerminalReplaysObservedIdentityBeforeCompletion(t *testi
 			require.NoError(t, err)
 			executor := &runtimeExecutor{cfg: config.Config{ControlTimeout: time.Second}, journals: store,
 				client: client, logger: zap.NewNop()}
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
+			retryObserved := make(chan struct{})
+			if failure.status == http.StatusServiceUnavailable {
+				// 确认拒绝已经处理并安排重试，再取消等待；不让短期限截断身份补报。
+				go func() {
+					defer close(retryObserved)
+					ticker := time.NewTicker(time.Millisecond)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case <-ticker.C:
+							restored[0].mu.Lock()
+							attempts := restored[0].ControlRetryCount
+							restored[0].mu.Unlock()
+							if attempts > 0 {
+								cancel()
+								return
+							}
+						}
+					}
+				}()
+			} else {
+				close(retryObserved)
+			}
 			executor.deliverTerminal(ctx, restored[0], zap.NewNop())
+			cancel()
+			<-retryObserved
 			mu.Lock()
 			defer mu.Unlock()
 			if unavailable == "" {
@@ -103,6 +140,8 @@ func TestRecoveredRemoteTerminalReplaysObservedIdentityBeforeCompletion(t *testi
 			require.Equal(t, permanent, restored[0].ControlAbandoned)
 			if permanent {
 				require.Zero(t, restored[0].ControlRetryCount, "永久拒绝不能进入长时间退避")
+			} else {
+				require.Equal(t, 1, restored[0].ControlRetryCount, "首次临时拒绝进入重试后才取消测试")
 			}
 			pending, err := store.loadAll()
 			require.NoError(t, err)

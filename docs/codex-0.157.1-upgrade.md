@@ -8,7 +8,24 @@
 
 Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求不变，原生时间线 schema、MCP017、REVIEW006 和其余覆盖缺口仍须处理，`releaseReady` 继续为 false。Android GUI 自动化仍 skip，Android 手工验收仍 required。本次调整针对 macOS Worker，不改变客户端验收要求。
 
-已启动的 96ed6cd CI 36397003965/36397003889 继续运行，优先消费 Linux 结果，不取消整个流水线而中断 Linux 验收。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
+96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
+
+## 最新接续：Linux Claude 项目持久化
+
+2026-09-28：适配器 **2740342ba2fc1c858250ff6c6b1095534d66a338** 已提交推送，主库精确锁定该版本。生产未部署，完整门禁尚未通过。
+
+- 新增七个项目 RPC，SQLite 保存项目及线程归属；幂等创建/导入、完整事务回滚、位置与最近活动时间分页、归属筛选、fork 继承、重启持久化及删除保留历史和文件均有真实协议验收。临时线程归属不跨进程保留，归档线程不计入项目最近活动时间。
+- PROJECT-002/003 在 Linux arm64 容器、官方 SDK/CLI 和回环 Mock 模型下通过。最终专项 runId **82f55587-fbfe-4d84-b777-4aecec651512**：**2 执行/5 wire/286 报文/171 证据/0 错误**；正式 runner 与九个方法/通知的 Claude 登记已补齐。
+- 最终适配器完整 Linux 回归 **351/351、0 skipped**，build/typecheck/check 通过（99 warnings/97 infos，无 error）。首次全量的 README 读取失败源于容器快照漏文件，已补齐；长等待125秒墙钟断言失败原因未确认，新增诊断后专项和最终全量均通过，原失败证据保留。未改变产品计时器、125秒阈值或官方 CLI/SDK。
+- 最新已核实的完整 Linux 基线来自 9467870，runId **b35432ec-9b93-4f33-aae5-65d63e1c6f17**：**131 = 118 未登记 + 3 schema 错误 + 10 必需语义**。附件四项缺口已正式关闭，PG 无死锁；运行时仍 MCP017、REVIEW006 失败。Control runId **80405ef1-fc20-445e-9563-e2d539980741**：21 执行/39 wire/2059 报文/1790 证据/0 错误。项目专项不用于推算新的全量缺口数。
+
+主库完整 `make ci-local` 已退出0，含生成、静态检查、Go/数据库与协议、移动SSH、客户端构建、Android export 和 Web 浏览器5/5；inventory 契约24/24。证据：`.local/validation/2026-09-27-release-goal/linux-projects/`，最终结果在 `final-full/`、`final-wire/`、`check-final.log`、`main-ci-local.log`；最初失败与长等待诊断分别保留在 `full.log`、`wait-diagnostics/`。新版本远端完整矩阵仍待完成。
+
+### Linux 恢复身份测试的提前取消
+
+946 常规 CI 在 coverage 阶段失败于 `TestRecoveredRemoteTerminalReplaysObservedIdentityBeforeCompletion/unavailable--OK`：已请求 events，未请求 complete。原测试给七步真实HTTP补报及Journal持久化共同限定100ms；Linux容器中给 events 响应加入150ms可控延迟，复现完全相同的六步截断。这证明夹具会被合法响应延迟打断，但不声称已证明远端唯一原因。
+
+成功场景现在允许正常完成；临时拒绝场景在观测到实际重试计数后取消，永久拒绝仍自然结束。原请求顺序、身份、Journal保留和重试断言均保留，并增加超过旧期限的延迟响应回归；不修改产品逻辑。修后两组测试在Linux带覆盖率编译下连续20轮通过，Linux Go1.26.6容器race连续10轮通过，最终lint为0 issues。证据在 `.local/validation/2026-09-27-release-goal/linux-recovery-deadline/`；新远端CI仍需验证。
 
 ## 最新接续：Claude 附件持久化与 60fcf16 完整结果
 
