@@ -551,8 +551,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		if engine == runtimeidentity.Claude {
 			before := modelCalls.Load()
-			verifyClaudeInapplicableCapabilities(t, ctx, client)
+			// 目录校验要求已加载会话恰为预期集合，须先于会建立会话的不适用能力校验。
 			verifyClaudeCatalog(t, ctx, client, filepath.Join(root, string(engine)))
+			verifyClaudeInapplicableCapabilities(t, ctx, client)
 			require.Equal(t, before, modelCalls.Load(), "不适用能力不得调用模型或转发到 Codex")
 		}
 		verifyRuntimeFilesystem(t, ctx, client, filepath.Join(root, string(engine)))

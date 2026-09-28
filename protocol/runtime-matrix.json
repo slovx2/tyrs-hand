@@ -429,18 +429,25 @@
       "method": "account/workspaceMessages/read",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json",
         "response": "v2/GetWorkspaceMessagesResponse.json"
+      },
+      "reasons": {
+        "claude-code": "ChatGPT 工作区消息；Claude 无 ChatGPT 工作区，适配器以 -32004 明确拒绝"
       }
     },
     {
@@ -1089,40 +1096,54 @@
       "method": "externalAgentConfig/import/readHistories",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "MIGRATION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json",
         "response": "v2/ExternalAgentConfigImportHistoriesReadResponse.json"
+      },
+      "reasons": {
+        "claude-code": "外部代理配置导入 Codex 的历史；Claude 不执行导入，以 -32004 明确拒绝"
       }
     },
     {
       "method": "externalAgentConfig/import/recordHistory",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "MIGRATION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ExternalAgentConfigImportHistoryRecordParams",
         "response": "v2/ExternalAgentConfigImportHistoryRecordResponse.json"
+      },
+      "reasons": {
+        "claude-code": "外部代理配置导入 Codex 的历史；Claude 不执行导入，以 -32004 明确拒绝"
       }
     },
     {
@@ -2108,37 +2129,55 @@
       "method": "mcpServer/event/stream/start",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": ["MCP-021"],
-        "claude-code": []
+        "codex": [
+          "MCP-021"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/McpServerEventStreamStartParams",
         "response": "v2/McpServerEventStreamStartResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 托管应用的 MCP 事件流；Claude 无托管应用，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "mcpServer/event/stream/stop",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": ["MCP-021"],
-        "claude-code": []
+        "codex": [
+          "MCP-021"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/McpServerEventStreamStopParams",
         "response": "v2/McpServerEventStreamStopResponse.json"
       },
       "callers": [
-        "internal/appserverhub/methods.go"
-      ]
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 托管应用的 MCP 事件流；Claude 无托管应用，以 -32004 明确拒绝"
+      }
     },
     {
       "method": "mcpServer/oauth/login",
@@ -3315,18 +3354,25 @@
       "method": "thread/approveGuardianDeniedAction",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
       },
       "callers": [
-        "internal/appserverhub/methods.go"
+        "internal/appserverhub/methods.go",
+        "wire:claude-code"
       ],
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadApproveGuardianDeniedActionParams",
         "response": "v2/ThreadApproveGuardianDeniedActionResponse.json"
+      },
+      "reasons": {
+        "claude-code": "OpenAI Guardian 预执行安全分类器；Claude 的拒绝均经 canUseTool 审批，不伪造确认，以 -32004 明确拒绝"
       }
     },
     {

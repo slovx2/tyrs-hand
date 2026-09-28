@@ -35,5 +35,11 @@
   { "method": "userVerification/delete", "params": {} },
   { "method": "userVerification/verify", "params": { "challenge": "test", "title": "test", "description": "test" } },
   { "method": "userVerification/cancel", "params": { "requestId": "test" } },
-  { "method": "externalAgentConfig/import", "params": { "migrationItems": [] } }
+  { "method": "externalAgentConfig/import", "params": { "migrationItems": [] } },
+  { "method": "account/workspaceMessages/read", "params": null },
+  { "method": "externalAgentConfig/import/readHistories", "params": null },
+  { "method": "externalAgentConfig/import/recordHistory", "params": { "providerId": "test", "itemTypeResults": [] } },
+  { "method": "mcpServer/event/stream/start", "params": { "threadId": "test", "server": "test", "name": "test", "subscriptionId": "test", "arguments": null } },
+  { "method": "mcpServer/event/stream/stop", "params": { "subscriptionId": "test" } },
+  { "method": "thread/approveGuardianDeniedAction", "params": { "threadId": "test", "event": {} } }
 ]

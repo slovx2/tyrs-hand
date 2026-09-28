@@ -26,10 +26,22 @@ func verifyClaudeInapplicableCapabilities(t *testing.T, ctx context.Context, cli
 		Params json.RawMessage `json:"params"`
 	}
 	require.NoError(t, json.Unmarshal(data, &cases))
-	require.Len(t, cases, 37)
+	require.Len(t, cases, 43)
+	// 带会话范围的请求须使用本连接真实可见的会话，Hub 校验通过后才由适配器判定是否适用；临时会话不进入会话目录。
+	var thread struct{ Thread struct{ ID string } }
+	require.NoError(t, client.Call(ctx, "thread/start", map[string]any{
+		"cwd": os.TempDir(), "approvalPolicy": "never", "sandbox": "read-only", "ephemeral": true}, &thread))
 	for _, item := range cases {
+		params := item.Params
+		var scoped map[string]json.RawMessage
+		if json.Unmarshal(params, &scoped) == nil {
+			if _, ok := scoped["threadId"]; ok {
+				scoped["threadId"], _ = json.Marshal(thread.Thread.ID)
+				params, _ = json.Marshal(scoped)
+			}
+		}
 		var result any
-		err := client.Call(ctx, item.Method, item.Params, &result)
+		err := client.Call(ctx, item.Method, params, &result)
 		var rpcErr *codex.RPCError
 		require.ErrorAs(t, err, &rpcErr, item.Method)
 		require.Equal(t, -32004, rpcErr.Code, item.Method)

@@ -121,7 +121,9 @@ func verifyRuntimeClaudeEventKinds(t *testing.T, ctx context.Context, connection
 	thread := readSessionThread(t, ctx, client, "thread/start", map[string]any{
 		"cwd": fixture.project, "approvalPolicy": "never", "sandbox": "danger-full-access"})
 	history := func() []claudeEventKindTurn {
-		var result struct{ Thread struct{ Turns []claudeEventKindTurn } }
+		var result struct {
+			Thread struct{ Turns []claudeEventKindTurn }
+		}
 		require.NoError(t, client.Call(ctx, "thread/read", map[string]any{"threadId": thread.ID, "includeTurns": true}, &result))
 		return result.Thread.Turns
 	}
