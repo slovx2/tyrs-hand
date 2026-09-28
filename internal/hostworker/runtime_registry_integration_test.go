@@ -99,6 +99,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
 	codexEvents := mode == "codex-events"
+	claudeTimeline := mode == "claude-timeline"
 	codexApprovals := mode == "codex-approvals"
 	claudeEvents := mode == "claude-events"
 	claudeEventGaps := mode == "claude-event-gaps"
@@ -454,7 +455,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || approvalArbitration {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || approvalArbitration || claudeTimeline {
 			continue
 		}
 		if commandPermissions {
@@ -577,6 +578,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if codexEvents {
 		verifyCodexNativeEvents(t, ctx, protocol[runtimeidentity.Codex], nativeEvents)
 		require.Equal(t, int64(6), modelCalls.Load(), "四个显式 Turn 和两次真实工具续写之外不能调用模型")
+		return
+	}
+	if claudeTimeline {
+		verifyRuntimeTimeline(t, ctx, protocol[runtimeidentity.Claude], root, registry, clients[runtimeidentity.Claude], runtimeidentity.Claude)
+		require.Equal(t, int64(2), modelCalls.Load(), "历史读取与重启不能额外请求模型")
 		return
 	}
 	if codexNative {

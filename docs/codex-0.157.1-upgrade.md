@@ -10,6 +10,20 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
+## 最新接续：Linux Claude 历史时间线
+
+2026-09-28：旧适配器真实调用 `thread/timeline/list` 返回 `-32601`，原始失败保存在 `linux-timeline/before/`。新增普通回合时间线读取，从 SQLite 历史返回完整条目和起止边界；最新页优先、页内升序，游标按条目身份向更早历史推进，追加回合不改变旧页。活动回合不提前生成完成边界，不触发模型。实时语音不在本次范围。
+
+锁定版官方 TS/原生 wire 对回合边界使用驼峰字段，官方 JSON Schema 却要求下划线字段。Claude 适配器在边界同时输出同值字段以兼容两类消费者；不修改官方 schema、Codex CLI 或原生证据，Codex 的三项 schema 失败仍保留。
+
+HISTORY-007 已加入正式 runner 和矩阵。Linux 真实 SDK/CLI 专项验证活动边界、分页拼接、追加期间游标、跨线程和跨方法游标拒绝、重启后无模型读取；1 执行/2 wire/94 报文/52 证据/0 错误。真实 Worker Hub/SSH 专项验证两线程隔离、回合边界及重启持久化；1 执行/2 wire/82 报文/51 证据/0 错误。Codex 在 SSH 专项只初始化，其原始通信保留但不计时间线验收。模型 HTTP 使用隔离回环 Mock。
+
+上一版 de48be0 常规 CI **36408083898 success**、协议 CI **36408084272 failure**，完整 Linux runId **cb9057e6-fb97-42a6-88f4-73b08b71c86b**：**120=108 未登记+3 schema 错误+9 必需语义**。审批仲裁已进入正式覆盖；运行时失败仍为 MCP017/REVIEW006，PG 无死锁。Control runId **f401fd4f-ad2d-42dd-bd0d-ec59d5dcf690**：21 执行/39 wire/2065 报文/1796 证据/0 错误。精简证据位于 `ci-de48/`，聚合为 `protocol-de48-summary.json`；本轮时间线不能用于推算新的全量缺口。
+
+适配器 **4d87ad28b243825551ccf3bc68ee04eeda2d3ab4** 已推送，主库精确锁定。最终 Linux 全量 **356/356、0 skipped**，build/check 通过（既有 99 warnings/97 infos，无 error）；主库完整 `make ci-local` 退出 0，Web 浏览器 5/5、integration lint 0 issues、inventory 24/24。
+
+证据根 `.local/validation/2026-09-27-release-goal/linux-timeline/`。首次全量在未带 init 的容器中有三个进程退出断言失败；直接对照确认进程树用例留下 `Z` 状态子进程，加入 `--init` 后该用例通过且无残留，最终全量通过，诊断在 `process-diagnostics/`。保留原失败，不修改产品退出行为和测试断言。新组合远端 CI 待完成；生产未部署，`releaseReady=false`。
+
 ## 最新接续：真实多客户端审批仲裁
 
 2026-09-28：新增 `TestRuntimeApprovalArbitrationRealSSH`，把 APPROVAL-001 从内存级检查补齐为 Linux 真实 Worker Hub、双 SSH 客户端和 Claude SDK/CLI 验收。两个客户端收到同一审批ID；客户端取消订阅后先送达的拒绝无效，仍由有效订阅者允许并执行真实Write。下一回合由另一客户端首先拒绝，首端待办收到真实resolved后再投递迟到允许，文件仍不存在，模型请求总数精确为4。

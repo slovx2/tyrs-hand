@@ -17,9 +17,19 @@ func TestRuntimeCodexTimelineRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "codex-timeline")
 }
 
+func TestRuntimeClaudeTimelineRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "claude-timeline")
+}
+
 // HISTORY-006：普通原生回合的时间线、反向翻页、线程隔离与重启持久。
 // 业务成功不能替代固定官方 schema；不将该用例登记为实时语音验收。
 func verifyCodexNativeTimeline(t *testing.T, ctx context.Context, client *codex.SocketClient, root string, registry *RuntimeRegistry, connection *ssh.Client) {
+	t.Helper()
+	verifyRuntimeTimeline(t, ctx, client, root, registry, connection, runtimeidentity.Codex)
+}
+
+// HISTORY-007：Claude 的真实 SDK 回合沿用相同分页、隔离和持久化断言。
+func verifyRuntimeTimeline(t *testing.T, ctx context.Context, client *codex.SocketClient, root string, registry *RuntimeRegistry, connection *ssh.Client, engine runtimeidentity.Engine) {
 	t.Helper()
 	histories := map[string][]map[string]any{}
 	for _, text := range []string{"TIMELINE_FIRST_HISTORY", "TIMELINE_OTHER_HISTORY"} {
@@ -27,11 +37,28 @@ func verifyCodexNativeTimeline(t *testing.T, ctx context.Context, client *codex.
 			"cwd": filepath.Join(root, "project"), "sandbox": "danger-full-access", "approvalPolicy": "never"})
 		runNativeMetadataTurn(t, ctx, client, thread.ID, text)
 		histories[thread.ID] = nativeTimeline(t, ctx, client, thread.ID)
+		if engine == runtimeidentity.Claude {
+			for _, entry := range histories[thread.ID] {
+				if entry["type"] == "item" {
+					continue
+				}
+				require.Equal(t, entry["turnId"], entry["turn_id"])
+				require.Equal(t, entry["startedAt"], entry["started_at"])
+				if entry["type"] == "turnCompleted" {
+					require.Equal(t, entry["completedAt"], entry["completed_at"])
+					require.Equal(t, entry["durationMs"], entry["duration_ms"])
+				}
+			}
+		}
 	}
-	otherGeneration := registry.entries[runtimeidentity.Claude].Runtime.Generation()
-	require.NoError(t, registry.Restart(runtimeidentity.Codex))
-	client = connectRuntimeSSH(t, ctx, connection, runtimeidentity.Codex)
-	require.Equal(t, otherGeneration, registry.entries[runtimeidentity.Claude].Runtime.Generation())
+	otherEngine := runtimeidentity.Claude
+	if engine == otherEngine {
+		otherEngine = runtimeidentity.Codex
+	}
+	otherGeneration := registry.entries[otherEngine].Runtime.Generation()
+	require.NoError(t, registry.Restart(engine))
+	client = connectRuntimeSSH(t, ctx, connection, engine)
+	require.Equal(t, otherGeneration, registry.entries[otherEngine].Runtime.Generation())
 	for threadID, before := range histories {
 		require.Equal(t, before, nativeTimeline(t, ctx, client, threadID), "重启不能改变时间线的原生边界、条目及其内容")
 	}

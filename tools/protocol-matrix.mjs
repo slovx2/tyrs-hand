@@ -154,6 +154,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['ATTACHMENT-001'], engines: ['codex'] },
   { name: 'codex-timeline', pkg: './internal/hostworker', test: 'TestRuntimeCodexTimelineRealSSH',
     cases: ['HISTORY-006'], engines: ['codex'] },
+  { name: 'claude-timeline', pkg: './internal/hostworker', test: 'TestRuntimeClaudeTimelineRealSSH',
+    cases: ['HISTORY-007'], engines: ['claude-code'] },
   { name: 'codex-items', pkg: './internal/hostworker', test: 'TestRuntimeCodexItemsRealSSH',
     cases: ['HISTORY-005'], engines: ['codex'] },
   { name: 'codex-error', pkg: './internal/hostworker', test: 'TestRuntimeCodexErrorRealSSH',

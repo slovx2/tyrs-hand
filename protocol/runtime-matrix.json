@@ -4416,7 +4416,7 @@
       },
       "cases": {
         "codex": ["HISTORY-006"],
-        "claude-code": []
+        "claude-code": ["HISTORY-007"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadTimelineListParams",

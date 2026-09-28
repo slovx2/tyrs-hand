@@ -96,6 +96,12 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 			caseIDs = []string{"HISTORY-006"}
 		}
 	}
+	if caseName == "TestRuntimeClaudeTimelineRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"HISTORY-007"}
+		}
+	}
 	if caseName == "TestRuntimeCodexAttachmentsRealSSH" {
 		caseIDs = []string{}
 		if engine == runtimeidentity.Codex {
