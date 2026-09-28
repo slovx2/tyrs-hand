@@ -104,7 +104,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	hooksOnly := mode == "hooks"
 	catalogOnly := mode == "catalog"
 	configOnly := mode == "config"
-	codexNative := mode == "codex-catalog" || mode == "codex-migration" || mode == "codex-metadata" || mode == "codex-items" || mode == "codex-projects"
+	codexNative := mode == "codex-catalog" || mode == "codex-migration" || mode == "codex-metadata" || mode == "codex-items" || mode == "codex-projects" || mode == "codex-attachments" || mode == "codex-timeline"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
@@ -579,6 +579,12 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		client, connection := protocol[runtimeidentity.Codex], clients[runtimeidentity.Codex]
 		var expectedCalls int64
 		switch mode {
+		case "codex-timeline":
+			verifyCodexNativeTimeline(t, ctx, client, root, registry, connection)
+			expectedCalls = 2
+		case "codex-attachments":
+			verifyCodexNativeAttachments(t, ctx, client, root, registry, connection)
+			expectedCalls = 2
 		case "codex-projects":
 			verifyCodexNativeProjects(t, ctx, client, root, registry, connection)
 			expectedCalls = 1

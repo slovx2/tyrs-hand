@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { collectMacNetworkDiagnostics } from './protocol-macos-diagnostics.mjs'
+import { collectMacNetworkDiagnostics, summarizeMacLoopback } from './protocol-macos-diagnostics.mjs'
 
 if (process.platform !== 'darwin') throw new Error('此诊断仅适用于 macOS')
 const directory = resolve('.artifacts/protocol/macos-loopback')
@@ -21,6 +21,7 @@ for (const [name, profile] of Object.entries(profiles)) {
     error: child.error?.message ?? child.stderr.trim() }
   try { report.results = JSON.parse(child.stdout) }
   catch (error) { report.error ||= error.message }
+  report.summary = summarizeMacLoopback(report)
   windows.push({ suite: name, pid: child.pid, startedAt, completedAt: Date.now(), status: child.status })
   reports.push(report)
 }
@@ -30,7 +31,5 @@ writeFileSync(resolve(directory, 'report.json'), JSON.stringify({
   limitation: '探针仅作诊断；不会替换真实 SSH 验收、重试业务或修改矩阵的隔离策略',
 }, null, 2))
 collectMacNetworkDiagnostics(directory, windows)
-for (const report of reports) console.log(JSON.stringify({ name: report.name, status: report.status,
-  success: report.results.reduce((sum, row) => sum + row.success, 0),
-  failures: report.results.reduce((sum, row) => sum + Object.values(row.failures).reduce((a, b) => a + b, 0), 0),
-  error: report.error }))
+for (const report of reports) console.log(JSON.stringify({ name: report.name, processStatus: report.status,
+  ...report.summary, error: report.error }))

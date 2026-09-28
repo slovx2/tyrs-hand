@@ -2,6 +2,20 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：附件验收、时间线 schema 差异和回环诊断
+
+2026-09-28：基于已推送的 29d8482，适配器仍固定且干净为 f667d85；生产未变更，完整测试/部署/验证目标 active。此段优先于下文旧基线。
+
+- 29d8482 常规 CI **36384551584 成功**，协议 CI **36384551530 失败**，均已终态。Linux 原始 runId **dbb62ef8-dc72-446b-a9de-78d67eaeed80**：最新完整缺口 **137 = 127 未登记 + 10 必需语义**；PG 无死锁，运行时仅 MCP017/REVIEW006 失败。FAILURE-008 的实际 processCount=10、processTree 长度=10，记录三个所属进程组，测试 socket 已清理，cleanupErrors 为空；MIGRATION-007 和其他恢复/迁移均通过。不得继续把 138/149 当作最新。
+- 该轮 Control-runtime 的 **692e6a6b-5e73-41b9-b710-39da816ef21a** 为 21 执行/39 wire/2063 报文/1794 证据/0 错误，PG 无死锁。macOS14 **ad87cdc8-a472-48b1-bb1f-adf35840d2b9** 有九个失败专项；runtime/files/config/review/mcp-oauth 的日志直接报回环 EPERM，history 和 goal 的原始 wire 含 API EPERM，goal 另有 ECONNRESET，另两项为 MCP017/REVIEW006。
+- 已补取 d42 原始 wire，原本未定因的 Claude review 与 bootstrap 均明确返回 API EPERM。macOS 系统拒绝日志与部分失败的程序、目标端口和时间匹配，但未标明具体拒绝规则，不能断言唯一根因。诊断进程退出 0 不等于连接全通过：d42 实际 **5994/6000**，含 1 次 EPERM、2 次重置、3 次超时；29 为 **5993/6000**。新 summary 显式区分 processStatus 与 passed；四项回归拒绝空、重复、非法和不完整结果，不重试业务、不放宽沙箱、不改变原验收结果。本地单次 6000/6000 不覆盖远端失败。
+- 新 **ATTACHMENT-001** 真实 Codex/SSH 验收附件创建、同身份幂等且不覆盖 payload、limit=1 分页、同键不同类型及跨线程隔离、真实通知、两次重启持久、删除保留另一线程、历史和源文件。精确两次回环 Mock 模型请求，Claude 仅初始化且运行代不变。最终 race **a54bb4ce-19d5-4d60-992b-bad2d206ab35**：**1 执行/3 wire/108 报文/74 证据/0 错误**。只证明附件元数据，不等同 fileId 图片上传或下载。
+- 新 **HISTORY-006** 单独验收普通回合时间线的原生反向翻页、完整页面对账、起止边界、线程隔离和重启持久。初稿误把 nextCursor 当作向后翻页，原始位置 12→8 明确其向更早历史推进；已按原生行为修正并对账完整页面。最终 race **07514b4a-3773-499a-9e32-d46296505553** 的业务断言通过，但正式 wire/schema **失败**：原生 turnStarted/turnCompleted 使用 turnId/startedAt，官方 JSON schema 要求 turn_id/started_at。1 执行/2 wire/92 报文/49 有效证据，3 类 schema 错误；不能计为协议通过，也没有撤销此用例或改 schema。
+- 用同一官方 Codex 0.157.1 CLI 重新生成 experimental JSON schema，ThreadTimelineListResponse 与仓库逐字节相同，SHA-256 **b03238a894858bc70bdb59165b0038ac2723fcdc17e685e82b47e39b9a9c4f43**。因此不是靠重新生成即可修复的旧文件；未修改官方 CLI、SDK、响应或门禁，差异继续阻塞发布。
+- 本轮完整 **make ci-local 退出 0**（2026-09-28T06:21:41.739Z），含 Go/race/数据库、客户端、Android export、构建和浏览器 5/5。随后只拆分新附件/时间线专项，分别重新跑 race 与正式 wire；integration lint 为 0 issues，inventory 与新增诊断契约 28/28，恢复/迁移/PG/诊断契约 21/21。两个保留文件 SHA-256 未变，不提交；Android GUI 自动化仍 skip，手工 required。
+
+证据根 `.local/validation/2026-09-27-release-goal/`：`protocol-29-summary.json`、`ci-29/`、`ci-d42/macos-wire-detail/`、`native-attachments-separated/`、`native-timeline-separated/`、`native-timeline-schema/generated/`、`native-attachments-final/`。混合早期失败在 `native-attachments-timeline/` 和 `native-attachments-timeline-final/`，不覆盖。新增两个专项还需新提交的完整远端矩阵；不能从本地成功推算完整缺口数。
+
 ## 最新接续：SIGKILL 所属进程组的完整清理
 
 2026-09-28：基于已推送的 d42e680，适配器仍固定 f667d85。只修改迁移/恢复测试夹具，生产未变更，releaseReady=false。

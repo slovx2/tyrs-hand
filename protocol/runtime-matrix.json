@@ -3267,7 +3267,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ATTACHMENT-001"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -3285,7 +3287,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ATTACHMENT-001"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -3303,7 +3307,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ATTACHMENT-001"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -3321,7 +3327,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "ATTACHMENT-001"
+        ],
         "claude-code": []
       },
       "schema": {
@@ -4375,7 +4383,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["HISTORY-006"],
         "claude-code": []
       },
       "schema": {
