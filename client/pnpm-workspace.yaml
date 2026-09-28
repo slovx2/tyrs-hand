@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+patchedDependencies:
+  expo-camera@17.0.10: patches/expo-camera@17.0.10.patch

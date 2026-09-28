@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  expo-camera@17.0.10: 5be8ebf4fb36384f2e713a628365a512bda5a18d8da61fa3066196c228e5a8fe
+
 importers:
 
   .:
@@ -40,7 +43,7 @@ importers:
         version: 1.0.10(expo@54.0.32)
       expo-camera:
         specifier: 17.0.10
-        version: 17.0.10(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)
+        version: 17.0.10(patch_hash=5be8ebf4fb36384f2e713a628365a512bda5a18d8da61fa3066196c228e5a8fe)(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)
       expo-constants:
         specifier: 18.0.12
         version: 18.0.12(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))
@@ -8129,7 +8132,7 @@ snapshots:
       expo: 54.0.32(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.22)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)(supports-color@10.2.2)(typescript@5.9.2)
       semver: 7.8.5
 
-  expo-camera@17.0.10(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0):
+  expo-camera@17.0.10(patch_hash=5be8ebf4fb36384f2e713a628365a512bda5a18d8da61fa3066196c228e5a8fe)(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0):
     dependencies:
       expo: 54.0.32(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.22)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)(supports-color@10.2.2)(typescript@5.9.2)
       invariant: 2.2.4

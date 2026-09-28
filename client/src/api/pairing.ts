@@ -33,12 +33,20 @@ export function resolvePairingUri(params: Record<string, string | string[]>,
 }
 
 export function parsePairingCode(value: string): PairingCode {
-  const url = new URL(value);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    // URL 解析器可能把完整输入写入异常，不能向界面回显关联密钥。
+    throw new Error("无法识别这个定时任务授权二维码");
+  }
   if (url.protocol !== "tyrshand:" || url.hostname !== "device-pair" ||
     url.searchParams.get("v") !== "4") {
     throw new Error("无法识别这个定时任务授权二维码");
   }
-  return pairingSchema.parse(Object.fromEntries(url.searchParams.entries()));
+  const result = pairingSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+  if (!result.success) throw new Error("关联二维码参数不完整或格式无效");
+  return result.data;
 }
 
 function deviceIDFromToken(token: string): string | null {

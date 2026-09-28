@@ -1,0 +1,29 @@
+diff --git a/android/src/main/java/expo/modules/camera/ExpoCameraView.kt b/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+index fc5652694962a66be4b211a2b7670298d52e2c4b..06b9ee30cc441f1b442c09e11d06eb0abe67bc2a 100644
+--- a/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
++++ b/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+@@ -77,6 +77,7 @@ import expo.modules.kotlin.RuntimeContext
+ import expo.modules.kotlin.exception.Exceptions
+ import expo.modules.kotlin.viewevent.EventDispatcher
+ import expo.modules.kotlin.views.ExpoView
++import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.cancel
+@@ -411,7 +412,15 @@ class ExpoCameraView(
+       return
+     }
+     shouldCreateCamera = false
+-    val cameraProvider = ProcessCameraProvider.awaitInstance(context)
++    // 初始化失败也必须通知视图；无摄像头设备不能因未捕获协程异常退出应用。
++    val cameraProvider = try {
++      ProcessCameraProvider.awaitInstance(context)
++    } catch (error: CancellationException) {
++      throw error
++    } catch (_: Exception) {
++      onMountError(CameraMountErrorEvent("Camera provider could not be initialized"))
++      return
++    }
+ 
+     ratio?.let {
+       previewView.scaleType =

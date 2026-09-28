@@ -2,6 +2,19 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：队列已推送与 Android 相机手工修复
+
+本段优先于后文。当前 main/HEAD 为 `94bc990`，已推送；适配器仍为 `25bf4ee`。Android 自动化 GUI 保持 skip，手工 GUI required；生产未变更。
+
+- 常规 CI `36365638232` 成功；协议 CI `36365638252` 失败，Control-runtime/macOS loopback 成功，Linux/macOS14 运行时均只报 `codex-mcp-pagination` 和 `codex-review`。
+- 最新 Linux 原始完整覆盖 runId `521591da-5693-4982-9818-05bc331a11d3` 为 **149 项缺口（136 未登记、2 无成功协议/schema 证据、11 必需语义）**，PostgreSQL 死锁检查通过。此基线替代后文 152；仍不满足发布门禁。
+- Android 手工扫码在无摄像头设备上复现 CameraX 未捕获初始化异常。`expo-camera@17.0.10` 精确 patch 将错误交给 onMountError，并保留协程取消语义；Android autolinking 明确从源码构建该模块，避免预编译 AAR 忽略补丁。源码 APK 同路径手工复验不再崩溃并显示相机不可用提示。
+- 关联页允许粘贴链接，权限拒绝或无摄像头时仍可关联。手工发现 URL 解析异常会回显完整输入，现为 URL/schema 提供固定错误提示，新增 3 个脱敏回归。客户端 371 passed / 2 既存 skipped，typecheck 通过，lint 0 errors / 6 既存 warnings。
+- 双引擎 SSH/关联与项目已手工配置。最终 APK 手工验证无摄像头回退及无效链接固定错误提示通过；Claude CHAT 显示预期回答，Control 唯一对应 Run 为 completed。其余 11 个聊天、审批、计划及 MCP 场景尚未完成，不宣称 Android 全部验收通过。
+- 最终源码完整本地 CI 已退出 0：Go/race/数据库/SSH、生成与构建、客户端 371 passed / 2 既存 skipped、Android JS export、浏览器 5/5。源码哈希已逐文件复核；最终原生 APK 构建安装成功，SHA-256 为 `90062d630932d42fb44a98d54b7e4a343fe0120730fbb2869d596c7343da7b9a`。证据为 `android-camera-final-ci.log`、`android-camera-final-ci-status.json`、`android-camera-final-build.log` 与 `android-manual-v3/`。
+
+原有两个保留文件不纳入提交；可信 userVerification、图片 fileId 跨端、真实跨 Workspace 队列端到端、其余协议缺口与官方两项失败继续阻塞最终发布。
+
 ## 最新接续：Control 组合通过与完整 CI 夹具修复
 
 2026-09-28 接续核验：当前 main/HEAD 仍为 b6422ae，生产未变更，releaseReady=false。Android 仅自动化 GUI skip；手工 GUI 必须完成，当前仍 pending。

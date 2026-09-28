@@ -55,6 +55,18 @@ describe("定时任务扫码协议", () => {
     expect(resolvePairingUri(params, value)).toContain(`pairingId=${secondID}`);
   });
 
+  it.each([
+    ["无法识别这个定时任务授权二维码", "不是链接 secret=pairing-secret-value"],
+    ["关联二维码参数不完整或格式无效", value.replace("engine=codex", "engine=pairing-secret-value")],
+    ["关联二维码参数不完整或格式无效", value.replace("&secret=pairing-secret-value", "&secret=short-secret")],
+  ])("关联失败只显示固定提示，不回显输入：%s", (message, input) => {
+    let caught: unknown;
+    try { parsePairingCode(input); } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toBe(message);
+    expect((caught as Error).message).not.toContain("secret");
+  });
+
   it("引擎必填且只接受固定引擎，旧二维码明确拒绝", () => {
     expect(() => parsePairingCode(value.replace("&engine=codex", ""))).toThrow();
     expect(() => parsePairingCode(value.replace("engine=codex", "engine=other"))).toThrow();

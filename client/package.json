@@ -4,6 +4,11 @@
   "private": true,
   "main": "index.js",
   "packageManager": "pnpm@11.14.0",
+  "expo": {
+    "autolinking": {
+      "android": { "buildFromSource": ["expo-camera"] }
+    }
+  },
   "scripts": {
     "start": "expo start --dev-client",
     "start:preview": "APP_ENV=preview EXPO_PUBLIC_TYRS_HAND_PREVIEW=true expo start --dev-client",

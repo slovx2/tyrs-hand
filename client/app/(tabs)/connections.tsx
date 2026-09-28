@@ -40,6 +40,8 @@ export default function ConnectionsScreen() {
   const [assistantEnabled, setAssistantEnabled] = useState<boolean | null>(null);
   const [microphoneGranted, setMicrophoneGranted] = useState(Platform.OS !== "android");
   const [scanning, setScanning] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [pairingLink, setPairingLink] = useState("");
   const [claiming, setClaiming] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -117,6 +119,7 @@ export default function ConnectionsScreen() {
       await reload();
       await switchConnection(profileId);
       setScanning(false);
+      setPairingLink("");
     } catch (error) {
       Alert.alert("授权失败", error instanceof Error ? error.message : "无法读取二维码");
     } finally {
@@ -124,12 +127,14 @@ export default function ConnectionsScreen() {
     }
   };
   const openScanner = async () => {
+    setCameraError(null);
     if (isPreviewMode) { setScanning(true); return; }
     if (!permission?.granted) {
-      const next = await requestPermission();
-      if (!next.granted) {
-        Alert.alert("需要相机权限", "请在系统设置中允许相机权限。");
-        return;
+      try {
+        const next = await requestPermission();
+        if (!next.granted) setCameraError("未获得相机权限，可粘贴关联链接继续。");
+      } catch {
+        setCameraError("无法打开相机，可粘贴关联链接继续。");
       }
     }
     setScanning(true);
@@ -330,15 +335,25 @@ export default function ConnectionsScreen() {
   </ScrollView>
     <Modal testID="connection:scanner" visible={scanning} animationType="slide"
       onRequestClose={() => !claiming && setScanning(false)}>
-      <View style={styles.scanner}>{isPreviewMode ? <View style={[StyleSheet.absoluteFill,
+      <View style={[styles.scanner, { backgroundColor: theme.colors.app }]}>{isPreviewMode ? <View style={[StyleSheet.absoluteFill,
         styles.previewCamera, { backgroundColor: theme.colors.surfaceAlt }]}>
         <View style={[styles.previewQr, { borderColor: theme.colors.textMuted }]} />
-        <Muted>预览模式相机画面</Muted></View> : <CameraView style={StyleSheet.absoluteFill}
+        <Muted>预览模式相机画面</Muted></View> : scanning && permission?.granted && !cameraError ? <CameraView style={StyleSheet.absoluteFill}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={({ data }) => void scanned(data)} />}
+        onMountError={() => setCameraError("相机不可用，可粘贴关联链接继续。")}
+        onBarcodeScanned={({ data }) => void scanned(data)} /> : null}
         <View style={[styles.scannerOverlay, { backgroundColor: theme.colors.surface }]}>
           <Title>扫描 Control Worker 关联二维码</Title>
           <Muted>二维码只关联当前机器，不会连接 App Server，也不会同步聊天、附件或 Push。</Muted>
+          {cameraError ? <Text testID="connection:scanner:error"
+            style={{ color: theme.colors.text }}>{cameraError}</Text> : null}
+          <TextInput testID="connection:pairing-link" value={pairingLink}
+            onChangeText={setPairingLink} placeholder="粘贴管理员提供的关联链接"
+            placeholderTextColor={theme.colors.textMuted} secureTextEntry
+            autoCapitalize="none" autoCorrect={false} editable={!claiming}
+            style={[styles.input, { color: theme.colors.text, borderColor: theme.colors.border }]} />
+          <Button testID="connection:pairing-link:submit" title="关联"
+            disabled={claiming || !pairingLink.trim()} onPress={() => void scanned(pairingLink.trim())} />
           <Button title={claiming ? "等待管理员确认…" : "取消"} disabled={claiming}
             onPress={() => setScanning(false)} />
         </View>
