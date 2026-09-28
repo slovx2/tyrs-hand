@@ -133,7 +133,7 @@ async function lateControlAnswer(request, generation) {
 async function validateWire() {
   const index = schemaIndex(resolve(repo, 'protocol/codex-app-server/0.157.1/json-schema'), resolve(repo, 'protocol/extensions'))
   const validate = payloadValidator(index)
-  const result = { passed: false, engines: {}, errors: [], processTerminatedCallbacks: [] }
+  const result = { passed: false, engines: {}, errors: [], processTerminatedCallbacks: [], processTerminatedRequests: [] }
   for (const engine of ['codex', 'claude-code']) {
     try {
       const failures = await readFile(resolve(evidence, `wire-${engine}.jsonl.errors`), 'utf8')
@@ -170,6 +170,12 @@ async function validateWire() {
         callback.method === oldApproval.method && crashEvidence.processTree.includes(Number(callback.connection.split(':')[0]))) {
         result.processTerminatedCallbacks.push({ ...callback, reason: 'SIGKILL', workerPID: crashEvidence.pidBefore })
       } else result.errors.push({ engine, error: '未解释的未回答原生回调', ...callback })
+    }
+    // Worker 发往原生运行时的请求若恰在本次 SIGKILL 时未获响应，只在其连接属于被杀进程树时记为截断证据。
+    for (const [key, request] of pending.request) {
+      if (!crashEvidence.processTree.includes(Number(request.connection.split(':')[0]))) continue
+      result.processTerminatedRequests.push({ engine, ...request, reason: 'SIGKILL', workerPID: crashEvidence.pidBefore })
+      pending.request.delete(key)
     }
     assert.equal(pending.request.size, 0, '不得遗漏客户端请求')
     result.engines[engine] = { messages: messages.length, checkedResponses: responses,
