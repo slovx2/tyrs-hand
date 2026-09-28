@@ -100,6 +100,18 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 			caseIDs = []string{"MCP-021"}
 		}
 	}
+	if caseName == "TestRuntimeClaudeEventKindsRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"EVENTS-001"}
+		}
+	}
+	if caseName == "TestRuntimeClaudeCrashRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"FAILURE-002"}
+		}
+	}
 	if caseName == "TestRuntimeMcpNativeIsolationRealSSH" {
 		caseIDs = []string{}
 		if engine == runtimeidentity.Claude {
