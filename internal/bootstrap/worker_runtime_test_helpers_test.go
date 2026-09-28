@@ -110,6 +110,18 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 		return
 	}
 	cases := []string{"ENTRY-002", "TOOLS-002"}
+	if t.Name() == "TestWorkerControlCodexRevertRealSSH" {
+		cases = []string{}
+		if engine == runtimeidentity.Codex {
+			cases = []string{"SESSION-006"}
+		}
+	}
+	if t.Name() == "TestWorkerControlClaudeRevertRealSSH" {
+		cases = []string{}
+		if engine == runtimeidentity.Claude {
+			cases = []string{"SESSION-007"}
+		}
+	}
 	if t.Name() == "TestWorkerControlNativeQueueBindingRealSSH" {
 		cases = []string{"QUEUE-007"}
 	}

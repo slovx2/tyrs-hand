@@ -10,7 +10,24 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：Linux Claude 历史时间线
+## 最新接续：Claude 定点回退与 Linux Control 锁序修复
+
+2026-09-28：适配器 **19160973584f8f09105a17a68d309016d3cbae41** 已推送，主库精确锁定。新增 `thread/revert` / `thread/reverted`，按目标回合删除其自身和后续历史，保留真实原生上下文、稳定游标和提交去重记录；支持现有两种历史模式，活动回合拒绝，不撤销工作区文件。CONTEXT-008 与 SESSION-007 已加入正式验收登记。
+
+真实 Control 验收发现并修复两个问题：
+
+- 连续回退时，官方 SDK fork 会重建原生消息 UUID，旧代码保留旧边界，导致第二次回退找不到消息。现在通过 SDK 只读导出真实分叉快照，使用 `forkedFrom` 映射更新边界；边界、会话指针和历史删除在同一 SQLite 事务提交。映射缺失或事务失败保留原线程，不猜测消息身份，不修改 SDK 或原生 transcript。
+- Control 回退先锁 Control，再由 INSERT 外键等待 Discord conversation；metadata 采用相反锁序，两次真实运行均记录 PostgreSQL 死锁。回退现复用 Session → conversation → Control 锁序。旧代码四个锁竞争场景全部失败，修后 Linux race 连续 **10 轮 / 40 子场景通过**，PG 无死锁。
+
+Linux 适配器最终全量 **358/358、0 skipped**，build/check 通过（100 warnings/97 infos，无 error）。原生 SDK 专项 5/5，其中三个真实通信场景的正式报告为 **3 执行/8 wire/345 报文/257 证据/0 错误**；两个数据库单测不冒充 wire 覆盖。双引擎真实 Control/Worker/SSH race 专项验证旧/新回退入口、整 Worker 重启后消费原 reservation、投影复用、双端通知及实际模型上下文：**2 执行/6 wire/187 报文/157 证据/0 错误**，PG 无死锁。模型与 Discord 网络均为隔离回环 Mock，不代表生产 E2E。
+
+证据根 `.local/validation/2026-09-27-release-goal/linux-revert/`：`full-final/`、`remapped/`、`control-final/`、`locks-final/` 为最终证据；`control-remapped/` 和 `control-race/` 的业务断言虽通过，PG 诊断失败，原始死锁证据保留。锁序测试夹具的修正失败也保留；最终修前对照在 `locks-before-v4/`。inventory 24/24，本轮 integration 增量 lint 0 issues；全仓 integration lint 另有 15 项未改文件的既有问题，不能宣称全仓 integration lint 清零。
+
+上一版 abac706 的常规 CI **36411176515 success**、协议 CI **36411176569 failure**。完整 Linux runId **f1f8259f-14c5-40b5-8225-a354f858d963**：**119=107 未登记+3 原生 schema 错误+9 必需语义**；MCP017/REVIEW006 仍失败，PG 无死锁。Control runId **3a498f48-ae58-4f1e-8edc-4a0d7d1bb94b**：21 执行/39 wire/2063 报文/1794 证据/0 错误，runtime failures 空、PG 无死锁。报告在 `ci-abac/` 和 `protocol-abac-summary.json`；本轮回退专项不能直接用于减算完整缺口。
+
+主库完整 `make ci-local` 退出 0，含 Go/race/数据库集成、移动 SSH、客户端、Android export、构建及 Web 浏览器 5/5；日志为 `main-ci-verified.log`。新组合远端矩阵尚待执行；生产未部署，`releaseReady=false`。macOS Worker 暂缓、Android GUI 自动化 skip 但手工验收 required、无默认人工交互计时器的要求保持。
+
+## 历史接续：Linux Claude 历史时间线
 
 2026-09-28：旧适配器真实调用 `thread/timeline/list` 返回 `-32601`，原始失败保存在 `linux-timeline/before/`。新增普通回合时间线读取，从 SQLite 历史返回完整条目和起止边界；最新页优先、页内升序，游标按条目身份向更早历史推进，追加回合不改变旧页。活动回合不提前生成完成边界，不触发模型。实时语音不在本次范围。
 

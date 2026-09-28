@@ -4118,7 +4118,7 @@
       },
       "cases": {
         "codex": ["SESSION-003", "SESSION-006"],
-        "claude-code": []
+        "claude-code": ["CONTEXT-008", "SESSION-007"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadRevertParams",
@@ -4136,7 +4136,7 @@
       },
       "cases": {
         "codex": ["SESSION-003"],
-        "claude-code": []
+        "claude-code": ["CONTEXT-008", "SESSION-007"]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadRevertedNotification",

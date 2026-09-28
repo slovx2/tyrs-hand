@@ -39,6 +39,12 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	// 与 metadata 保持 Session → Discord conversation → Control 的相同锁序。
+	// replacement INSERT 会获取父记录的外键锁，不能先锁 Control 再等待父记录。
+	if err := s.lockThreadMetadataParents(c, tx, request.WorkspaceID, params.ThreadID); err != nil {
+		problem(c, http.StatusInternalServerError, "锁定 Desktop rollback 父记录失败", err)
+		return
+	}
 	worker := currentWorker(c)
 	var controlID, conversationID, targetID, profileID uuid.UUID
 	var sequence, targetSequence int64

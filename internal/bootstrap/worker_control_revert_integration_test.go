@@ -21,12 +21,21 @@ import (
 
 // 正式 Control/PostgreSQL/Redis、Worker、SSH、官方 CLI；仅模型与 Discord 网络在本地替换。
 func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
+	testWorkerControlRevertRealSSH(t, runtimeidentity.Codex)
+}
+
+func TestWorkerControlClaudeRevertRealSSH(t *testing.T) {
+	testWorkerControlRevertRealSSH(t, runtimeidentity.Claude)
+}
+
+func testWorkerControlRevertRealSSH(t *testing.T, engine runtimeidentity.Engine) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	var mu sync.Mutex
 	var requests []json.RawMessage
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/responses" {
+		if r.URL.Path != "/v1/responses" && r.URL.Path != "/v1/messages" {
 			http.NotFound(w, r)
 			return
 		}
@@ -50,7 +59,7 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 			bootstrapEvent(w, "response.completed", map[string]any{"response": map[string]any{"id": "revert-title"}})
 			return
 		}
-		bootstrapModelText(w, false)
+		bootstrapModelText(w, r.URL.Path == "/v1/messages")
 	}))
 	t.Cleanup(model.Close)
 	ready := make(chan struct{})
@@ -69,7 +78,7 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 		return app, stop
 	}
 	app, stopWorker := startWorker()
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ := connectBootstrapSSH(t, ctx, entry, f.signer)
 	var started struct{ Thread struct{ ID string } }
@@ -87,7 +96,7 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 			"threadId": threadID, "input": []map[string]any{{"type": "text", "text": marker}},
 		}, &result))
 		watcher.awaitCompleted(t, ctx, result.Turn.ID, nil)
-		awaitControlRunCount(t, ctx, f, runtimeidentity.Codex, count)
+		awaitControlRunCount(t, ctx, f, engine, count)
 		return result.Turn.ID
 	}
 	first := turn("CONTROL_REVERT_KEEP", 1)
@@ -101,7 +110,7 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 	second := turn("CONTROL_REVERT_DROP", 2)
 	var controlID uuid.UUID
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT id FROM codex_thread_controls
-		WHERE worker_id=$1 AND external_thread_id=$2 AND engine='codex'`, f.workerID, threadID).Scan(&controlID))
+		WHERE worker_id=$1 AND external_thread_id=$2 AND engine=$3`, f.workerID, threadID, engine).Scan(&controlID))
 	var targetID uuid.UUID
 	var anchor string
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT id,COALESCE(projection_anchor,'desktop-' || id::text)
@@ -129,7 +138,7 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 	// 回退已成功、替换还未提交时重启整个 Worker，验证本地 Journal 恢复。
 	stopWorker()
 	app, _ = startWorker()
-	entry, err = app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err = app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ = connectBootstrapSSH(t, ctx, entry, f.signer)
 	require.NoError(t, client.Call(ctx, "thread/resume", map[string]any{"threadId": threadID, "excludeTurns": true}, nil))
@@ -142,11 +151,32 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 		FROM codex_turn_intents WHERE id=$1`, reservationID).Scan(&confirmed, &phase))
 	require.Equal(t, third, confirmed, "下一回合必须消费原 reservation")
 	require.Equal(t, "terminal", phase)
+	observer, _ := connectBootstrapSSH(t, ctx, entry, f.signer)
+	require.NoError(t, observer.Call(ctx, "thread/resume", map[string]any{"threadId": threadID, "excludeTurns": true}, nil))
+	observerEvents := observer.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	t.Cleanup(observerEvents.Close)
 	var reverted struct {
 		Thread               struct{ Turns []channelsThreadTurn }
 		ItemsBackwardsCursor *string
 	}
 	require.NoError(t, client.Call(ctx, "thread/revert", map[string]any{"threadId": threadID, "beforeTurnId": third}, &reverted))
+	for _, stream := range []<-chan codex.Event{events.Events(), observerEvents.Events()} {
+		found := false
+		for !found {
+			select {
+			case <-ctx.Done():
+				t.Fatal("双客户端缺少真实回退通知")
+			case event, ok := <-stream:
+				require.True(t, ok)
+				if event.Method == "thread/reverted" {
+					var params struct{ ThreadID string }
+					require.NoError(t, json.Unmarshal(event.Params, &params))
+					require.Equal(t, threadID, params.ThreadID)
+					found = true
+				}
+			}
+		}
+	}
 	require.Empty(t, reverted.Thread.Turns)
 	require.NotNil(t, reverted.ItemsBackwardsCursor)
 	var nativeItems struct{ Data []struct{ TurnID string } }
@@ -177,10 +207,14 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 		found := false
 		for _, body := range requests {
 			var request struct {
-				Input json.RawMessage
-				Tools []json.RawMessage
+				Input    json.RawMessage
+				Messages json.RawMessage
+				Tools    []json.RawMessage
 			}
 			require.NoError(t, json.Unmarshal(body, &request))
+			if engine == runtimeidentity.Claude {
+				request.Input = request.Messages
+			}
 			if len(request.Tools) == 0 || !strings.Contains(string(request.Input), marker) {
 				continue
 			}
@@ -193,8 +227,8 @@ func TestWorkerControlCodexRevertRealSSH(t *testing.T) {
 		}
 		require.True(t, found, "替换后的输入必须到达原生模型")
 	}
-	saveBootstrapArtifact(t, "models", runtimeidentity.Codex, map[string]any{"requests": requests})
-	saveBootstrapArtifact(t, "effects", runtimeidentity.Codex, map[string]any{
+	saveBootstrapArtifact(t, "models", engine, map[string]any{"requests": requests})
+	saveBootstrapArtifact(t, "effects", engine, map[string]any{
 		"threadId": threadID, "controlId": controlID, "retainedTurn": first, "finalTurn": fourth,
 		"projectionAnchor": replacementAnchor, "replacementPhase": phase,
 	})
