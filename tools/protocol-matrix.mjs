@@ -56,6 +56,8 @@ const controlSuites = [
     cases: ['QUEUE-005'], engines: ['codex'] },
   { name: 'bootstrap-queue-observed-recovery', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueObservedRecoveryRealSSH',
     cases: ['QUEUE-006'], engines: ['codex'] },
+  { name: 'bootstrap-queue-binding', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueBindingRealSSH',
+    cases: ['QUEUE-007'], engines: ['codex'] },
   { name: 'bootstrap-fixture-isolation', pkg: './internal/bootstrap', test: 'TestControlRuntimeFixturesIsolateDatabase',
     cases: [], engines: [] },
   { name: 'bootstrap-confirmation', pkg: './internal/bootstrap', test: 'TestWorkerControlRemoteConfirmationAfterRegistrationRealSSH',

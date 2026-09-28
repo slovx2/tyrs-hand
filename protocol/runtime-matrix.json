@@ -3785,7 +3785,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["QUEUE-001"],
+        "codex": ["QUEUE-001", "QUEUE-007"],
         "claude-code": []
       },
       "schema": {
@@ -3839,7 +3839,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": ["QUEUE-001"],
+        "codex": ["QUEUE-001", "QUEUE-007"],
         "claude-code": []
       },
       "schema": {

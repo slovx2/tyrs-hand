@@ -110,6 +110,9 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 		return
 	}
 	cases := []string{"ENTRY-002", "TOOLS-002"}
+	if t.Name() == "TestWorkerControlNativeQueueBindingRealSSH" {
+		cases = []string{"QUEUE-007"}
+	}
 	queueCases := map[string]string{
 		"TestWorkerControlNativeQueueLifecycleRealSSH":          "QUEUE-002",
 		"TestWorkerControlNativeQueueWholeWorkerRestartRealSSH": "QUEUE-003",

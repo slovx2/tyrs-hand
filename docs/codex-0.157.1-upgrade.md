@@ -2,6 +2,19 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：跨 Workspace 队列与正式 Control 组合通过
+
+2026-09-28：主库基线 `0f75642`、适配器 `cb02aa2`。本段优先于后文历史进度；生产未变更，`releaseReady=false`。
+
+- 新增 QUEUE-007，覆盖绑定热切换、变更前完整 Worker 重启，以及执行完成后再次完整重启。绑定变更由数据库夹具注入，真实 Control/PostgreSQL/Redis/Worker/SSH/官方 CLI 决定执行结果；模型与 Discord 网络为本地 Mock，不宣称验证了管理后台重绑入口。
+- 旧队列保留入队时的 Run、Task、Workspace 身份，原生自动回合的平台工具真实返回“Workspace 绑定已失效”，两个 Workspace 均无旧任务副作用；原 Run Journal 保存真实终态。新 Workspace 新会话仍能创建唯一任务，并落到其独立 completed Control Run，避免以禁用全部工具掩盖串权。
+- 新绑定不认领旧线程 metadata；执行完成后再次重启，旧队列为空、历史保持两回合、模型总调用五次，工具和模型均未重放。QUEUE-007 已加入正式 Control 与完整协议矩阵。
+- 普通专项通过；补齐最终 Journal 和再次重启断言后的 race 专项通过。正式 wire/schema 为 **1 执行、7 wire、162 报文、137 证据、0 错误**，queue/add 和 queue/list 均有成功响应；integration lint 0 issues，inventory 契约 24/24。
+- 最终源码完整 Control 组合退出 0，runId `3406b854-4079-4ce8-9179-b9357522c66a`：**20 执行、37 wire、2113 报文、1859 证据、0 错误**；PostgreSQL 无死锁，runtime failures 为空。它是 macOS Control 子集，不等同完整协议矩阵。0f75642 的完整 `make ci-local` 已通过，但在新增 QUEUE-007 之前执行。
+- 已推送的 0f75642 常规 CI `36377959228` 成功；协议 CI `36377959242` 失败，Control-runtime/macOS-loopback 成功，Linux/macOS14 仍仅在 MCP017 分页和 REVIEW006 审查运行时专项失败。最新 Linux 原始 runId `c83dadc3-453e-48e8-a9fe-ff68098cf4c3` 的完整覆盖为 **147 缺口 = 136 未登记 + 11 必需语义**；TITLE-001 与 APPROVAL-009 的两项成功 wire/schema 缺口已关闭。该远端结果不包含本轮新增 QUEUE-007。
+
+证据根 `.local/validation/2026-09-27-release-goal/`：`native-queue-binding-race/`、`native-queue-binding-control/`、`protocol-0f-summary.json`。可信 userVerification、fileId 图片跨端、其余全量协议缺口及生产发布仍待完成。
+
 ## 最新接续：补齐标题与终端审批的原生通信证据
 
 2026-09-28：在主库 `959a863` 和适配器 `cb02aa2` 基础上，只为 TITLE-001、APPROVAL-009 的真实集成测试增加 CLI 入口旁路录制。生产未变更，`releaseReady=false`。
