@@ -10,7 +10,17 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：Claude 原生队列接入 Worker 与 Control
+## 最新接续：自动审查器偏好不阻断 Claude 模型切换
+
+2026-09-28：继续落实用户要求“不支持字段不得阻碍主流程”。真实 Linux SDK/CLI 复现 `turn/settings/update` 附带合法 `auto_review` 或 `guardian_subagent` 时返回 -32602，导致有效模型切换也被拒绝。现在这两个值保留现有用户审批，模型与 effort 正常发布；不声称 Claude 已实现自动审查器。非法审批角色、非法模型/effort 和协议外参数仍整体拒绝，官方 schema、CLI 与 SDK 未改动。
+
+新增 TURNSETTINGS-004：实际模型 HTTP 使用更新后的模型和 effort，真实 Write 必须等待人工回答，允许后才生成文件，拒绝后文件不存在。连同既有设置隔离/重启和审批中断回归，Linux 专项 **7/7**；正式 wire **7 执行/10 wire/311 报文/239 证据/0 错误**。模型 HTTP 为隔离回环 Mock，不能当作生产模型验收。证据根 `.local/validation/2026-09-27-release-goal/linux-settings-reviewer/`，`before-renamed/` 保留两个旧实现拒绝，`after/` 保存修后真实通信。
+
+适配器 **e7f51376fb1845ebac42a1b31a8531bc34edc0b8** 已推送并精确锁定。Linux 全量 **361/361，0 skipped**；build/typecheck/Biome 检查通过，inventory **24/24**。主库完整 `make ci-local` 退出 0，日志 `linux-settings-reviewer/main-ci.log`。两份保护文件的 SHA256 保持不变，未修改或提交。
+
+上一版 4a3ab94 常规 CI **36421499317 success**，远端 Control 也已通过：runId **04db3a97-a376-4e39-aeca-f30424e0e461**，**28 执行/57 wire/2514 报文/2171 证据/0 错误**，runtime failures 为空，PostgreSQL 无死锁。完整 Ubuntu 协议仍在运行，不能据此推算新的完整缺口。生产未部署，`releaseReady=false`；macOS Worker 暂缓、Android GUI 自动化 skip、手工验收 required。
+
+## 历史接续：Claude 原生队列接入 Worker 与 Control
 
 适配器已推送并精确锁定 **f87083c6ea01937617049d34cceab5c28c896269**。
 

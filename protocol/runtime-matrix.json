@@ -4769,7 +4769,7 @@
       },
       "cases": {
         "codex": ["TURNSETTINGS-003"],
-        "claude-code": ["TURNSETTINGS-001", "TURNSETTINGS-002"]
+        "claude-code": ["TURNSETTINGS-001", "TURNSETTINGS-002", "TURNSETTINGS-004"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/TurnSettingsUpdateParams",
