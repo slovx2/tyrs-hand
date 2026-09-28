@@ -2,6 +2,21 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：原生审批取消与停止通知
+
+2026-09-28：新增 APPROVAL-002 的真实适配器/SDK/CLI 验收，仅模型 HTTP 为回环 Mock，未修改官方 CLI 或协议门禁。生产未变更，`releaseReady=false`。
+
+适配器 `f667d85db4464c05649b462eb3963e58798d318b` 已提交并推送，主库 adapter-lock 精确更新；完整适配器回归 **348/348，0 skipped**，build/typecheck/check 通过，check 为 99 warnings、97 infos、无 error。
+
+- 同时保持两个会话审批：中断一个后真实回送迟到允许，旧文件保持不存在、模型不续写、条目只结束一次；另一会话仍可批准并产生精确文件内容。
+- stdin EOF 和 SIGTERM 两种关闭方式均验证旧审批失效、原地恢复保留旧回合且不重放；只有显式新回合的新审批可产生新文件，模型调用数精确为三次。
+- 首次三项业务断言通过，但正式 wire/schema 拒绝 SIGTERM 缺少 `serverRequest/resolved` 的记录。根因是 `stop()` 先设置 stopped，使随后审批取消的结束通知被统一抑制。现先同步结束待审批，再抑制退出过程的其他通知；没有将断线当作成功答案或放宽校验。
+- 修复后增加停止前精确一次 resolved 断言，三个专项全部通过；正式 wire/schema 为 **3 执行、5 wire、127 报文、100 证据、0 错误**，runId `6113dbef-c2c9-484c-957b-73dd148432b6`。测试已加入正式适配器协议矩阵，远端全量仍待该新版本验证。
+- 真实 SSH 的 APPROVAL-005 重连、中断与运行代重启回归在 race 下通过。仅 Claude 业务通信按正式 schema 验证：1 执行、5 wire、197 报文、140 证据、0 错误；附带的 Codex 初始化 trace 保留但不冒充 Codex 审批验收。证据 `native-approval-lifecycle-ssh/claude-runtime-wire.json`，runId `e5e976aa-4f18-45de-8f16-141c8b4f944f`。
+- 更新锁定版本后的完整 `make ci-local` 已退出 0：生成、静态检查、Go 单测/race/数据库集成、移动 SSH、客户端、构建、Android JS export 和浏览器 5/5 通过。日志与退出状态为 `native-approval-lifecycle-final/ci-local.log`、`ci-local-status.json`。Android GUI 自动化保持 skip，未运行 Maestro。
+
+证据 `.local/validation/2026-09-27-release-goal/native-approval-lifecycle/` 保留修前失败，`native-approval-lifecycle-final/` 保留修后结果。此本地专项不用于直接重算下文 0f75642 的 147 项远端覆盖缺口。
+
 ## 最新接续：跨 Workspace 队列与正式 Control 组合通过
 
 2026-09-28：主库基线 `0f75642`、适配器 `cb02aa2`。本段优先于后文历史进度；生产未变更，`releaseReady=false`。
