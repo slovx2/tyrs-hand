@@ -268,10 +268,39 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	return conversationID, nil
 }
 
+// 锁序约定为 Session → Conversation，与入队、元数据补报一致；两步之间绑定变化时整体重试。
+var errConversationSessionChanged = errors.New("discord conversation 绑定的 Session 在加锁期间变化")
+
+// lockBoundSessionTx 在锁定 Conversation 前先锁其绑定的 Session，返回加锁时的绑定供调用方复核。
+func lockBoundSessionTx(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID) (uuid.NullUUID, error) {
+	var session uuid.NullUUID
+	if err := tx.QueryRowContext(ctx, `SELECT session_id FROM discord_conversations WHERE id=$1`,
+		conversationID).Scan(&session); err != nil {
+		return session, err
+	}
+	if session.Valid {
+		var locked uuid.UUID
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM workspace_sessions WHERE id=$1 FOR NO KEY UPDATE`,
+			session.UUID).Scan(&locked); err != nil {
+			return session, err
+		}
+	}
+	return session, nil
+}
+
 func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) error {
 	if err := validateIncomingMessage(input); err != nil {
 		return err
 	}
+	for attempt := 0; ; attempt++ {
+		err := s.reply(ctx, input)
+		if !errors.Is(err, errConversationSessionChanged) || attempt >= 2 {
+			return err
+		}
+	}
+}
+
+func (s *ConversationService) reply(ctx context.Context, input IncomingMessage) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -279,19 +308,32 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	defer func() { _ = tx.Rollback() }()
 	var conversationID, forumID uuid.UUID
 	var ownerID, status, lifecycleState, triggerMode string
+	var boundSession uuid.NullUUID
+	err = tx.QueryRowContext(ctx, `SELECT id FROM discord_conversations WHERE guild_id=$1 AND thread_id=$2`,
+		input.GuildID, input.ThreadID).Scan(&conversationID)
+	if err == nil {
+		boundSession, err = lockBoundSessionTx(ctx, tx, conversationID)
+	}
+	if err != nil {
+		return err
+	}
+	var lockedSession uuid.NullUUID
 	err = tx.QueryRowContext(ctx, `SELECT conversation.id, conversation.forum_id,
 		conversation.owner_discord_user_id, conversation.status, conversation.lifecycle_state,
-		conversation.trigger_mode
+		conversation.trigger_mode, conversation.session_id
 			FROM discord_conversations conversation
 			JOIN discord_forums forum ON forum.id=conversation.forum_id
 			JOIN workspace_projects project ON project.id=forum.workspace_project_id
-			WHERE conversation.guild_id=$1 AND conversation.thread_id=$2
+			WHERE conversation.id=$3 AND conversation.guild_id=$1 AND conversation.thread_id=$2
 			AND forum.binding_status='active'
 			AND project.availability_status='available' FOR UPDATE OF conversation`,
-		input.GuildID, input.ThreadID).Scan(&conversationID, &forumID, &ownerID, &status,
-		&lifecycleState, &triggerMode)
+		input.GuildID, input.ThreadID, conversationID).Scan(&conversationID, &forumID, &ownerID, &status,
+		&lifecycleState, &triggerMode, &lockedSession)
 	if err != nil {
 		return err
+	}
+	if lockedSession != boundSession {
+		return errConversationSessionChanged
 	}
 	access, err := s.access(ctx, tx, forumID, ownerID, input.DiscordUserID)
 	if err != nil {
@@ -363,6 +405,17 @@ func (s *ConversationService) FinalizeConfigurationRevision(ctx context.Context,
 func (s *ConversationService) finalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
 	userID string, expectedRevision *int64,
 ) (bool, error) {
+	for attempt := 0; ; attempt++ {
+		stale, err := s.finalizeConfigurationOnce(ctx, conversationID, userID, expectedRevision)
+		if !errors.Is(err, errConversationSessionChanged) || attempt >= 2 {
+			return stale, err
+		}
+	}
+}
+
+func (s *ConversationService) finalizeConfigurationOnce(ctx context.Context, conversationID uuid.UUID,
+	userID string, expectedRevision *int64,
+) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -373,15 +426,24 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 	var engine runtimeidentity.Engine
 	var forumID uuid.UUID
 	var owner, configuredBy, status string
+	// 定稿后会入队待处理消息并锁 Session，因此同样先锁 Session 再锁 Conversation。
+	boundSession, err := lockBoundSessionTx(ctx, tx, conversationID)
+	if err != nil {
+		return false, err
+	}
+	var lockedSession uuid.NullUUID
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
 		COALESCE(service_tier,'standard'), collaboration_mode,
 		trigger_mode, guild_id, thread_id, forum_id, owner_discord_user_id,
-		COALESCE(configured_by_discord_user_id,''), configuration_status, settings_revision, engine
+		COALESCE(configured_by_discord_user_id,''), configuration_status, settings_revision, engine, session_id
 		FROM discord_conversations WHERE id = $1 FOR UPDATE`, conversationID).
 		Scan(&model, &effort, &tier, &mode, &triggerMode, &guildID, &threadID, &forumID, &owner,
-			&configuredBy, &status, &settingsRevision, &engine)
+			&configuredBy, &status, &settingsRevision, &engine, &lockedSession)
 	if err != nil {
 		return false, err
+	}
+	if lockedSession != boundSession {
+		return false, errConversationSessionChanged
 	}
 	if userID != "" && userID != configuredBy {
 		return false, errors.New("只有 Post 创建者可以修改该会话配置")

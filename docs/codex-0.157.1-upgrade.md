@@ -2,6 +2,54 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：本地 Linux 完整矩阵与语义缺口补齐（2026-09-28 晚）
+
+本节优先于下方所有历史状态。用户要求：尽量在本地暴露问题，不要每次推 GitHub CI；Android UI 自动化和 macOS 暂时跳过，其他继续推进。本轮所有提交**均在本地、尚未推送**。
+
+### 本地复现 GitHub Ubuntu 协议矩阵
+
+- 运行器（位于 `.local`，不入库）：`.local/linux-matrix/run.sh <label> [--control-only]` 在 Docker Desktop 的 Linux 容器中原样执行 `tools/protocol-matrix.mjs`；`.local/linux-matrix/suite.sh <label> <pkg> <Test>` 执行单个真实专项，并用本次 wire 产物做 schema 校验（约 5–20 秒）。
+- 镜像 `tyrs-hand-linux-matrix:local` = 原 `tyrs-hand-protocol-linux` + iproute2、docker 客户端、Go 1.26.6（官方 SHA256）、Codex 0.157.1、bubblewrap 0.9.0（源码构建，SHA256 为首次下载固定值，上游仅提供 .asc）。
+- 与 CI 对齐的三处环境差异：临时目录不在 `/tmp`（Codex 拒绝在 `/tmp` 下创建 `codex-linux-sandbox` 别名）；bubblewrap 须 ≥0.9（`--argv0`）；容器内经 `PROTOCOL_DOCKER_HOST=host.docker.internal` 访问宿主发布的数据库端口（工具已支持该变量，默认不变）。
+- 校准结果：5cecc57 的本地完整矩阵 106 项缺口 = CI 36431583779 的 103 项 + 3 项本地 bubblewrap 差异（已修复并单独复验）。
+- 注意：Docker Desktop 文件共享在文件刚改写时偶发读到旧视图（出现 ENOENT 或截断 JSON），重跑即恢复；不要据此判断产品问题。
+
+### 本轮修复的真实缺陷
+
+1. **approvalPolicy=never 时授权目录内写入被拒**（适配器 3b86c50）：never 此前映射为 SDK `dontAsk`，工作区可写时连授权目录内的 Write 也在回调前被拒。现统一走 canUseTool，never 只放行已按授权目录把关的文件编辑与已套 OS 沙箱的 Bash，越界和其他工具仍拒绝。
+2. **OpenAI 专属外围能力在 Claude 侧落入 -32601 或伪成功**（适配器 ce82c15）：按用户确认的原则改为 -32004 明确拒绝；外部代理配置导入不再返回空对象伪装成功。
+3. **登记遗漏**：Codex 真实发出的 `windowsSandbox/setupCompleted` 未登记；`windowsSandbox/readiness`、`account/usage/read`、`account/workspaceMessages/read` 缺响应 schema 关联。
+
+### 本轮补齐的必需语义（均为真实 SSH 链路，本地 Linux 通过）
+
+| 用例 | 专项 | 要点 |
+|---|---|---|
+| PERMISSION-001 | TestRuntimeClaudePermissionChangesRealSSH | 同会话逐回合切换工作区写入/只读/需审批/网络，真实写入、越界拒绝、审批经 fileChange 条目对应真实文件、OS 网络隔离；修复前稳定复现 dontAsk 拒绝 |
+| ISOLATION-002 | TestRuntimeCrossEntryIsolationRealSSH | 两入口同名会话及 ID 互投，读取/恢复/改名/归档/分叉/提交全部拒绝，原会话与名称缓存不变 |
+| MCP-003 | TestRuntimeMcpNativeIsolationRealSSH | 项目原生 .mcp.json 的 stdio 服务真实执行并回模，不外溢到其他项目或 Codex |
+| FAILURE-002 | TestRuntimeClaudeCrashRealSSH | 适配器与原生 CLI 分别在回合中 SIGKILL；约 3 秒自动恢复，中断回合 interrupted/failed，Codex 不受影响，不重放 |
+| EVENTS-001 | TestRuntimeClaudeEventKindsRealSSH | 同回合推理/文本/命令/文件修改条目及三类增量、用量，历史逐项一致；模型 500 以失败终态结束 |
+| MIGRATION-002 | TestWorkerControlGitHubDisabledRealSSH | 按用户确认验证 GitHub 停用状态保持：遗留工作项两引擎都不领取、github 角色 410、旧 Webhook 移除、数据库禁止改指 Claude |
+| CAPABILITY-003（新增） | TestRuntimeCapabilitySurfaceRealSSH | 14 项 Codex 外围能力真实透传并通过 schema；Claude 对连接器列表、Windows 沙箱与外部配置探测如实应答 |
+
+剩余必需语义仅 REVIEW-006、MCP-017（上游 Codex 缺陷，不自编译 CLI）。
+
+### 用户本轮决定（2026-09-28）
+
+- MIGRATION-002 的 GitHub 部分：验证停用状态保持，**不恢复** GitHub 功能（GitHub 已于 c4398af 停用）。
+- Claude 侧确属 OpenAI/ChatGPT 专属的方法：适配器 -32004 明确拒绝，并以真实 SSH 拒绝证据登记为 not-applicable；Claude 能真实提供的仍按必需实现。
+
+### 未登记方法的探测结论与剩余难点
+
+对真实 Codex 0.157.1 逐个探测（`.local/linux-matrix/probe-codex.mjs`，结果在 `probe/codex.json`）：
+
+- 最小参数即成功的 14 项已由 CAPABILITY-003 覆盖。
+- 需要合法参数或前置状态：`account/bedrock/setup`、`account/login/cancel`、`marketplace/add|remove`、`plugin/share/save`、`review/start`（受 REVIEW-006 影响）、`thread/approveGuardianDeniedAction`、`userVerification/verify`。
+- 需要 ChatGPT 账户登录：`account/rateLimits/read`、`usage/read`、`workspaceMessages/read`、`rateLimitResetCredit/consume`、`sendAddCreditsNudgeEmail`、`plugin/share/*`。API Key 模式下原生直接拒绝；要取得成功证据须模拟 ChatGPT 后端并以 ChatGPT 登录态运行。
+- 本环境原理上无法成功：`feedback/upload`（上传外部 Sentry）、`userVerification/enroll|delete`（Linux 不可用）。
+- **门禁模型局限**：覆盖工具只能从“请求被 -32004 拒绝”产生 not-applicable 证据。Claude 从不发出的**通知**（如 `account/login/completed`、`windowsSandbox/setupCompleted`）即使正确登记为不适用，也永远无法关闭缺口。需要为“不适用通知”设计严格的缺席证据（例如：同一次通过的执行中，触发请求被真实拒绝或如实应答，且全部通信中从未出现该通知），这属于门禁规则变更，待用户确认。
+- 另发现 0.157.1 schema 中有 58 个方法未在 runtime-matrix 登记（realtime、remoteControl、fuzzyFileSearch、hook 事件等）。门禁只对真实通信中出现的未登记方法报缺口，故这些目前不可见；是否需要全量登记待评估。
+
 ## 暂停交接：当前进展与卡点（2026-09-28）
 
 本节优先于下方历史状态，保留此前全部记录。用户要求“把现在进展和卡点写进文档（和之前的一起）然后先停在一个稳定状态”。本轮已收尾并暂停，不开展新功能或生产部署；当前修改固定为本地提交，暂不推送触发新 CI。适配器本地 **162a8d67465a95a8f7be842340848acf1cc09d37**，主库pin一致；适配器远端仍为8072dce，主库远端仍为5cecc57。恢复时先推送适配器提交，再推送主库中对应的精确 pin。
