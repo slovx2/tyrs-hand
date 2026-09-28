@@ -5,7 +5,7 @@ import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSyn
 import { resolve } from 'node:path'
 
 const modes = [
-  { caseId: 'MIGRATION-005', caseName: 'RealWorker32To33Migration', args: [] },
+  { caseId: 'MIGRATION-005', caseName: 'RealWorker32To33Migration', args: [], additionalCases: ['MIGRATION-001'] },
   { caseId: 'MIGRATION-006', caseName: 'RealWorker32To33PendingJournalMigration', args: ['--journal'] },
   { caseId: 'MIGRATION-007', caseName: 'RealWorkerRollbackThenUpgradeMigration', args: ['--rollback'] },
 ]
@@ -15,6 +15,16 @@ export function migrationOutcome(result, report, schema, { runId, caseId }) {
   if (result.error || result.code !== 0 || result.signal) errors.push('迁移进程未正常成功退出')
   if (!report || report.runId !== runId || report.caseId !== caseId) errors.push('迁移报告不属于本轮用例')
   if (report?.passed !== true) errors.push('迁移报告未通过')
+  if (caseId === 'MIGRATION-005') {
+    const mobile = report?.mobileMigration
+    if (mobile?.passed !== true || mobile.fromVersion !== 12 || mobile.toVersion !== 13 ||
+      mobile.reopened !== true || mobile.realSSHReadback !== true || mobile.noModelReplay !== true ||
+      !Array.isArray(mobile.retainedTables) || mobile.retainedTables.length !== 11 ||
+      !['connection_profiles', 'control_machine_links', 'ssh_projects', 'projects', 'threads',
+        'thread_reads', 'drafts', 'pending_submissions', 'outbox', 'pending_message_previews', 'app_settings']
+        .every(table => mobile.retainedTables.includes(table)))
+      errors.push('客户端数据库迁移、重开和真实 SSH 回读未完整通过')
+  }
   if (!Array.isArray(report?.cleanupErrors) || report.cleanupErrors.length) errors.push('迁移资源清理未确认成功')
   if (report?.schema?.passed !== true || !Array.isArray(report?.schema?.errors) || report.schema.errors.length) {
     errors.push('迁移报告中的 schema 未通过')
@@ -93,7 +103,7 @@ export async function runMigrationMatrix({ root, artifacts, runId, env }) {
     }
     const passed = errors.length === 0
     for (const engine of ['codex', 'claude-code']) executions.push({ runId, engine,
-      caseName: mode.caseName, caseIds: [mode.caseId], status: passed ? 'passed' : 'failed' })
+      caseName: mode.caseName, caseIds: [mode.caseId, ...(mode.additionalCases ?? [])], status: passed ? 'passed' : 'failed' })
     if (!passed) failures.push({ suite: mode.caseId, status: result.code, signal: result.signal,
       directory, error: errors.join('；') })
     writeFileSync(resolve(directory, 'matrix-result.json'), JSON.stringify({ runId, caseId: mode.caseId,

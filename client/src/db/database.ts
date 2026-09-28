@@ -158,7 +158,11 @@ type LegacySSHProject = {
 };
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
-  databasePromise ??= openDatabase();
+  // 并发调用仍共用一次打开；失败后允许下次显式操作重试，不能永久缓存拒绝。
+  databasePromise ??= openDatabase().catch((error: unknown) => {
+    databasePromise = null;
+    throw error;
+  });
   return databasePromise;
 }
 
@@ -180,6 +184,17 @@ export async function withDatabaseTransaction(
 
 async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   const database = await SQLite.openDatabaseAsync("tyrs-hand.db");
+  try {
+    await migrateDatabase(database);
+    return database;
+  } catch (error) {
+    // 未发布的连接只属于本次打开；关闭失败不覆盖原始迁移错误。
+    await database.closeAsync().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function migrateDatabase(database: SQLite.SQLiteDatabase): Promise<void> {
   const version = await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   const current = version?.user_version ?? 0;
   if (current > DATABASE_VERSION) throw new Error("本地数据库版本高于当前客户端");
@@ -199,7 +214,6 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
   }
-  return database;
 }
 
 // 保留 profile ID，因此草稿、未确认提交、历史和模型偏好仍归原 Codex 入口。

@@ -10,7 +10,19 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：Linux 双引擎进程诊断
+## 最新接续：客户端迁移失败恢复与完整数据保留验收
+
+2026-09-28：Linux 真实磁盘 SQLite 复现首次打开遭遇写锁后，客户端永久缓存 rejected Promise；释放锁后再次读取仍失败。现失败后关闭未发布连接并清除失败缓存，下一次显式操作可以重试；并发读取仍共用同一次打开，没有后台循环重试或人工交互计时器。证据 `linux-mobile-migration/before.log` 与 `after-lock.log`。这证明存在可复现的恢复缺陷，不证明此前 Android 真机报错的唯一原因。
+
+固定升级前提交 **81f6c951d83c0b0e10a97436d9605cba3b3f77ba** 的真实 v12 建表语句（完整索引和约束）作为夹具；运行真实 Worker 迁移时还会与实际提取的旧源码逐字节核对。产品 `database.ts` 通过 Node SQLite 驱动执行，不复制迁移实现。Linux 仅回环容器 **7/7**：真实锁冲突恢复、事务后段 SQL 失败完整回滚、11张表旧数据保留与新增双引擎身份约束、重开持久、未来版本拒绝且无降级/删除，以及迁移报告门禁。客户端数据库回归 **36/36**、typecheck、inventory **24/24** 通过；完整 `make ci-local` 退出0、Web浏览器5/5。最终夹具改动另有 Linux 定向回归，不将 Node 驱动测试等同于 Expo 原生绑定或 Android 手工 GUI。
+
+MIGRATION-001 已接入实际旧32→新33 Worker/Control升级场景：旧真实 CLI 产生的历史进入客户端 v12 数据库；升级后逐字段保留草稿、偏好、缓存、未读、待核实提交和发送状态；新增 Claude 入口，再打开后使用持久化地址、端口、用户、Host Key 和密钥引用，经真实 SSH 读取对应引擎历史，并要求模型调用数不增加。只有主迁移进程、schema、资源清理及上述客户端证据同时通过，才登记 MIGRATION-001 成功。**扩展后的完整 Linux Worker 迁移尚待新 CI 验证，不能先计为通过或减少语义缺口。**
+
+72eaecd 的完整 Linux 报告已消费：runId **a6b298c2-5ce4-4283-bf12-5648338a623d**，**106=94未登记+3原生schema错误+9必需语义**，MCP事件流登记和QUEUE-003缺报文已正式关闭；运行失败仍为MCP017/REVIEW006，PG无死锁。原始 `ci-72/protocol-summary-ubuntu-24.04/` 与 `summary.json`。9e90576 常规 **36428814502 success**，协议 **36428814364** 仍在运行；其Control **7d646028-fc4f-43d6-9312-775b5b9ab471** 为28执行/57wire/2521报文/2174证据/0错误、无运行失败、PG无死锁，证据 `ci-9e/control-runtime-summary/`。
+
+适配器仍精确锁定8072dce，本轮未改，不重复计为新的362全量。生产未部署，`releaseReady=false`。macOS Worker暂缓；Android GUI自动化skip、手工required；默认人工计时器不恢复；两份保护文件不改不提交。
+
+## 历史接续：Linux 双引擎进程诊断
 
 2026-09-28：真实 Linux 适配器调用 `server/diagnostics` 返回 -32601，证据 `linux-diagnostics/before-mounted/`。首个 `before/` 因只读快照缺少 node_modules 挂载点而未启动容器，仅是夹具错误。现返回当前适配器真实 PID、RSS、活动回合及已初始化连接数；没有等价测量的 physical footprint 返回 null。计数使用独立 `claude_adapter` 名称，只描述适配器进程，不代表 CLI 子进程或 Worker 总资源，也不返回配置、路径或凭据。
 

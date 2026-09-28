@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,7 @@ import { rollbackJournal } from './protocol-migration-rollback.mjs'
 import { MigrationWorker } from './protocol-migration-worker.mjs'
 import { startMigrationModels } from './protocol-migration-models.mjs'
 import { MigrationFaultProxy, pendingJournal, verifyMigratedJournal, waitJournalDelivered } from './protocol-migration-journal.mjs'
+import { prepareMobileMigration, verifyLegacyMobileSchema, verifyMobileMigration } from './protocol-mobile-migration.mjs'
 
 // --rollback 使用真实旧数据库快照隔离 Worker 回滚再升级；不宣称同库降级兼容。
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -29,7 +30,7 @@ const report = { caseId: rollbackMode ? 'MIGRATION-007' : journalMode ? 'MIGRATI
     ...(journalMode ? [] : ['本用例不覆盖待补报 journal']),
     ...(rollbackMode ? ['回滚恢复升级前真实数据库快照，不覆盖升级后数据库直接降级'] : ['本用例不覆盖回滚']),
     '本用例不覆盖签名 Linux 安装包或生产部署'], steps: [] }
-let control, worker, models, proxy, previousJournal, beforeReplayCalls
+let control, worker, models, proxy, previousJournal, beforeReplayCalls, mobileState
 const clients = []
 const mark = step => { report.steps.push({ step, at: new Date().toISOString() }); console.log('迁移验收：' + step) }
 
@@ -44,6 +45,13 @@ async function open(engine) {
   const client = await new SSHProtocolClient(worker, engine).open()
   clients.push(client)
   return client
+}
+
+async function hostFingerprint(engine) {
+  const lines = (await readFile(worker.knownHosts, 'utf8')).trim().split('\n')
+  const line = lines.find(value => value.startsWith(`[127.0.0.1]:${worker.ports[engine]} `))
+  assert.ok(line, '必须有本次 Worker 的真实 Host Key')
+  return 'SHA256:' + createHash('sha256').update(Buffer.from(line.split(' ')[2], 'base64')).digest('base64').replace(/=+$/, '')
 }
 
 async function runTurn(client, threadId, marker) {
@@ -107,6 +115,16 @@ try {
   assert.equal(report.oldControl.workspace_id, control.workspace.id)
   report.oldTurn = await runTurn(old, thread.id, 'MIGRATION_OLD_WRITE')
   report.oldRun = await waitControlTurn(report.oldTurn.turnId)
+  if (!journalMode) {
+    await verifyLegacyMobileSchema(resolve(build.oldSource, 'client/src/db/database.ts'), OLD_COMMIT)
+    const history = await old.request('thread/read', { threadId: thread.id, includeTurns: true })
+    mobileState = await prepareMobileMigration(resolve(root, 'mobile-v12.db'), {
+      workerId: control.registration.worker.id, port: worker.ports.codex,
+      fingerprint: await hostFingerprint('codex'), workspace: worker.workspace,
+      thread: history.thread, baseURL: control.baseURL,
+    })
+    mark('真实旧会话已缓存至客户端 v12，旧草稿、偏好、待核实提交与发送状态已保存')
+  }
   const before = await worker.snapshot()
   report.before = before
   if (journalMode) {
@@ -190,6 +208,40 @@ try {
   assert.ok(claudeList.data.some(item => item.id === started.thread.id))
   assert.ok(!codexList.data.some(item => item.id === started.thread.id))
   assert.ok(!claudeList.data.some(item => item.id === thread.id))
+  if (mobileState) {
+    const calls = structuredClone(models.calls)
+    const history = await claude.request('thread/read', { threadId: started.thread.id, includeTurns: true })
+    report.mobileMigration = await verifyMobileMigration(mobileState, { thread: history.thread,
+      port: worker.ports['claude-code'], fingerprint: await hostFingerprint('claude-code') })
+    // 仅测试凭据引用映射；两入口仍使用 Worker 夹具生成的同一客户端密钥。
+    const credentials = new Map([['retained-key-reference', worker.clientKey], ['claude-key-reference', worker.clientKey]])
+    for (const profile of report.mobileMigration.profiles) {
+      assert.equal(profile.worker_id, control.registration.worker.id)
+      assert.equal(profile.ssh_host_fingerprint, await hostFingerprint(profile.engine))
+      assert.equal(profile.ssh_key_ref, profile.engine === 'codex' ? 'retained-key-reference' : 'claude-key-reference')
+      const credential = credentials.get(profile.ssh_key_ref)
+      assert.ok(credential, '迁移后的密钥引用必须仍可解析')
+      const mobile = await new SSHProtocolClient({ adapter: worker.adapter,
+        sshArguments(engine, command) {
+          const args = worker.sshArguments(engine, command)
+          args[args.indexOf('-p') + 1] = String(profile.ssh_port)
+          args[args.indexOf('-i') + 1] = credential
+          args[args.indexOf('developer@127.0.0.1')] = `${profile.ssh_user}@${profile.ssh_host}`
+          return args
+        },
+      }, profile.engine).open()
+      clients.push(mobile)
+      const id = profile.engine === 'codex' ? thread.id : started.thread.id
+      const loaded = await mobile.request('thread/read', { threadId: id, includeTurns: true })
+      const marker = profile.engine === 'codex' ? 'MIGRATION_RESUME_WRITE_OK' : 'MIGRATION_CLAUDE_WRITE_OK'
+      assert.match(JSON.stringify(loaded.thread.turns), new RegExp(marker))
+      await mobile.close()
+    }
+    assert.deepEqual(models.calls, calls, '迁移客户端数据和恢复读取不得重放待确认消息或模型')
+    report.mobileMigration.realSSHReadback = true
+    report.mobileMigration.noModelReplay = true
+    mark('客户端11张表原记录逐字段保留，双引擎入口重开后经真实SSH读取对应历史且无重放')
+  }
   report.models = await models.verify()
   report.files = {}
   for (const marker of report.models.completed) report.files[marker] = sha256(await readFile(resolve(worker.workspace, marker + '.txt')))
