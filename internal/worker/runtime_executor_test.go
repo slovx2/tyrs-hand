@@ -139,10 +139,16 @@ func TestRunnerDispatchesBothEnginesOnceWithSharedBudget(t *testing.T) {
 		}
 		release <- struct{}{}
 	}
+	// Control 收到终态后，Worker 还要在收到响应后删除 Journal；两者都完成才能停止，否则会误判残留。
 	require.Eventually(t, func() bool {
 		mu.Lock()
-		defer mu.Unlock()
-		return completed[runtimeidentity.Codex] == 1 && completed[runtimeidentity.Claude] == 1
+		finished := completed[runtimeidentity.Codex] == 1 && completed[runtimeidentity.Claude] == 1
+		mu.Unlock()
+		for _, executor := range runner.executors {
+			stored, err := executor.journals.loadAll()
+			finished = finished && err == nil && len(stored) == 0
+		}
+		return finished
 	}, 3*time.Second, 10*time.Millisecond)
 	cancel()
 	require.ErrorIs(t, <-done, context.Canceled)
