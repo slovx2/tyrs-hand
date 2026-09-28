@@ -10,7 +10,19 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：Codex MCP 事件订阅的客户端隔离
+## 最新接续：Linux 双引擎进程诊断
+
+2026-09-28：真实 Linux 适配器调用 `server/diagnostics` 返回 -32601，证据 `linux-diagnostics/before-mounted/`。首个 `before/` 因只读快照缺少 node_modules 挂载点而未启动容器，仅是夹具错误。现返回当前适配器真实 PID、RSS、活动回合及已初始化连接数；没有等价测量的 physical footprint 返回 null。计数使用独立 `claude_adapter` 名称，只描述适配器进程，不代表 CLI 子进程或 Worker 总资源，也不返回配置、路径或凭据。
+
+DIAGNOSTICS-001 使用真实 SDK/CLI，在 AskUserQuestion 等待期间反复查询，确认 active_turns=1、问题不被回答、没有额外模型请求；人工回答完成后为0，完整重启后返回新 PID，历史仍只有原回合。正式报告 `linux-diagnostics/after/`：**1 执行/2 wire/40 报文/27 证据/0 错误**。模型仅回环 Mock，不作为生产模型验证。
+
+DIAGNOSTICS-002 使用 Linux Go race、真实 Worker Hub/SSH 与两引擎，直接对照 `/proc/<pid>/cmdline` 和存活信号，验证实际 PID/RSS、反复只读不换进程，以及分别重启后自身 PID 更新、另一端 PID 和运行代不变，模型请求始终为0。正式报告 `linux-diagnostics/ssh/`：**2 执行/4 wire/32 报文/18 证据/0 错误**。两项已加入正式 runner、trace、方法登记和验收清单，不能从专项推算新的全量缺口。
+
+适配器 **8072dce7878d6ea83e2c4ffbaa7b2ef9cd196c69** 已推送并精确锁定。Linux 全量 **362/362，0 skipped**，build/typecheck/Biome 检查通过；inventory 24/24，integration 增量 lint（含 staged 新文件）0 issues。主库完整 `make ci-local` 退出0，Web 浏览器5/5，日志 `linux-diagnostics/main-ci.log`。三份 Go 和三份适配器代码与 Linux 测试快照哈希相同，两份保护文件保持原哈希、不改不提交。
+
+上一版 72eaecd 常规 CI **36426394618 success**，协议 **36426394439** 仍在运行；已完成的 Control runId **268a56e6-ac26-4c83-88f7-42a95d27ee6c**：28 执行/57 wire/2520 报文/2173 证据/0 错误，runtime failures 为空，PG 无死锁；原始 `ci-72/control-runtime-summary/`。最新完整 Linux 缺口仍以 f06 的110为准，不从本轮专项减算。生产未部署，`releaseReady=false`；macOS Worker 暂缓，Android GUI 自动化 skip、手工 required，默认人工交互计时器不恢复。
+
+## 历史接续：Codex MCP 事件订阅的客户端隔离
 
 2026-09-28：固定官方 Codex 0.157.1 的 MCP 事件流只支持 hosted apps，订阅属于单个连接。Worker Hub 复用上游连接时未隔离 `subscriptionId`；Linux 真 SSH 在第二个客户端创建同名订阅时实际收到 -32600 already exists，证据 `linux-mcp-stream/before-isolation/`。更早两次夹具失败分别是空线程没有 rollout、对 hosted-apps 认证头的假设错误，不计作产品复现。
 

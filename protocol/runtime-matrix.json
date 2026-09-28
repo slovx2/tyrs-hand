@@ -3060,8 +3060,8 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
-        "claude-code": []
+        "codex": ["DIAGNOSTICS-002"],
+        "claude-code": ["DIAGNOSTICS-001", "DIAGNOSTICS-002"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ServerDiagnosticsParams",

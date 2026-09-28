@@ -1,6 +1,7 @@
 {
   "formatVersion": 1,
   "groups": [
+    {"id":"DIAGNOSTICS","description":"001 Claude真实SDK人工等待期间诊断反映本进程和活动回合、重启计数恢复且不增加模型请求；002 Linux双引擎真SSH进程PID/RSS、重复只读及分别重启后身份隔离，不包含配置或凭据","cases":["DIAGNOSTICS-001","DIAGNOSTICS-002"],"caseEngines":{"DIAGNOSTICS-001":["claude-code"],"DIAGNOSTICS-002":["codex","claude-code"]}},
     {"id":"TURNSETTINGS","description":"Claude真实SDK/CLI活动回合模型与effort更新；可选summary/serviceTier兼容不阻断主流程；非法参数整体拒绝、目标隔离、其他会话和未来回合不变、重启不持久化、立即发布等待启动就绪；003Codex真SSH启用官方step_model_switching后模型/effort/summary/tier实际入模、null清除、不兼容模型拒绝、真实嵌套工具结果与唯一副作用、其他会话和未来回合及重启默认不受影响；004Claude自动审查器偏好降级为用户审批且模型设置生效、真实文件写入等待人工允许或拒绝","cases":["TURNSETTINGS-001","TURNSETTINGS-002","TURNSETTINGS-003","TURNSETTINGS-004"],"caseEngines":{"TURNSETTINGS-001":["claude-code"],"TURNSETTINGS-002":["claude-code"],"TURNSETTINGS-003":["codex"],"TURNSETTINGS-004":["claude-code"]}},
     {"id":"ATTACHMENT","description":"001 Codex真SSH附件元数据；002 Claude真实SDK回合附件元数据创建、身份幂等、分页、跨类型及线程隔离、真实通知、重启持久、删除保留历史和源文件及删除会话清理；不代表fileId图片下载","cases":["ATTACHMENT-001","ATTACHMENT-002"],"caseEngines":{"ATTACHMENT-001":["codex"],"ATTACHMENT-002":["claude-code"]}},
     {"id":"PROJECT","description":"001 Codex真SSH原生项目；002 Claude真实SDK项目幂等增删改查、分页重排、线程归属、临时归属不落盘、归档最近活动排序、通知、重启及删除保留历史；003 SQLite故障回滚完整导入且不发虚假通知。模型为回环Mock","cases":["PROJECT-001","PROJECT-002","PROJECT-003"],"caseEngines":{"PROJECT-001":["codex"],"PROJECT-002":["claude-code"],"PROJECT-003":["claude-code"]}},

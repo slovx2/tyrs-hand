@@ -107,6 +107,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	claudeEventGaps := mode == "claude-event-gaps"
 	hooksOnly := mode == "hooks"
 	catalogOnly := mode == "catalog"
+	diagnosticsOnly := mode == "diagnostics"
 	configOnly := mode == "config"
 	codexNative := mode == "codex-catalog" || mode == "codex-migration" || mode == "codex-metadata" || mode == "codex-items" || mode == "codex-projects" || mode == "codex-attachments" || mode == "codex-timeline"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -464,6 +465,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
+		if diagnosticsOnly {
+			continue
+		}
 		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || claudeAccount || parallelApprovals || codexMcp || codexMcpStream || codexMcpOAuth || reviewOnly || codexReview || codexContext || codexPlugins || codexError {
 			continue
 		}
@@ -640,6 +644,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			expectedCalls = 2
 		}
 		require.Equal(t, expectedCalls, modelCalls.Load(), "目录、迁移和目标 CRUD 不能额外调用模型")
+		return
+	}
+	if diagnosticsOnly {
+		verifyRuntimeDiagnostics(t, ctx, registry, clients, protocol)
+		require.Zero(t, modelCalls.Load(), "诊断及引擎重启不能调用模型")
 		return
 	}
 	if catalogOnly || configOnly {
