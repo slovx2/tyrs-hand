@@ -1633,6 +1633,7 @@
         ],
         "claude-code": [
           "APPROVAL-004",
+          "APPROVAL-001",
           "PLAN-003",
           "PERMISSION-004",
           "PERMISSION-005",
@@ -3083,6 +3084,7 @@
         ],
         "claude-code": [
           "APPROVAL-003",
+          "APPROVAL-001",
           "EVENTS-004",
           "MCP-004",
           "MCP-005",
@@ -4545,7 +4547,8 @@
         ],
         "claude-code": [
           "SESSION-001",
-          "SESSION-002"
+          "SESSION-002",
+          "APPROVAL-001"
         ]
       },
       "callers": [

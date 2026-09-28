@@ -84,6 +84,12 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 	defer p.mu.Unlock()
 	caseName := t.Name()
 	caseIDs := []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"}
+	if caseName == "TestRuntimeApprovalArbitrationRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"APPROVAL-001"}
+		}
+	}
 	if caseName == "TestRuntimeCodexTimelineRealSSH" {
 		caseIDs = []string{}
 		if engine == runtimeidentity.Codex {

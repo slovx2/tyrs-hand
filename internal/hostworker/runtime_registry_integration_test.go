@@ -81,6 +81,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	sftpOnly := mode == "mobile-sftp" || mode == "files-acceptance"
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
+	approvalArbitration := mode == "approval-arbitration"
 	permissionGrants := mode == "permission-grants"
 	experimentalFeatures := mode == "experimental-features"
 	shellCommands := mode == "shell-commands"
@@ -176,7 +177,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 				codexMcpFixture.model(t, w, request, body)
 				return
 			}
-			if parallelApprovals {
+			if parallelApprovals || approvalArbitration {
+				if approvalArbitration {
+					require.Equal(t, runtimeidentity.Claude, engine)
+				}
 				parallelFixture.model(t, w, request, engine, body)
 				return
 			}
@@ -450,7 +454,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || approvalArbitration {
 			continue
 		}
 		if commandPermissions {
@@ -654,6 +658,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if approvalOnly {
 		verifyRuntimeApprovalLifecycle(t, ctx, registry, clients[runtimeidentity.Claude], approval)
 		require.Equal(t, int64(7), modelCalls.Load())
+		return
+	}
+	if approvalArbitration {
+		verifyRuntimeApprovalArbitration(t, ctx, clients[runtimeidentity.Claude], parallelFixture)
+		require.Equal(t, int64(4), modelCalls.Load())
 		return
 	}
 	if turnControlOnly {

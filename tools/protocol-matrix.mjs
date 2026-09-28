@@ -178,6 +178,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['PLAN-003'], engines: ['claude-code'] },
   { name: 'approval-lifecycle', pkg: './internal/hostworker', test: 'TestRuntimeApprovalLifecycleRealSSH',
     cases: ['APPROVAL-005'], engines: ['claude-code'] },
+  { name: 'approval-arbitration', pkg: './internal/hostworker', test: 'TestRuntimeApprovalArbitrationRealSSH',
+    cases: ['APPROVAL-001'], engines: ['claude-code'] },
   { name: 'bootstrap', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapRealSSHSharedBudgetAndGitTool',
     cases: ['ENTRY-002', 'TOOLS-002'] },
   { name: 'bootstrap-queue-budget', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapQueueRealSSHSharedBudgetAndGitTool',

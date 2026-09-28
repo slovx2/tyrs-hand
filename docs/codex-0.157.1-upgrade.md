@@ -10,7 +10,15 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：fileId 图片不可读时继续主流程
+## 最新接续：真实多客户端审批仲裁
+
+2026-09-28：新增 `TestRuntimeApprovalArbitrationRealSSH`，把 APPROVAL-001 从内存级检查补齐为 Linux 真实 Worker Hub、双 SSH 客户端和 Claude SDK/CLI 验收。两个客户端收到同一审批ID；客户端取消订阅后先送达的拒绝无效，仍由有效订阅者允许并执行真实Write。下一回合由另一客户端首先拒绝，首端待办收到真实resolved后再投递迟到允许，文件仍不存在，模型请求总数精确为4。
+
+专项通过并已加入正式矩阵，实际报文经未修改的官方schema和请求闭合校验：1执行/3wire/158报文/123证据/0错误。Codex在此场景仅初始化，原始通信保留但不计为Codex审批成功覆盖。Linux Go1.26.6 race连续10轮通过；完整主库 `make ci-local` 退出0，Web浏览器5/5、lint0 issues、inventory24/24。证据根 `.local/validation/2026-09-27-release-goal/linux-approval-arbitration/`。未改产品审批逻辑、官方SDK/CLI或放宽门禁。
+
+旧fb版完整协议CI **36404288032 failure** 已终态。最新完整Linux runId **d3d2dbb2-0574-4ee7-8b31-ff8992b6bf09**，**121=108未登记+3schema错误+10必需语义**；活动回合设置已进入正式覆盖，运行时仍仅MCP017/REVIEW006失败，PG无死锁。原始compact位于 `ci-fb/protocol-summary-ubuntu-24.04/`，聚合 `protocol-fb-summary.json`。不能从本轮审批专项直接减算新的全量缺口，仍需新完整矩阵证据；生产未部署。
+
+## 历史接续：fileId 图片不可读时继续主流程
 
 2026-09-28：适配器 **d453f1a2dd766cadaf2511f998299f8a0cca11b5** 修正 fileId 图片被静默丢弃的问题。正文及后续回合继续执行，同时明确告知模型图片不可读取；历史保留原始 fileId，重启不丢失。纯文本提取使用同一提示，标识不会被当作本地路径或 URL 读取。Worker 对 Discord 图片同步给出明确失败原因，并继续处理其他有效图片；客户端显示不可读及重新附加提示。
 
