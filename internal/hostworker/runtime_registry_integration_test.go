@@ -61,6 +61,18 @@ func TestRuntimeApprovalLifecycleRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "approval-lifecycle")
 }
 
+func TestRuntimeMcpNativeIsolationRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "mcp-native-isolation")
+}
+
+func TestRuntimeCrossEntryIsolationRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "cross-entry-isolation")
+}
+
+func TestRuntimeClaudePermissionChangesRealSSH(t *testing.T) {
+	testRuntimeRegistryRealSSH(t, "claude-permission-changes")
+}
+
 func TestRuntimeThreadPermissionsRealSSHBothEngines(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "thread-permissions")
 }
@@ -81,6 +93,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	sftpOnly := mode == "mobile-sftp" || mode == "files-acceptance"
 	planOnly := mode == "plan-approval"
 	approvalOnly := mode == "approval-lifecycle"
+	permissionChanges := mode == "claude-permission-changes"
+	crossEntry := mode == "cross-entry-isolation"
+	mcpNative := mode == "mcp-native-isolation"
 	approvalArbitration := mode == "approval-arbitration"
 	permissionGrants := mode == "permission-grants"
 	experimentalFeatures := mode == "experimental-features"
@@ -134,6 +149,10 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	sftpFixture := newRuntimeSFTPFixture(root)
 	plan := &runtimePlanFixture{root: root}
 	approval := &runtimeApprovalFixture{root: root}
+	crossEntryFixture := newRuntimeCrossEntryFixture()
+	mcpNativeFixture := newRuntimeMcpNativeFixture(root)
+	permissionChangesFixture := &runtimeClaudePermissionChangesFixture{project: filepath.Join(root, "permission-project"),
+		outside: filepath.Join(root, "permission-outside.txt"), steps: map[string]int{}}
 	grants := &runtimePermissionGrantsFixture{}
 	nativeEvents := &runtimeCodexEventsFixture{root: root}
 	nativeApprovals := &runtimeCodexApprovalFixture{root: root}
@@ -295,6 +314,19 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if approvalOnly {
 				require.Equal(t, runtimeidentity.Claude, engine, "审批不能请求另一引擎")
 				approval.model(t, w, request, body)
+				return
+			}
+			if crossEntry {
+				crossEntryFixture.model(t, w, request, engine, body)
+				return
+			}
+			if mcpNative {
+				mcpNativeFixture.model(t, w, request, engine, body)
+				return
+			}
+			if permissionChanges {
+				require.Equal(t, runtimeidentity.Claude, engine, "Claude 权限变更不能请求另一引擎")
+				permissionChangesFixture.model(t, w, request, body)
 				return
 			}
 			if turnControlOnly {
@@ -479,7 +511,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeThreadPermissions(t, ctx, client, root)
 			continue
 		}
-		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || approvalArbitration || claudeTimeline {
+		if historyOnly || sessionOnly || codexSession || turnControlOnly || mcpOnly || oauthOnly || goalExecution || isolationOnly || sftpOnly || planOnly || approvalOnly || permissionChanges || crossEntry || mcpNative || approvalArbitration || claudeTimeline {
 			continue
 		}
 		if commandPermissions {
@@ -698,6 +730,21 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if planOnly {
 		verifyRuntimePlanApproval(t, ctx, clients[runtimeidentity.Claude], plan)
 		require.Equal(t, int64(8), modelCalls.Load(), "只能执行已脚本化的计划与审批模型请求")
+		return
+	}
+	if mcpNative {
+		verifyRuntimeMcpNativeIsolation(t, ctx, clients, mcpNativeFixture)
+		return
+	}
+	if crossEntry {
+		project := filepath.Join(root, "project")
+		require.NoError(t, os.MkdirAll(project, 0o755))
+		verifyRuntimeCrossEntryIsolation(t, ctx, clients, project, crossEntryFixture)
+		return
+	}
+	if permissionChanges {
+		verifyRuntimeClaudePermissionChanges(t, ctx, clients[runtimeidentity.Claude], permissionChangesFixture, upstream.URL)
+		require.Equal(t, int64(12), modelCalls.Load(), "只执行已脚本化的权限回合")
 		return
 	}
 	if approvalOnly {

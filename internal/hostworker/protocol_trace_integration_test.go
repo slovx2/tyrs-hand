@@ -100,6 +100,21 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 			caseIDs = []string{"MCP-021"}
 		}
 	}
+	if caseName == "TestRuntimeMcpNativeIsolationRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"MCP-003"}
+		}
+	}
+	if caseName == "TestRuntimeCrossEntryIsolationRealSSH" {
+		caseIDs = []string{"ISOLATION-002"}
+	}
+	if caseName == "TestRuntimeClaudePermissionChangesRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Claude {
+			caseIDs = []string{"PERMISSION-001"}
+		}
+	}
 	if caseName == "TestRuntimeApprovalArbitrationRealSSH" {
 		caseIDs = []string{}
 		if engine == runtimeidentity.Claude {

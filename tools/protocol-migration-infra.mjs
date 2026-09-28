@@ -90,10 +90,12 @@ export class MigrationControl {
     this.port = await freePort()
     this.baseURL = `http://127.0.0.1:${this.port}`
     await mkdir(resolve(this.root, 'control-home'), { mode: 0o700 })
+    // Docker Desktop 把发布端口放在宿主机上；容器内运行矩阵时经 PROTOCOL_DOCKER_HOST 访问，默认本机回环。
+    const dockerHost = process.env.PROTOCOL_DOCKER_HOST || '127.0.0.1'
     this.environment = {
       HOME: resolve(this.root, 'control-home'), PATH: process.env.PATH, LANG: 'en_US.UTF-8',
-      TYRS_HAND_DATABASE_URL: `postgres://migration:mock-only@127.0.0.1:${pgPort}/migration?sslmode=disable`,
-      TYRS_HAND_REDIS_URL: `redis://127.0.0.1:${redisPort}/1`,
+      TYRS_HAND_DATABASE_URL: `postgres://migration:mock-only@${dockerHost}:${pgPort}/migration?sslmode=disable`,
+      TYRS_HAND_REDIS_URL: `redis://${dockerHost}:${redisPort}/1`,
       TYRS_HAND_HTTP_ADDR: `127.0.0.1:${this.port}`, TYRS_HAND_PUBLIC_URL: this.baseURL,
       TYRS_HAND_SETUP_TOKEN: randomBytes(24).toString('hex'),
       TYRS_HAND_MASTER_KEY: randomBytes(32).toString('base64'),
