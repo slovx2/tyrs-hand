@@ -31,15 +31,19 @@
     - 持久历史仍为 inProgress 而线程已不活跃时，回合被规整为 `interrupted`。
     改为以 `turn/completed` 事件为准，本地 20/20 通过。其余用 `waitSessionTurn` 轮询 Codex 的专项如出现同类偶发，按同法处理。
 
+  - `waitSessionTurn` 同时加固：`list_turns` 瞬态重试；`interrupted` 持续 2 秒才判定失败（真实中断不会再变回完成）。
+  - FAILURE-007：Worker 发往 Codex 的周期 `model/list` 恰在故意 SIGKILL 时未获响应，被判为“遗漏客户端请求”。现在仅当连接属于被杀进程树时，记为截断证据 `processTerminatedRequests`；其他遗漏仍然失败。
+- **CAPABILITY-001 漏测一项**：适配器已拒绝 `account/workspaceMessages/read`，但测试夹具未发送该请求。已补齐（适配器 14c592c，主库 pin 同步），登记清单与夹具现已一一对应。
+
 ### 剩余缺口
 
-旧产物按新规则离线重算为 21 项，其中大部分只是旧产物缺少本轮新增的证据。重跑完整矩阵后，预期只剩上游原生问题：
+本地完整矩阵（79ec54a，full4）为 **6 项缺口，全部是上游原生问题**，运行时失败仅 codex-mcp-pagination 与 codex-review：
 
 - `thread/timeline/list` 的 3 项 schema 差异；
 - REVIEW-006 与 `review/start@codex`：review 缺少 turn/started；
 - MCP-017：旧版 `tools/list` 分页丢 cursor。
 
-以上问题不修改官方 CLI，也不放宽门禁。
+以上问题不修改官方 CLI，也不放宽门禁。Android UI 自动化、macOS 与 Desktop GUI 仍按用户决定暂缓；生产未部署，`releaseReady=false`。
 
 ## 最新接续：本地 Linux 完整矩阵与语义缺口补齐（2026-09-28 晚）
 
