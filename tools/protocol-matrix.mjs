@@ -46,6 +46,16 @@ writeFileSync(resolve(artifacts, 'combination.json'), JSON.stringify({ node: pro
 
 // 构建先完成，再限制运行时只能访问本地 Mock HTTP；缺少隔离依赖立即失败。
 const controlSuites = [
+  { name: 'bootstrap-queue-lifecycle', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueLifecycleRealSSH',
+    cases: ['QUEUE-002'], engines: ['codex'] },
+  { name: 'bootstrap-queue-worker-restart', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueWholeWorkerRestartRealSSH',
+    cases: ['QUEUE-003'], engines: ['codex'] },
+  { name: 'bootstrap-queue-approval-start', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueApprovalAndStartRealSSH',
+    cases: ['QUEUE-004'], engines: ['codex'] },
+  { name: 'bootstrap-queue-admission-recovery', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueAdmissionRecoveryRealSSH',
+    cases: ['QUEUE-005'], engines: ['codex'] },
+  { name: 'bootstrap-queue-observed-recovery', pkg: './internal/bootstrap', test: 'TestWorkerControlNativeQueueObservedRecoveryRealSSH',
+    cases: ['QUEUE-006'], engines: ['codex'] },
   { name: 'bootstrap-fixture-isolation', pkg: './internal/bootstrap', test: 'TestControlRuntimeFixturesIsolateDatabase',
     cases: [], engines: [] },
   { name: 'bootstrap-confirmation', pkg: './internal/bootstrap', test: 'TestWorkerControlRemoteConfirmationAfterRegistrationRealSSH',

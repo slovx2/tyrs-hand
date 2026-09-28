@@ -32,6 +32,8 @@ const workerChannelPingInterval = 20 * time.Second
 
 func (s *Server) workerRPCWS(c *gin.Context) {
 	worker := currentWorker(c)
+	// Gin 会在 Handler 返回后复用 Context，后台心跳只持有当前请求的独立上下文。
+	requestCtx := c.Request.Context()
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -68,7 +70,7 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 			select {
 			case <-state.closed:
 				return
-			case <-c.Request.Context().Done():
+			case <-requestCtx.Done():
 				return
 			case <-ticker.C:
 				if err := conn.WriteControl(websocket.PingMessage, nil,
@@ -94,7 +96,7 @@ func (s *Server) workerRPCWS(c *gin.Context) {
 			continue
 		}
 		if envelope.Type == workerprotocol.MessageTypeRequest {
-			s.handleWorkerChannelRequest(c.Request.Context(), state, envelope.ID,
+			s.handleWorkerChannelRequest(requestCtx, state, envelope.ID,
 				envelope.Method, envelope.Params)
 			continue
 		}

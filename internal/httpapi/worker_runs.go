@@ -168,8 +168,14 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var lastSequence int64
+	// 与交互登记、回合终态保持 Session -> Control -> Intent -> Run 顺序。
+	// agent_events 的外键也会加锁，不能先持有 Run 再等待这些父记录。
+	if err := lockWorkerRunParents(c.Request.Context(), tx, claimed); err != nil {
+		problem(c, http.StatusInternalServerError, "锁定远程事件所属会话失败", err)
+		return
+	}
 	if err := tx.QueryRowContext(c.Request.Context(), `SELECT worker_event_sequence
-		FROM codex_turn_runs WHERE id = $1 AND worker_id = $2 FOR UPDATE`,
+		FROM codex_turn_runs WHERE id = $1 AND worker_id = $2 FOR NO KEY UPDATE`,
 		runID, worker.ID).Scan(&lastSequence); err != nil {
 		problem(c, http.StatusInternalServerError, "锁定远程事件序列失败", err)
 		return

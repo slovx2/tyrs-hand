@@ -15,6 +15,7 @@ import (
 )
 
 type hostCallState struct {
+	turnID       string
 	controller   *desktopController
 	inner        any
 	subscription *appserverhub.Subscription
@@ -29,17 +30,41 @@ func (c *HostDesktopController) PrepareCall(ctx context.Context, call appserverh
 	threadID, _ := callScope(call.Params)
 	// steer 必须沿用被操纵 turn 的身份，包括未绑定快照。
 	if call.Method == "turn/steer" {
+		var scope struct {
+			ExpectedTurnID string `json:"expectedTurnId"`
+		}
+		if err := json.Unmarshal(call.Params, &scope); err != nil {
+			return appserverhub.CallPlan{}, err
+		}
 		c.mu.Lock()
 		if turn := c.active[threadID]; turn != nil {
 			integration = turn.controller
 		}
+		var execution *hostQueueExecution
+		if queue := c.queued[threadID]; queue != nil {
+			execution = queue.turns[scope.ExpectedTurnID]
+		}
 		c.mu.Unlock()
+		if execution != nil {
+			select {
+			case <-execution.ready:
+				if execution.err != nil {
+					return appserverhub.CallPlan{}, execution.err
+				}
+				integration = execution.controller
+			case <-ctx.Done():
+				return appserverhub.CallPlan{}, ctx.Err()
+			}
+		}
 	}
 	state := &hostCallState{controller: integration}
 	var queueErr error
-	state.queue, queueErr = c.prepareQueueCall(ctx, runtime, call)
+	state.queue, queueErr = c.prepareQueueCall(ctx, runtime, integration, call)
 	if queueErr != nil {
 		return appserverhub.CallPlan{}, queueErr
+	}
+	if state.queue != nil && state.queue.params != nil {
+		call.Params = state.queue.params
 	}
 	if call.Method == "turn/start" && threadID != "" {
 		if runtime == nil || runtime.Client() == nil {
@@ -137,6 +162,12 @@ func (c *HostDesktopController) CompleteCall(ctx context.Context, call appserver
 	if state.subscription != nil {
 		threadID, _ := callScope(plan.Params)
 		_, turnID := callScope(result)
+		c.mu.Lock()
+		state.turnID = turnID
+		if queue := c.queued[threadID]; queue != nil {
+			c.notifyQueueChangedLocked(queue)
+		}
+		c.mu.Unlock()
 		if cause != nil || turnID == "" {
 			c.finishHostCall(threadID, state)
 		} else {
@@ -195,7 +226,14 @@ func (c *HostDesktopController) finishHostCall(threadID string, state *hostCallS
 }
 
 func (c *HostDesktopController) ResolveInteractive(ctx context.Context, request codex.ServerRequest, answer json.RawMessage, surface appserverhub.Role) (bool, json.RawMessage, error) {
-	threadID, _, _ := serverRequestScope(request.Params)
+	threadID, turnID, _ := serverRequestScope(request.Params)
+	execution, err := c.queueExecution(ctx, threadID, turnID)
+	if err != nil {
+		return false, nil, err
+	}
+	if execution != nil && execution.controller != nil && execution.controller.controlEnabled() {
+		return execution.controller.ResolveInteractive(ctx, request, answer, surface)
+	}
 	c.mu.Lock()
 	state := c.active[threadID]
 	c.mu.Unlock()

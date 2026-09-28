@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/interactiveprotocol"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -76,9 +77,8 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	// 与 Discord 帖子绑定按同一 Control 串行，避免交互登记落在绑定事务快照之后。
-	var lockedControl uuid.UUID
-	if err := tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_thread_controls WHERE id=$1 FOR UPDATE`, claimed.ControlID).Scan(&lockedControl); err != nil {
+	// 与事件、终态及 Discord 绑定保持父记录在前，不能持有 Run 后再等待 Session/Intent。
+	if err := lockWorkerRunParents(c.Request.Context(), tx, claimed); err != nil {
 		problem(c, http.StatusInternalServerError, "锁定交互会话失败", err)
 		return
 	}
@@ -484,6 +484,18 @@ func (s *Server) tryResumeInteractive(ctx context.Context, id, workerID uuid.UUI
 	}
 	defer func() { _ = tx.Rollback() }()
 	var runID, controlID, intentID uuid.UUID
+	// 先只读定位，再按事件和终态路径的顺序锁父记录；后面的查询重新读取审批状态。
+	// 旧 joined FOR UPDATE 先持有 Run，恢复 Control 时会与事件上报形成循环等待。
+	err = tx.QueryRowContext(ctx, `SELECT q.run_id,q.control_id,r.primary_intent_id
+		FROM codex_interactive_requests q JOIN codex_turn_runs r ON r.id=q.run_id
+		WHERE q.id=$1 AND r.worker_id=$2`, id, workerID).Scan(&runID, &controlID, &intentID)
+	if err != nil {
+		return false, err
+	}
+	claimed := &codexcontrol.ClaimedControl{Intent: codexcontrol.Intent{ID: intentID, ControlID: controlID}, RunID: runID}
+	if err := lockWorkerRunParents(ctx, tx, claimed); err != nil {
+		return false, err
+	}
 	var status, runStatus string
 	var activeSlot sql.NullInt64
 	var runFinishedAt sql.NullTime

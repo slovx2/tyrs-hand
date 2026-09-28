@@ -74,6 +74,11 @@ type RuntimeRebinder interface {
 	RebindRuntime(context.Context, *appserverhub.Client, int64) error
 }
 
+// 自动回合没有 turn/start RPC，由 Controller 按原生回合身份选择处理器。
+type RuntimeRequestController interface {
+	HandleRuntimeRequest(context.Context, codex.ServerRequest) (bool, any, error)
+}
+
 type runtimeToolBinding struct {
 	id      uint64
 	handler codex.ToolHandler
@@ -396,6 +401,11 @@ func (r *Runtime) BindInteractive(threadID string, handler codex.ServerRequestHa
 }
 
 func (r *Runtime) handleServerRequest(ctx context.Context, request codex.ServerRequest) (any, error) {
+	if controller, ok := r.options.Controller.(RuntimeRequestController); ok {
+		if handled, result, err := controller.HandleRuntimeRequest(ctx, request); handled {
+			return result, err
+		}
+	}
 	var scope struct {
 		ThreadID string `json:"threadId"`
 	}

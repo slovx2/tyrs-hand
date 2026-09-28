@@ -147,3 +147,15 @@ func TestHostQueueTracksDispatchedItemAbsentFromList(t *testing.T) {
 	queueTestEvent(t, c, state, "turn/completed", "turn", "")
 	require.Empty(t, c.processor.turnSlots)
 }
+
+func TestHostQueueForwardsToolAndAssistantItems(t *testing.T) {
+	c, state := newQueueBudgetTest(t, "one")
+	execution := &hostQueueExecution{events: make(chan codex.Event, 4)}
+	state.turns = map[string]*hostQueueExecution{"turn": execution}
+	for _, itemType := range []string{"dynamicToolCall", "agentMessage"} {
+		params, err := json.Marshal(map[string]any{"threadId": "thread", "turnId": "turn", "item": map[string]string{"id": itemType, "type": itemType}})
+		require.NoError(t, err)
+		c.applyHostQueueEvent("thread", state, codex.Event{Method: "item/completed", Params: params})
+	}
+	require.Len(t, execution.events, 2, "识别队列 userMessage 不能丢弃工具或最终回答事件")
+}

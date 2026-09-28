@@ -21,6 +21,7 @@ func (c *HostDesktopController) observeHostQueue(threadID string, state *hostQue
 				c.mu.Lock()
 				if !state.closed {
 					c.processor.logger.Warn("原生队列事件流中断，保留执行槽等待运行时恢复", zap.String("thread_id", threadID))
+					c.closeQueueExecutionEventsLocked(state)
 				}
 				c.mu.Unlock()
 				return
@@ -35,8 +36,9 @@ func (c *HostDesktopController) applyHostQueueEvent(threadID string, state *host
 		ThreadID string `json:"threadId"`
 		TurnID   string `json:"turnId"`
 		Item     struct {
-			Type     string `json:"type"`
-			ClientID string `json:"clientId"`
+			Type     string          `json:"type"`
+			ClientID string          `json:"clientId"`
+			Content  json.RawMessage `json:"content"`
 		} `json:"item"`
 		Turn struct {
 			ID string `json:"id"`
@@ -53,7 +55,7 @@ func (c *HostDesktopController) applyHostQueueEvent(threadID string, state *host
 	switch event.Method {
 	case "item/started", "item/completed":
 		if params.Item.Type != "userMessage" || params.Item.ClientID == "" || params.TurnID == "" {
-			return
+			break
 		}
 		state.observed[params.Item.ClientID] = params.TurnID
 		if state.completed[params.TurnID] {
@@ -61,11 +63,21 @@ func (c *HostDesktopController) applyHostQueueEvent(threadID string, state *host
 		}
 		item := state.items[params.Item.ClientID]
 		if item == nil {
+			if c.active[threadID] != nil {
+				if state.foreign != nil {
+					state.foreign[params.TurnID] = true
+				}
+				c.notifyQueueChangedLocked(state)
+				return
+			}
 			// 初始化分页期间已被原生取出的项仍在执行，不能因 list 缺席而漏记。
 			item = &hostQueueItem{ClientID: params.Item.ClientID}
 			state.items[item.ClientID] = item
 		}
-		item.turnID = params.TurnID
+		if item.turnID == "" {
+			item.turnID = params.TurnID
+		}
+		c.startQueueExecutionLocked(threadID, state, item, params.Item.Content)
 	case "turn/completed":
 		if params.Turn.ID == "" {
 			return
@@ -77,7 +89,37 @@ func (c *HostDesktopController) applyHostQueueEvent(threadID string, state *host
 			}
 		}
 	}
+	turnID := params.TurnID
+	if turnID == "" {
+		turnID = params.Turn.ID
+	}
+	if execution := state.turns[turnID]; execution != nil && !execution.closed {
+		select {
+		case execution.events <- event:
+		default:
+			execution.closed = true
+			close(execution.events)
+			c.processor.logger.Error("原生队列回合事件积压，转入原生快照对账", zap.String("thread_id", threadID), zap.String("turn_id", turnID))
+		}
+	}
+	c.notifyQueueChangedLocked(state)
 	c.finishHostQueueIfIdleLocked(threadID, state)
+}
+
+func (c *HostDesktopController) notifyQueueChangedLocked(state *hostQueueState) {
+	if state.changed != nil {
+		close(state.changed)
+		state.changed = make(chan struct{})
+	}
+}
+
+func (c *HostDesktopController) closeQueueExecutionEventsLocked(state *hostQueueState) {
+	for _, execution := range state.turns {
+		if !execution.closed {
+			execution.closed = true
+			close(execution.events)
+		}
+	}
 }
 
 func (c *HostDesktopController) finishHostQueueIfIdleLocked(threadID string, state *hostQueueState) {
@@ -91,6 +133,8 @@ func (c *HostDesktopController) closeHostQueueLocked(threadID string, state *hos
 		return
 	}
 	state.closed = true
+	c.notifyQueueChangedLocked(state)
+	c.closeQueueExecutionEventsLocked(state)
 	if c.queued[threadID] == state {
 		delete(c.queued, threadID)
 	}

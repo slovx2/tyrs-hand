@@ -146,7 +146,9 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 			if event.Method == "turn/started" {
 				if actualID := eventTurnID(event.Params); actualID != "" {
 					turnID = actualID
-					task.Claimed.ConfirmedTurnID = actualID
+					if task.Claimed.ConfirmedTurnID != actualID {
+						task.Claimed.ConfirmedTurnID = actualID
+					}
 					if p.coordinator != nil {
 						p.coordinator.setTurnID(task.Claimed.RunID, actualID)
 					}

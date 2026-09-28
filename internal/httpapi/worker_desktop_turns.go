@@ -58,6 +58,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := s.lockThreadMetadataParents(c, tx, request.WorkspaceID, threadID); err != nil {
+		problem(c, http.StatusInternalServerError, "锁定 Desktop Turn Session 失败", err)
+		return
+	}
 	var claimed codexcontrol.ClaimedControl
 	var controlStatus, lifecycleState string
 	var allowedJSON, dangerousJSON []byte
@@ -84,7 +88,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
 		AND ct.worker_id = $3 AND ct.engine = $4
 		AND (ct.discord_conversation_id IS NULL OR forum.binding_status='active')
-		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
+		AND project.availability_status='available' FOR NO KEY UPDATE OF ct`, threadID, request.WorkspaceID,
 		worker.ID, currentWorkerEngine(c)).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
 		&projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence, &claimed.CollaborationMode,
@@ -264,7 +268,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO audit_logs(
 			action,resource_type,resource_id,metadata) VALUES (
 			'worker.run.reconciled','codex_thread_control',$1,
-			jsonb_build_object('workerId',$2::text,'runId',$3::text,'previousStatus',$4))`,
+			jsonb_build_object('workerId',$2::text,'runId',$3::text,'previousStatus',$4::text))`,
 			claimed.ControlID.String(), worker.ID, claimed.RunID, controlStatus)
 	}
 	if err == nil {

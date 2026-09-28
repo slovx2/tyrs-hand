@@ -48,6 +48,10 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	}
 
 	worker := currentWorker(c)
+	if err := s.lockThreadMetadataParents(c, tx, request.WorkspaceID, threadID); err != nil {
+		problem(c, http.StatusInternalServerError, "锁定 Desktop Steer Session 失败", err)
+		return
+	}
 	var controlID, sessionID, conversationID, profileID uuid.UUID
 	var nullableConversation, projectID sql.NullString
 	var nextSequence int64
@@ -73,7 +77,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
 		AND ct.worker_id = $3 AND ct.engine = $4
 		AND (ct.discord_conversation_id IS NULL OR forum.binding_status='active')
-		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
+		AND project.availability_status='available' FOR NO KEY UPDATE OF ct`, threadID, request.WorkspaceID,
 		worker.ID, currentWorkerEngine(c)).Scan(&controlID, &sessionID, &nullableConversation, &projectID, &profileID, &nextSequence,
 		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
 		&conversationThreadID, &actorUserID, &actorDisplayName)

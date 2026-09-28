@@ -90,7 +90,17 @@ func (c *HostDesktopController) setBinding(manifest *workerprotocol.WorkspaceMan
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			turn := c.active[threadID]
-			return c.integration == integration && (turn == nil || turn.controller == integration)
+			if c.integration != integration || (turn != nil && turn.controller != integration) {
+				return false
+			}
+			if queue := c.queued[threadID]; queue != nil {
+				for _, item := range queue.items {
+					if item.controller != integration {
+						return false
+					}
+				}
+			}
+			return true
 		}
 		c.integration = integration
 	}
@@ -125,6 +135,9 @@ func (c *HostDesktopController) AttachRuntime(ctx context.Context, runtime *host
 		c.bindClientLocked(c.integration.workspace, runtime.Client(), runtime.Generation())
 	}
 	c.mu.Unlock()
+	if err := c.recoverNativeQueueJournals(ctx); err != nil {
+		return err
+	}
 	go c.runModelCatalogLoop(ctx)
 	if c.processor.cfg.ControlSyncEnabled() {
 		go c.reconcileControlState(ctx)

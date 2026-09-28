@@ -41,14 +41,19 @@ func (c *desktopController) controlEnabled() bool {
 }
 
 type desktopCallState struct {
-	subscription *appserverhub.Subscription
-	toolReady    chan desktopToolRuntime
-	interactive  chan bool
-	task         *workerprotocol.Task
-	reporter     *desktopEventReporter
-	commands     chan workerprotocol.RunCommand
-	unbind       func()
-	unbindInput  func()
+	turnReady          chan struct{}
+	turnReadyOnce      sync.Once
+	events             <-chan codex.Event
+	toolHandler        codex.ToolHandler
+	interactiveHandler codex.ServerRequestHandler
+	subscription       *appserverhub.Subscription
+	toolReady          chan desktopToolRuntime
+	interactive        chan bool
+	task               *workerprotocol.Task
+	reporter           *desktopEventReporter
+	commands           chan workerprotocol.RunCommand
+	unbind             func()
+	unbindInput        func()
 }
 
 type desktopLifecycleCallState struct {
@@ -108,98 +113,10 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 		if threadID == "" {
 			return plan, nil
 		}
-		client := c.workspace.currentClient()
-		if client == nil {
-			return plan, errors.New("宿主 Codex Runtime 正在恢复")
-		}
-		state := &desktopCallState{
-			subscription: client.Subscribe(codex.ThreadFilter{ThreadID: threadID}),
-			toolReady:    make(chan desktopToolRuntime, 1),
-			interactive:  make(chan bool, 1),
-			commands:     make(chan workerprotocol.RunCommand, 16),
-		}
-		localTask, runtime, err := c.localDesktopTask(plan.Params)
+		state, err := c.prepareDesktopTurnState(plan.Params, nil, nil)
 		if err != nil {
-			state.subscription.Close()
 			return plan, err
 		}
-		state.task = &localTask
-		state.reporter, err = newDesktopEventReporter(c.processor.workspaces.ctx,
-			c.processor, state.task)
-		if err != nil {
-			state.subscription.Close()
-			return plan, fmt.Errorf("持久化 Desktop Run Journal: %w", err)
-		}
-		state.reporter.holdRegistration()
-		state.reporter.journal.mu.Lock()
-		state.reporter.journal.AppServerGeneration = c.workspace.currentGeneration()
-		state.reporter.journal.mu.Unlock()
-		if c.processor.coordinator != nil {
-			c.processor.coordinator.register(state.reporter.journal, state.commands)
-		}
-		state.toolReady <- desktopToolRuntime{task: state.task, runtime: runtime,
-			report: state.reporter.Report}
-		state.unbind = c.workspace.bindTool(threadID, func(ctx context.Context,
-			request codex.ToolCallRequest,
-		) (codex.ToolCallResult, error) {
-			select {
-			case runtime := <-state.toolReady:
-				state.toolReady <- runtime
-				if runtime.err != nil {
-					return codex.ToolCallResult{}, runtime.err
-				}
-				if !c.controlEnabled() && request.Namespace != nil &&
-					(*request.Namespace == "tyrs_hand" || request.Tool == "publish_branch") {
-					return codex.TextToolResult("Workspace 绑定已失效，Control 工具不可用", false), nil
-				}
-				if request.Namespace != nil && (*request.Namespace == "tyrs_hand" || request.Tool == "publish_branch") {
-					// 定时任务等工具的状态只存在于 Control；断联时尽快返回工具错误，不能让 SSH 回合无限等待登记。
-					waitTimeout := c.processor.cfg.ControlTimeout
-					if waitTimeout <= 0 {
-						waitTimeout = 30 * time.Second
-					}
-					waitCtx, cancel := context.WithTimeout(ctx, waitTimeout)
-					err := state.reporter.waitControlRegistration(waitCtx)
-					cancel()
-					if err != nil {
-						if ctx.Err() != nil {
-							return codex.ToolCallResult{}, ctx.Err()
-						}
-						return codex.TextToolResult("Control 暂不可达，该工具需要 Control 在线后重试", false), nil
-					}
-				}
-				return c.processor.handleRemoteHostDiscordTool(ctx, runtime.task,
-					runtime.runtime, request)
-			case <-ctx.Done():
-				return codex.ToolCallResult{}, ctx.Err()
-			case <-time.After(10 * time.Second):
-				return codex.ToolCallResult{}, errors.New("动态工具尚未完成 Discord Control 绑定")
-			}
-		})
-		state.unbindInput = c.workspace.bindInteractive(threadID,
-			func(ctx context.Context, request codex.ServerRequest) (any, error) {
-				publishRemoteInteractiveState(state.interactive, true)
-				defer publishRemoteInteractiveState(state.interactive, false)
-				select {
-				case runtime := <-state.toolReady:
-					state.toolReady <- runtime
-					if runtime.err != nil {
-						return nil, runtime.err
-					}
-					if !c.controlEnabled() {
-						return nil, errors.New("当前 Workspace 绑定已失效，请在桌面端回答")
-					}
-					if err := state.reporter.waitControlRegistration(ctx); err != nil {
-						return nil, err
-					}
-					return c.processor.handleRemoteInteractive(ctx, runtime.task,
-						c.workspace.currentGeneration(), request)
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(10 * time.Second):
-					return nil, errors.New("desktop 交互尚未完成 Discord Control 绑定")
-				}
-			})
 		plan.State = state
 		if err := c.startDesktopReplacement(plan.Params); err != nil {
 			c.cleanupDesktopCall(plan, err)
@@ -775,7 +692,8 @@ func (c *desktopController) localDesktopTask(params json.RawMessage) (
 func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	result json.RawMessage, state *desktopCallState,
 ) {
-	defer state.subscription.Close()
+	defer state.releaseTurnWaiters()
+	defer state.closeSubscription()
 	defer state.unbind()
 	defer state.unbindInput()
 	threadID, _ := callScope(call.Params)
@@ -815,6 +733,7 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 		c.processor.logger.Warn("Desktop Run 尚未落盘，继续观察并等待持久化后补登记", zap.Error(err))
 	}
 	reporter.journal.mu.Unlock()
+	state.releaseTurnWaiters()
 	imagesHandedOff = true
 	go c.registerDesktopTurn(ctx, call.Params, requestKey, turnID, images,
 		imageNotice, state)
@@ -833,7 +752,7 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	runtime := codex.NewRuntime(client)
 	toolRuntime, _ := desktopRuntimeForTask(c.workspace.hostRuntime.WorkspaceRoot(),
 		c.workspace.hostRuntime.CodexHome(), c.workspace.runtime.WorkspaceID, task)
-	resultValue, err := c.processor.waitRemoteTurn(ctx, runtime, state.subscription.Events(),
+	resultValue, err := c.processor.waitRemoteTurn(ctx, runtime, state.events,
 		task, threadID, turnID, state.commands,
 		c.processor.hostDiscordCommandHandler(task, toolRuntime, []ports.SkillRef{}, reporter.Report),
 		remoteDiscordEventReporter(reporter.Report), state.interactive)
@@ -1279,13 +1198,14 @@ func (c *desktopController) finishDesktopTurn(ctx context.Context, task *workerp
 func (c *desktopController) cleanupDesktopCall(plan appserverhub.CallPlan, cause error) {
 	switch state := plan.State.(type) {
 	case *desktopCallState:
+		state.releaseTurnWaiters()
 		if state.task != nil && c.processor.coordinator != nil {
 			c.processor.coordinator.unregister(state.task.Claimed.RunID)
 		}
 		if state.task != nil && c.processor.journals != nil {
 			_ = c.processor.journals.remove(state.task.Claimed.RunID)
 		}
-		state.subscription.Close()
+		state.closeSubscription()
 		state.unbind()
 		state.unbindInput()
 	case *desktopThreadCallState:
@@ -1361,15 +1281,16 @@ func callScope(raw json.RawMessage) (string, string) {
 }
 
 type desktopEventReporter struct {
-	ctx                   context.Context
-	processor             *Processor
-	task                  *workerprotocol.Task
-	journal               *runJournal
-	lastFlush             time.Time
-	flushStop             chan struct{}
-	flushClose            sync.Once
-	registrationDone      chan struct{}
-	registrationConfirmed bool
+	ctx                     context.Context
+	processor               *Processor
+	task                    *workerprotocol.Task
+	journal                 *runJournal
+	lastFlush               time.Time
+	flushStop               chan struct{}
+	flushClose              sync.Once
+	registrationDone        chan struct{}
+	registrationConfirmed   bool
+	desktopRequestPersisted bool // 由 journal.mu 保护，只有完整恢复身份确实落盘后才置位。
 }
 
 // desktopEventFlushInterval 是 Desktop 事件上报的去抖窗口。
@@ -1564,6 +1485,9 @@ func (r *desktopEventReporter) saveLocked() error {
 	if err := r.processor.journals.save(r.journal); err != nil {
 		r.processor.logger.Error("持久化 Desktop Run Journal 失败", zap.Error(err))
 		return err
+	}
+	if r.journal.DesktopRequest != nil {
+		r.desktopRequestPersisted = true
 	}
 	return nil
 }

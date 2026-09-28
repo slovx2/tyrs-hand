@@ -1,6 +1,32 @@
 # Codex 0.157.1 升级进度
 
-更新时间：2026-09-27。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
+更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
+
+## 最新接续：Control 组合通过与完整 CI 夹具修复
+
+2026-09-28 接续核验：当前 main/HEAD 仍为 b6422ae，生产未变更，releaseReady=false。Android 仅自动化 GUI skip；手工 GUI 必须完成，当前仍 pending。
+
+- 修复后的正式 Control 组合 runId 567541df-f277-47c1-b2e3-e45b02834a41 已通过：19 条引擎执行、28 份 wire、1702 条报文、1506 条证据，schema 校验无错误，PostgreSQL 死锁门禁通过、runtime failures 为空。它不代表完整协议矩阵通过。
+- 首次完整 make ci-local 在 HTTPAPI 临时数据库启动阶段失败：TestWorkspaceProjectScanSynchronizesMissingAndRecovery 报 port "5432/tcp" not found，尚未进入业务断言。HTTPAPI 夹具现复用 CI 显式提供的 PostgreSQL 服务，并为每例创建、清理独立数据库，不清空其他用例数据。
+- 确定性夹具回归修前失败、修后通过；原失败用例和事件 6 场景、审批登记/恢复 12 场景均在 race 下通过。最终 integration-tag 增量 lint 为 0 issues；完整 make ci-local 复跑退出 0，生成、lint、Go 单测/race/数据库集成、手机 SSH、构建、Android JS export 与浏览器 E2E 5/5 通过，核心覆盖率 80.8%。
+- Android --dev-real APK 已构建安装；旧手工环境退出后，现重新启动专用模拟器和隔离 Control/Worker/双 SSH 环境。全程未启动 Maestro；本轮尚无手工场景通过证据，不能用安装成功代替验收。
+
+证据：`.local/validation/2026-09-27-release-goal/queue-lifecycle-control-matrix-v2/`、`queue-lifecycle-final-ci-local.log`（失败）、`httpapi-ci-database-baseline/tests.log`、`httpapi-ci-database-fixed/tests.log`、`queue-lifecycle-lint-final-v2.log`。完整 CI 复跑日志为 `queue-lifecycle-final-v2-ci-local.log`；恢复后的手工环境证据独立存入 `android-manual-v3/`。
+
+## 最新接续：原生队列生命周期与审批锁序
+
+本段优先于后文历史结果。当前基线为 b6422ae；以下新增实现尚在工作区验证，不能复用旧提交的完整 CI 作为通过证据。
+
+- 原生队列现在在入队前保存 Workspace 身份、Task/Run、输入和 cwd；按实际 userMessage.clientId/turnId 建立独立回合，复用正常回合的 Control、Journal、事件、工具与审批链路。保留原生自动消费，不另发 turn/start。官方队列 schema 没有 additionalContext，参与者信息只进入本地授权快照。
+- 新增 QUEUE-002～006 正式验收：update/delete 与连续回合、reorder 后完整 Worker 重启、接受/取消审批与 queue/start 成功、admission 和实际回合已落盘但 Run Journal 写入失败两种恢复窗口。真实历史只读对账、原 Run ID 和模型仅执行一次已有通过证据；未知/仍 active 的状态不会擅自重放，真实跨 Workspace 变更端到端仍未覆盖。
+- 修复非 userMessage 的 item 事件被丢弃；真实生命周期断言 userMessage/dynamicToolCall/agentMessage 全部进入 agent_events。修复后台心跳读取已复用 Gin Context 的 race，后台改用进入 handler 时捕获的 request context。
+- 修复 displaced Run 审计 SQL 参数类型，以及事件、prepare、steer 的数据库锁序；12 个数据库场景已通过。新增正式 Control 组合 runId 5eadcf7a-8b94-4ce4-bcda-0e087eb86bb8 的 19 条引擎执行、28 份 wire、1712 条报文、1516 条证据通过 schema 校验，但 PostgreSQL 记录两次审批恢复/事件上报死锁，因此组合整体失败。
+- PG 原始日志明确记录恢复审批持有 Run 等待 Control、事件上报反向等待。新增确定性两引擎回归共 12 场景，修前 10 失败/2 通过；统一审批登记、恢复与事件的 Session → Control → Intent → Run 父记录锁序后，12 场景及 6 个事件锁序场景、原生审批与双端仲裁在 race 下全部通过。没有添加数据库盲重试或放宽门禁。
+- 固定 Go 1.26.6、GOTOOLCHAIN=local 的 integration-tag 增量 lint 为 0 issues。修复后的完整 Control 组合正在复跑（queue-lifecycle-control-matrix-v2）；本轮完整 make ci-local、最终提交远端验证尚未完成。
+- b6422ae 常规 CI 36331187494 和 Android-only 36331187898 成功，协议 CI 36331187489 失败。Linux 原始完整覆盖 runId cee4d476-252c-48d5-8027-d30850944129 为 **152 项缺口**：138 未登记、3 无成功协议/schema 证据、11 必需语义未通过；Linux/macOS14 的运行时专项失败仍为 MCP017/REVIEW006。此完整基线替代后文 156 项，不能由 control-only 子集推算完整缺口数。
+- Android 自动化 GUI 保持 skip，手工 GUI 仍 required/pending。本轮已启动专用模拟器并构建 --dev-real 包，尚无手工通过证据。可信 userVerification、fileId 跨端图片、完整协议覆盖和官方两个失败专项继续阻塞发布。生产未变更。
+
+证据根：`.local/validation/2026-09-27-release-goal/`。本轮关键证据：`queue-lifecycle-control-matrix/`、`queue-interactive-lock-baseline.log`、`queue-interactive-lock-fixed.log`、`queue-lifecycle-lint-pinned.log`；先前 queue-lifecycle-complete 的 Gin race 失败保留，不记为通过。
 
 ## 最新接续：队列共享并发与 Android 验收范围
 

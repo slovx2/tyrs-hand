@@ -2215,6 +2215,9 @@ func claimWorkerCommand(t *testing.T, ctx context.Context,
 
 func workerDatabase(t *testing.T) *sql.DB {
 	t.Helper()
+	if dsn := os.Getenv("TEST_DATABASE_URL"); dsn != "" {
+		return openWorkerCIDatabase(t, dsn)
+	}
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{Image: "postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba",
