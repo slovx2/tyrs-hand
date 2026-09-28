@@ -80,6 +80,8 @@ const controlSuites = [
     cases: ['FAILURE-005'], engines: ['codex'] },
   { name: 'bootstrap-control', pkg: './internal/bootstrap', test: 'TestWorkerControlRealSSHBothEngines',
     cases: ['CHANNELS-002', 'AUTOMATION-001', 'AUTOMATION-002', 'APPROVAL-006'] },
+  { name: 'bootstrap-github-disabled', pkg: './internal/bootstrap', test: 'TestWorkerControlGitHubDisabledRealSSH',
+    cases: ['MIGRATION-002'], engines: ['codex', 'claude-code'] },
   { name: 'bootstrap-channels-relay', pkg: './internal/bootstrap', test: 'TestWorkerControlChannelsRelayRealSSH',
     cases: ['CHANNELS-001'], engines: ['claude-code'] },
   { name: 'bootstrap-codex-revert', pkg: './internal/bootstrap', test: 'TestWorkerControlCodexRevertRealSSH',

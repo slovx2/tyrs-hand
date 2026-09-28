@@ -164,6 +164,9 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 			cases = append(cases, "AUTOMATION-001", "AUTOMATION-002", "APPROVAL-006")
 		}
 	}
+	if t.Name() == "TestWorkerControlGitHubDisabledRealSSH" {
+		cases = []string{"MIGRATION-002"}
+	}
 	if t.Name() == "TestWorkerControlChannelsRelayRealSSH" {
 		cases = []string{}
 		if engine == runtimeidentity.Claude {
