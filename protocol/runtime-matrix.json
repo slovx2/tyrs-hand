@@ -2079,11 +2079,13 @@
     {
       "method": "marketplace/add",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2098,17 +2100,20 @@
         "response": "v2/MarketplaceAddResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "插件市场；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "marketplace/remove",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2123,18 +2128,19 @@
         "response": "v2/MarketplaceRemoveResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "插件市场；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "marketplace/upgrade",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
-          "CAPABILITY-003"
+          "UNSUPPORTED-NO-GATE"
         ],
         "claude-code": [
           "CAPABILITY-001",
@@ -2150,7 +2156,8 @@
         "response": "v2/MarketplaceUpgradeResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "插件市场；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {

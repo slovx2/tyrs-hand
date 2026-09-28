@@ -51,7 +51,6 @@ func verifyRuntimeCodexSurface(t *testing.T, ctx context.Context, connection *ss
 		{"app/installed", map[string]any{}, []string{"apps"}},
 		{"app/list", map[string]any{}, []string{"data"}},
 		{"app/read", map[string]any{"appIds": []string{}}, []string{"apps", "missingAppIds"}},
-		{"marketplace/upgrade", map[string]any{}, []string{"selectedMarketplaces", "upgradedRoots", "errors"}},
 		{"memory/status", map[string]any{}, []string{"v2ConsolidatedThreads", "v2Ready"}},
 		{"plugin/reconcile", map[string]any{}, []string{"changedPlugins"}},
 		{"rollout/compress", nil, nil},

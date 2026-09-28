@@ -5,7 +5,8 @@
 //   以及随 ChatGPT 令牌恢复产生的 provider 认证恢复通知；
 // - realtime 语音会话条目；
 // - feedback/upload（上传至外部 Sentry）；
-// - Touch ID 用户验证的登记、删除与校验（Linux Worker 上不可用）。
+// - Touch ID 用户验证的登记、删除与校验（Linux Worker 上不可用）；
+// - 插件市场的添加、移除与升级（本地插件发现、安装与技能 PLUGIN-002 不在此列）。
 // 运行时行为不因此改变：Hub 仍将这些方法原样交给固定版本的 Codex，由原生决定成功或报错；
 // 这里只表示本系统不为其提供验收保证。
 //
@@ -31,6 +32,7 @@ const decided = new Set([
   'modelProvider/authRecoveryStarted', 'modelProvider/authRecoveryCompleted',
   'thread/realtime/item/started', 'thread/realtime/item/completed', 'thread/realtime/item/transcript/delta',
   'feedback/upload', 'userVerification/enroll', 'userVerification/delete', 'userVerification/verify',
+  'marketplace/add', 'marketplace/remove', 'marketplace/upgrade',
 ].map(method => `${method}@codex`))
 
 test('UNSUPPORTED-NO-GATE：仅用户决定的能力登记为明确不支持，且写明原因并挂占位', () => {
