@@ -149,10 +149,21 @@ func TestHubUnsubscribesEphemeralThreadAfterLastDesktopLeaves(t *testing.T) {
 	require.Equal(t, 0, mock.RequestCount("thread/unsubscribe"))
 	second.write(t, rpcMessage{ID: rawID(3), Method: "thread/unsubscribe",
 		Params: mustJSON(map[string]string{"threadId": threadID})})
-	require.Nil(t, second.response(t, rawID(3)).Error)
-	require.Equal(t, 1, mock.RequestCount("thread/unsubscribe"))
 	// 原生向退订方发送关闭通知；Hub 须转交给触发上游退订的最后一个 Desktop，不能泄露给其他客户端。
-	closed := second.notification(t, "thread/closed")
+	// 响应与通知经不同路径写出，到达顺序不固定，须在同一读循环中等待两者。
+	var unsubscribed, closed *rpcMessage
+	for unsubscribed == nil || closed == nil {
+		var message rpcMessage
+		require.NoError(t, second.ws.ReadJSON(&message))
+		switch {
+		case message.Method == "" && string(message.ID) == string(rawID(3)):
+			unsubscribed = &message
+		case len(message.ID) == 0 && message.Method == "thread/closed":
+			closed = &message
+		}
+	}
+	require.Nil(t, unsubscribed.Error)
+	require.Equal(t, 1, mock.RequestCount("thread/unsubscribe"))
 	require.Equal(t, threadID, responseThreadIDFromParams(t, closed.Params))
 	first.write(t, rpcMessage{ID: rawID(4), Method: "thread/loaded/list", Params: mustJSON(map[string]any{})})
 	// 以同一连接上较晚的响应为界，其前不得出现关闭通知。
