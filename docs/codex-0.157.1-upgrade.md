@@ -10,7 +10,25 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：Codex 活动回合设置的真实生效验收
+## 最新接续：Claude 原生队列接入 Worker 与 Control
+
+适配器已推送并精确锁定 **f87083c6ea01937617049d34cceab5c28c896269**。
+
+2026-09-28：Claude 实现持久化 `thread/queue/add/list/update/delete/reorder/start` 与 changed 通知。队列领取、Turn 和消息去重账本使用同一 SQLite 事务；未加载线程只持久化，重启后的只读查询不执行。已加载线程在成功回合后继续消费，失败或中断暂停；队列优先于持续目标自动续跑，结果未确认的工具不自动重放。
+
+Worker 使用实际引擎保存队列 Journal，并验证运行时、Journal、Task 的引擎身份一致。两引擎保留独立数据根，共享执行并发槽；每条队列消息使用实际 userMessage.clientId 关联独立 Control Run、工具和审批。真实验收发现 Claude 审批取消此前只拒绝工具、仍完成回合；现已接入回合中断，原生 CLI 停止后才释放执行权。
+
+Linux race 的六项 Claude Control 队列专项及双引擎共享并发通过：生命周期与平台工具、整 Worker 重启按重排顺序消费、审批接受/取消/显式 start、入队与已观察 Turn 两种 Journal 故障窗口、Workspace 热切换与完整重启后旧身份隔离。正式报告 `linux-claude-queue/control-complete/runtime-wire.json`：**8 执行/19 wire/588 报文/445 证据/0 错误**，PostgreSQL 无死锁。适配器队列与计划审批回归 **10/10**，正式报告 **10 执行/13 wire/450 报文/355 证据/0 错误**。模型 HTTP 仅为回环 Mock，SDK、CLI、Worker、SSH、Control 和数据库均为真实组件。
+
+Codex 六项队列 Linux race 回归通过，正式报告 `codex-regression/runtime-wire.json` 为 **6 执行/14 wire/404 报文/347 证据/0 错误**，PG 无死锁。完整主库 `make ci-local` 退出 0，Web 浏览器 5/5；integration 增量 lint 0 issues，inventory 24/24。源码与 Linux 测试快照逐文件哈希一致，两份保护文件未修改、未提交。
+
+最终 Linux 适配器全量 **359/359，0 skipped**，证据 `linux-claude-queue/full-verified/`；build、typecheck 和 Biome 检查通过。前次全量快照漏挂 README 导致文件读取用例失败，原结果保留 `adapter-full-final/`；补齐后该用例及最终全量均通过，没有改动产品代码来绕过失败。
+
+Docker Linux 空网络命名空间中的关闭隧道模板不再被误判为可出网接口；检查仍要求非回环接口无地址且未启用，并取得 OS 的明确出网拒绝。官方 CLI/SDK、原始 wire 与协议 schema 未修改。Android GUI 自动化 skip、手工 required；macOS Worker 暂缓，生产未部署，`releaseReady=false`。
+
+上一版 c639e1f 常规 CI **36416975079 success**，协议 CI **36416975103 failure**。完整 Linux runId **4453e320-9837-4a92-ada5-afa5f24c05eb**：**116=104 未登记+3 原生 schema 错误+9 必需语义**，MCP017/REVIEW006 仍失败，PG 无死锁。Control runId **a4d0cdfc-d5c5-4888-877d-d22fb1197c7e**：22 执行/43 wire/2168 报文/1882 证据/0 错误。此完整基线尚不含本轮队列，不用专项结果直接减算缺口。
+
+## 历史接续：Codex 活动回合设置的真实生效验收
 
 2026-09-28：新增 TURNSETTINGS-003，经 Linux 真实 Worker Hub/SSH 与官方 Codex 0.157.1 验证 `turn/settings/update`。前置条件是官方 `features.step_model_switching=true`，仅写入隔离夹具配置，未更改生产配置。默认关闭时原生返回明确拒绝；目标模型只有回退元数据或会改变已确定的 Node REPL 审查要求时也会拒绝，不能据此声称任意模型均可热切换。
 

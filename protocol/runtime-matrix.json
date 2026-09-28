@@ -3844,7 +3844,7 @@
       },
       "cases": {
         "codex": ["QUEUE-001", "QUEUE-007"],
-        "claude-code": []
+        "claude-code": ["QUEUE-001", "QUEUE-007", "QUEUE-008"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadQueueAddParams",
@@ -3862,7 +3862,7 @@
       },
       "cases": {
         "codex": ["QUEUE-001"],
-        "claude-code": []
+        "claude-code": ["QUEUE-001", "QUEUE-008"]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadQueueChangedNotification",
@@ -3880,7 +3880,7 @@
       },
       "cases": {
         "codex": ["QUEUE-001"],
-        "claude-code": []
+        "claude-code": ["QUEUE-002", "QUEUE-008"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadQueueDeleteParams",
@@ -3898,7 +3898,7 @@
       },
       "cases": {
         "codex": ["QUEUE-001", "QUEUE-007"],
-        "claude-code": []
+        "claude-code": ["QUEUE-003", "QUEUE-007", "QUEUE-008"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadQueueListParams",
@@ -3916,7 +3916,7 @@
       },
       "cases": {
         "codex": ["QUEUE-003"],
-        "claude-code": []
+        "claude-code": ["QUEUE-003", "QUEUE-008"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadQueueReorderParams",
@@ -3934,7 +3934,7 @@
       },
       "cases": {
         "codex": ["QUEUE-004"],
-        "claude-code": []
+        "claude-code": ["QUEUE-004", "QUEUE-008"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadQueueStartParams",
@@ -3952,7 +3952,7 @@
       },
       "cases": {
         "codex": ["QUEUE-002"],
-        "claude-code": []
+        "claude-code": ["QUEUE-002", "QUEUE-008"]
       },
       "schema": {
         "params": "ClientRequest.json#/definitions/ThreadQueueUpdateParams",

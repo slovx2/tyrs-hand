@@ -10,7 +10,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
-	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"go.uber.org/zap"
 )
 
@@ -61,8 +60,8 @@ func (c *HostDesktopController) prepareQueueCall(ctx context.Context, runtime *h
 	if client == nil {
 		return nil, errors.New("宿主 Codex Runtime 正在恢复")
 	}
-	if runtime.Info().Engine != runtimeidentity.Codex {
-		return nil, nil
+	if runtime.Info().Engine != c.processor.client.Engine() {
+		return nil, errors.New("队列运行时与 Worker 引擎不一致")
 	}
 	var input struct {
 		ThreadID string `json:"threadId"`
@@ -160,6 +159,10 @@ func (c *HostDesktopController) beginHostQueueCall(ctx context.Context, client *
 					break
 				}
 				if items[index].journal != nil {
+					if items[index].journal.Engine != runtime.Info().Engine {
+						err = errors.New("队列 Journal 与运行时引擎不一致")
+						break
+					}
 					items[index].journal, err = items[index].journal.withInput(items[index].Input)
 					if err == nil {
 						err = c.processor.journals.saveQueue(items[index].journal)

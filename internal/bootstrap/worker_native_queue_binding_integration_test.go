@@ -29,18 +29,29 @@ import (
 func TestWorkerControlNativeQueueBindingRealSSH(t *testing.T) {
 	requireControlNetworkIsolation(t)
 	for _, restart := range []bool{false, true} {
-		verifyNativeQueueBinding(t, restart)
+		verifyNativeQueueBinding(t, runtimeidentity.Codex, restart)
+	}
+}
+
+func TestWorkerControlClaudeQueueBindingRealSSH(t *testing.T) {
+	requireControlNetworkIsolation(t)
+	for _, restart := range []bool{false, true} {
+		verifyNativeQueueBinding(t, runtimeidentity.Claude, restart)
 	}
 }
 
 // 管理绑定变更由数据库夹具注入；真实 Control、Worker 和官方 CLI 决定全部执行结果。
-func verifyNativeQueueBinding(t *testing.T, restart bool) {
+func verifyNativeQueueBinding(t *testing.T, engine runtimeidentity.Engine, restart bool) {
 	t.Helper()
 	t.Logf("队列跨 Workspace 验收，完整 Worker 重启=%t", restart)
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	var calls, denied, accepted atomic.Int64
-	model := httptest.NewServer(nativeQueueBindingModel(t, &calls, &denied, &accepted))
+	handler := nativeQueueBindingModel(t, &calls, &denied, &accepted)
+	if engine == runtimeidentity.Claude {
+		handler = claudeQueueBindingModel(t, &calls, &denied, &accepted)
+	}
+	model := httptest.NewServer(handler)
 	t.Cleanup(model.Close)
 	ready := make(chan struct{})
 	close(ready)
@@ -59,7 +70,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 	}
 	app, stop := start()
 	defer func() { stop() }()
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ := connectBootstrapSSH(t, ctx, entry, f.signer)
 	newThread := func() string {
@@ -79,7 +90,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 	watcher := channelsTurnWatcher{events: events}
 	watcher.awaitCompleted(t, ctx, warmup.Turn.ID, nil)
 	events.Close()
-	awaitControlRunCount(t, ctx, f, runtimeidentity.Codex, 1)
+	awaitControlRunCount(t, ctx, f, engine, 1)
 	discord.deliverUntil(t, ctx, func() bool {
 		var pending int
 		return f.db.QueryRowContext(ctx, "SELECT count(*) FROM integration_outbox WHERE status<>'completed'").Scan(&pending) == nil && pending == 0
@@ -95,7 +106,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 	}, &added))
 	require.NotEmpty(t, added.QueuedSubmission.ID)
 	require.EqualValues(t, 1, calls.Load(), "尚未加载的原生队列不能请求模型")
-	admission := readQueueBindingAdmission(t, f.cfg.WorkerDataRoot, clientID)
+	admission := readQueueBindingAdmission(t, queueStateRoot(f, engine), clientID)
 	require.Equal(t, f.workspaceID, admission.Manifest.WorkspaceID)
 	require.Equal(t, f.workspaceID, admission.Task.Snapshot.Session.Project.WorkspaceID)
 	if restart {
@@ -104,7 +115,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 	nextWorkspace := swapQueueFixtureWorkspace(t, ctx, f)
 	if restart {
 		app, stop = start()
-		entry, err = app.Runtimes.Entry(runtimeidentity.Codex)
+		entry, err = app.Runtimes.Entry(engine)
 		require.NoError(t, err)
 		client, _ = connectBootstrapSSH(t, ctx, entry, f.signer)
 	}
@@ -124,7 +135,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 		Result         json.RawMessage
 	}
 	require.Eventually(t, func() bool {
-		path := filepath.Join(f.cfg.WorkerDataRoot, "control-state", "runs", admission.Task.Claimed.RunID.String()+".json")
+		path := filepath.Join(queueStateRoot(f, engine), "control-state", "runs", admission.Task.Claimed.RunID.String()+".json")
 		data, err := os.ReadFile(path)
 		return err == nil && json.Unmarshal(data, &retained) == nil && retained.DesktopRequest != nil &&
 			retained.Task.Claimed.ConfirmedTurnID == oldTurn && len(retained.Result) > 0 && string(retained.Result) != "null"
@@ -165,7 +176,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 	require.Len(t, history.Turns, 2, "旧队列只执行一次且历史仍可读取")
 	stop()
 	app, stop = start()
-	entry, err = app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err = app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ = connectBootstrapSSH(t, ctx, entry, f.signer)
 	var queue struct{ Data []json.RawMessage }
@@ -178,7 +189,7 @@ func verifyNativeQueueBinding(t *testing.T, restart bool) {
 	require.NoError(t, f.db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
 		WHERE external_thread_id=$1 AND workspace_id=$2`, threadID, nextWorkspace).Scan(&foreign))
 	require.Zero(t, foreign)
-	saveBootstrapArtifact(t, "queue-binding", runtimeidentity.Codex, map[string]any{
+	saveBootstrapArtifact(t, "queue-binding", engine, map[string]any{
 		"workerRestarted": restart, "originalWorkspace": f.workspaceID, "newWorkspace": nextWorkspace,
 		"originalRunId": admission.Task.Claimed.RunID, "oldThreadId": threadID, "oldTurnId": oldTurn,
 		"newThreadId": newThreadID, "newTurnId": newTurn, "rejectedTools": denied.Load(), "newSchedules": schedules,

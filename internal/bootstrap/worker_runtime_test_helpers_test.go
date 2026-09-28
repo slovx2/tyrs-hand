@@ -122,15 +122,20 @@ func saveBootstrapArtifact(t *testing.T, kind string, engine runtimeidentity.Eng
 			cases = []string{"SESSION-007"}
 		}
 	}
-	if t.Name() == "TestWorkerControlNativeQueueBindingRealSSH" {
+	if t.Name() == "TestWorkerControlNativeQueueBindingRealSSH" || t.Name() == "TestWorkerControlClaudeQueueBindingRealSSH" {
 		cases = []string{"QUEUE-007"}
 	}
 	queueCases := map[string]string{
 		"TestWorkerControlNativeQueueLifecycleRealSSH":          "QUEUE-002",
+		"TestWorkerControlClaudeQueueLifecycleRealSSH":          "QUEUE-002",
 		"TestWorkerControlNativeQueueWholeWorkerRestartRealSSH": "QUEUE-003",
+		"TestWorkerControlClaudeQueueWholeWorkerRestartRealSSH": "QUEUE-003",
 		"TestWorkerControlNativeQueueApprovalAndStartRealSSH":   "QUEUE-004",
+		"TestWorkerControlClaudeQueueApprovalAndStartRealSSH":   "QUEUE-004",
 		"TestWorkerControlNativeQueueAdmissionRecoveryRealSSH":  "QUEUE-005",
+		"TestWorkerControlClaudeQueueAdmissionRecoveryRealSSH":  "QUEUE-005",
 		"TestWorkerControlNativeQueueObservedRecoveryRealSSH":   "QUEUE-006",
+		"TestWorkerControlClaudeQueueObservedRecoveryRealSSH":   "QUEUE-006",
 	}
 	if id, ok := queueCases[t.Name()]; ok {
 		cases = []string{id}

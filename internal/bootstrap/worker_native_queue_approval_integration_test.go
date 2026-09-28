@@ -23,20 +23,49 @@ import (
 
 // 审批属于实际队列回合；取消后显式启动剩余条目，不能重放已执行项。
 func TestWorkerControlNativeQueueApprovalAndStartRealSSH(t *testing.T) {
+	verifyNativeQueueApproval(t, runtimeidentity.Codex)
+}
+
+func TestWorkerControlClaudeQueueApprovalAndStartRealSSH(t *testing.T) {
+	verifyNativeQueueApproval(t, runtimeidentity.Claude)
+}
+
+func verifyNativeQueueApproval(t *testing.T, engine runtimeidentity.Engine) {
 	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	markers := []string{"QUEUE_APPROVAL_FIRST", "QUEUE_APPROVAL_CANCEL", "QUEUE_APPROVAL_START"}
 	scenarios := make(map[string]*codexOutageScenario)
+	claudeScenarios := make(map[string]*controlApprovalScenario)
 	for _, marker := range markers {
 		scenarios[marker] = &codexOutageScenario{}
+		claudeScenarios[marker] = newControlApprovalScenario()
 	}
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/responses" {
+		if r.URL.Path != queueModelPath(engine) {
 			http.NotFound(w, r)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		require.NoError(t, err)
+		if engine == runtimeidentity.Claude {
+			if claudeQueueTitleResponse(t, w, body) {
+				return
+			}
+			var payload controlAutomationPayload
+			require.NoError(t, json.Unmarshal(body, &payload))
+			input := automationLatestInput(payload)
+			marker := ""
+			for _, candidate := range markers {
+				if strings.Contains(input, candidate) {
+					marker = candidate
+				}
+			}
+			if scenario := claudeScenarios[marker]; scenario != nil && scenario.respond(t, w, body) {
+				return
+			}
+			bootstrapModelText(w, true)
+			return
+		}
 		var request struct {
 			Input []struct {
 				Role    string
@@ -74,6 +103,8 @@ func TestWorkerControlNativeQueueApprovalAndStartRealSSH(t *testing.T) {
 		quotedPath := "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
 		scenarios[marker].active = &controlApprovalCase{id: marker, path: path, decision: decision,
 			input: map[string]any{"command": "printf '" + marker + "' >> " + quotedPath, "workdir": f.cfg.WorkerWorkspaceRoot}}
+		claudeScenarios[marker].active = &controlApprovalCase{tool: "Bash", id: marker, path: path, decision: decision,
+			input: map[string]any{"command": "printf '" + marker + "' >> " + quotedPath}}
 	}
 	workerCtx, stop := context.WithCancel(ctx)
 	app, cleanup, err := InitializeWorker(workerCtx, f.cfg)
@@ -81,7 +112,7 @@ func TestWorkerControlNativeQueueApprovalAndStartRealSSH(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- app.Run(workerCtx) }()
 	t.Cleanup(func() { stop(); <-done; cleanup() })
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	type question struct {
 		request codex.ServerRequest
@@ -162,6 +193,11 @@ func TestWorkerControlNativeQueueApprovalAndStartRealSSH(t *testing.T) {
 			scenario.mu.Lock()
 			seen := scenario.active.resultSeen
 			scenario.mu.Unlock()
+			if engine == runtimeidentity.Claude {
+				claudeScenarios[marker].mu.Lock()
+				seen = claudeScenarios[marker].active.resultSeen
+				claudeScenarios[marker].mu.Unlock()
+			}
 			require.True(t, seen, "真实执行结果必须回到模型")
 		}
 	}
@@ -171,5 +207,5 @@ func TestWorkerControlNativeQueueApprovalAndStartRealSSH(t *testing.T) {
 		var pending int
 		return f.db.QueryRowContext(ctx, "SELECT count(*) FROM integration_outbox WHERE status<>'completed'").Scan(&pending) == nil && pending == 0
 	})
-	saveBootstrapArtifact(t, "queue-approvals", runtimeidentity.Codex, map[string]any{"threadId": threadID, "turnIds": turns, "runIds": runs, "decisions": []string{"accept", "cancel", "accept"}, "explicitStart": thirdID})
+	saveBootstrapArtifact(t, "queue-approvals", engine, map[string]any{"threadId": threadID, "turnIds": turns, "runIds": runs, "decisions": []string{"accept", "cancel", "accept"}, "explicitStart": thirdID})
 }

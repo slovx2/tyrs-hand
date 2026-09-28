@@ -23,24 +23,35 @@ import (
 )
 
 func TestWorkerControlNativeQueueAdmissionRecoveryRealSSH(t *testing.T) {
-	verifyNativeQueueJournalRecovery(t, false)
+	verifyNativeQueueJournalRecovery(t, runtimeidentity.Codex, false)
 }
 
 func TestWorkerControlNativeQueueObservedRecoveryRealSSH(t *testing.T) {
-	verifyNativeQueueJournalRecovery(t, true)
+	verifyNativeQueueJournalRecovery(t, runtimeidentity.Codex, true)
 }
 
-func verifyNativeQueueJournalRecovery(t *testing.T, observed bool) {
+func TestWorkerControlClaudeQueueAdmissionRecoveryRealSSH(t *testing.T) {
+	verifyNativeQueueJournalRecovery(t, runtimeidentity.Claude, false)
+}
+
+func TestWorkerControlClaudeQueueObservedRecoveryRealSSH(t *testing.T) {
+	verifyNativeQueueJournalRecovery(t, runtimeidentity.Claude, true)
+}
+
+func verifyNativeQueueJournalRecovery(t *testing.T, engine runtimeidentity.Engine, observed bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	var calls atomic.Int64
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/responses" {
+		if r.URL.Path != queueModelPath(engine) {
 			http.NotFound(w, r)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		require.NoError(t, err)
+		if engine == runtimeidentity.Claude && claudeQueueTitleResponse(t, w, body) {
+			return
+		}
 		var request struct {
 			Text struct{ Format struct{ Type string } }
 		}
@@ -48,7 +59,7 @@ func verifyNativeQueueJournalRecovery(t *testing.T, observed bool) {
 		if request.Text.Format.Type != "json_schema" {
 			calls.Add(1)
 		}
-		bootstrapModelText(w, false)
+		bootstrapModelText(w, engine == runtimeidentity.Claude)
 	}))
 	t.Cleanup(model.Close)
 	ready := make(chan struct{})
@@ -67,7 +78,7 @@ func verifyNativeQueueJournalRecovery(t *testing.T, observed bool) {
 		return app, stop
 	}
 	app, stop := start()
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ := connectBootstrapSSH(t, ctx, entry, f.signer)
 	var started struct{ Thread struct{ ID string } }
@@ -78,7 +89,7 @@ func verifyNativeQueueJournalRecovery(t *testing.T, observed bool) {
 		return f.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_thread_controls WHERE external_thread_id=$1", threadID).Scan(&count) == nil && count == 1
 	}, 10*time.Second, 20*time.Millisecond)
 	// 注入真实文件系统故障：队列身份可写，但后续 Run Journal 无法创建。
-	runsPath := filepath.Join(f.cfg.WorkerDataRoot, "control-state", "runs")
+	runsPath := filepath.Join(queueStateRoot(f, engine), "control-state", "runs")
 	require.NoError(t, os.Rename(runsPath, runsPath+".saved"))
 	require.NoError(t, os.WriteFile(runsPath, []byte("测试阻断 Run Journal 目录"), 0o600))
 	var restoreOnce sync.Once
@@ -98,7 +109,7 @@ func verifyNativeQueueJournalRecovery(t *testing.T, observed bool) {
 	require.EqualValues(t, 1, calls.Load())
 	stop()
 	restore()
-	paths, err := filepath.Glob(filepath.Join(f.cfg.WorkerDataRoot, "control-state", "queues", "*.json"))
+	paths, err := filepath.Glob(filepath.Join(queueStateRoot(f, engine), "control-state", "queues", "*.json"))
 	require.NoError(t, err)
 	require.Len(t, paths, 1, "Run Journal 写入失败不能删除唯一入队身份")
 	data, err := os.ReadFile(paths[0])
@@ -130,5 +141,5 @@ func verifyNativeQueueJournalRecovery(t *testing.T, observed bool) {
 	stopRecovered()
 	require.EqualValues(t, 1, calls.Load(), "恢复不允许再次调用业务模型")
 	require.NoFileExists(t, paths[0], "可靠转交 Run Journal 后才能清理入队记录")
-	saveBootstrapArtifact(t, "queue-journal-recovery", runtimeidentity.Codex, map[string]any{"observedBeforeRestart": observed, "threadId": threadID, "turnId": turnID, "runId": record.Task.Claimed.RunID, "modelCalls": calls.Load()})
+	saveBootstrapArtifact(t, "queue-journal-recovery", engine, map[string]any{"observedBeforeRestart": observed, "threadId": threadID, "turnId": turnID, "runId": record.Task.Claimed.RunID, "modelCalls": calls.Load()})
 }

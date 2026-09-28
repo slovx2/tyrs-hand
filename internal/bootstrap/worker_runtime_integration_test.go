@@ -231,10 +231,16 @@ stream_max_retries=0
 	var firstQueueID string
 	start := func(engine runtimeidentity.Engine) error {
 		var result any
-		if queuedCodex && engine == runtimeidentity.Codex {
-			var queueErr error
-			firstQueueID, queueErr = enqueueCodex("run queued protocol tool")
-			return queueErr
+		if queuedCodex {
+			if engine == runtimeidentity.Codex {
+				var queueErr error
+				firstQueueID, queueErr = enqueueCodex("run queued protocol tool")
+				return queueErr
+			}
+			return clients[engine].Call(ctx, "thread/queue/add", map[string]any{
+				"threadId": threads[engine], "clientUserMessageId": uuid.NewString(),
+				"input": []map[string]string{{"type": "text", "text": "run protocol tool"}},
+			}, &result)
 		}
 		return clients[engine].Call(ctx, "turn/start", map[string]any{"threadId": threads[engine],
 			"input": []map[string]any{{"type": "text", "text": "run protocol tool", "text_elements": []any{}}}}, &result)

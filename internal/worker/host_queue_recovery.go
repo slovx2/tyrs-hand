@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -17,8 +16,11 @@ import (
 func (c *HostDesktopController) recoverNativeQueueJournals(ctx context.Context) error {
 	integration, runtime := c.snapshot()
 	store := c.processor.journals
-	if store == nil || runtime.Info().Engine != runtimeidentity.Codex {
+	if store == nil {
 		return nil
+	}
+	if runtime.Info().Engine != c.processor.client.Engine() {
+		return errors.New("恢复队列的运行时与 Worker 引擎不一致")
 	}
 	entries, err := store.loadQueues()
 	if err != nil || len(entries) == 0 {
@@ -34,6 +36,9 @@ func (c *HostDesktopController) recoverNativeQueueJournals(ctx context.Context) 
 	}
 	histories := make(map[string]codex.ThreadSnapshot)
 	for _, entry := range entries {
+		if entry.Engine != runtime.Info().Engine {
+			return errors.New("恢复队列的 Journal 与运行时引擎不一致")
+		}
 		if err := validateQueueAdmission(entry); err != nil {
 			return err
 		}

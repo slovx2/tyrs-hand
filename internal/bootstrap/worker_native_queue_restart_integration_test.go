@@ -25,16 +25,27 @@ import (
 )
 
 func TestWorkerControlNativeQueueWholeWorkerRestartRealSSH(t *testing.T) {
+	verifyNativeQueueWorkerRestart(t, runtimeidentity.Codex)
+}
+
+func TestWorkerControlClaudeQueueWholeWorkerRestartRealSSH(t *testing.T) {
+	verifyNativeQueueWorkerRestart(t, runtimeidentity.Claude)
+}
+
+func verifyNativeQueueWorkerRestart(t *testing.T, engine runtimeidentity.Engine) {
 	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	var modelCalls atomic.Int64
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/responses" {
+		if r.URL.Path != queueModelPath(engine) {
 			http.NotFound(w, r)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		require.NoError(t, err)
+		if engine == runtimeidentity.Claude && claudeQueueTitleResponse(t, w, body) {
+			return
+		}
 		var request struct {
 			Text struct{ Format struct{ Type string } }
 		}
@@ -43,7 +54,7 @@ func TestWorkerControlNativeQueueWholeWorkerRestartRealSSH(t *testing.T) {
 			require.Contains(t, string(body), "QUEUE_RESTART_")
 			modelCalls.Add(1)
 		}
-		bootstrapModelText(w, false)
+		bootstrapModelText(w, engine == runtimeidentity.Claude)
 	}))
 	t.Cleanup(model.Close)
 	ready := make(chan struct{})
@@ -62,7 +73,7 @@ func TestWorkerControlNativeQueueWholeWorkerRestartRealSSH(t *testing.T) {
 		return app, stop
 	}
 	app, stop := start()
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ := connectBootstrapSSH(t, ctx, entry, f.signer)
 	var started struct{ Thread struct{ ID string } }
@@ -120,7 +131,7 @@ func TestWorkerControlNativeQueueWholeWorkerRestartRealSSH(t *testing.T) {
 	require.Len(t, admissions, 2, "入队前必须持久化两个独立 Run 身份")
 	stop()
 	app, _ = start()
-	entry, err = app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err = app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ = connectBootstrapSSH(t, ctx, entry, f.signer)
 	events := client.Subscribe(codex.ThreadFilter{ThreadID: threadID})
@@ -146,5 +157,5 @@ func TestWorkerControlNativeQueueWholeWorkerRestartRealSSH(t *testing.T) {
 		var pending int
 		return f.db.QueryRowContext(ctx, "SELECT count(*) FROM integration_outbox WHERE status<>'completed'").Scan(&pending) == nil && pending == 0
 	})
-	saveBootstrapArtifact(t, "queue-worker-restart", runtimeidentity.Codex, map[string]any{"threadId": threadID, "turnIds": turns, "admissions": admissions, "modelCalls": modelCalls.Load()})
+	saveBootstrapArtifact(t, "queue-worker-restart", engine, map[string]any{"threadId": threadID, "turnIds": turns, "admissions": admissions, "modelCalls": modelCalls.Load()})
 }

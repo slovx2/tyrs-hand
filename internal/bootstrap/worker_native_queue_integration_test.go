@@ -22,6 +22,14 @@ import (
 
 // 连续原生回合各自创建 Control Run，平台工具必须使用对应回合的身份。
 func TestWorkerControlNativeQueueLifecycleRealSSH(t *testing.T) {
+	verifyNativeQueueLifecycle(t, runtimeidentity.Codex)
+}
+
+func TestWorkerControlClaudeQueueLifecycleRealSSH(t *testing.T) {
+	verifyNativeQueueLifecycle(t, runtimeidentity.Claude)
+}
+
+func verifyNativeQueueLifecycle(t *testing.T, engine runtimeidentity.Engine) {
 	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -29,12 +37,16 @@ func TestWorkerControlNativeQueueLifecycleRealSSH(t *testing.T) {
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	var toolsReturned atomic.Int64
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/responses" {
+		if r.URL.Path != queueModelPath(engine) {
 			http.NotFound(w, r)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		require.NoError(t, err)
+		if engine == runtimeidentity.Claude {
+			claudeQueueLifecycleResponse(t, ctx, w, body, entered, release, &enteredOnce, &toolsReturned)
+			return
+		}
 		var request struct {
 			Input []struct {
 				Type, Role      string
@@ -100,7 +112,7 @@ func TestWorkerControlNativeQueueLifecycleRealSSH(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- app.Run(workerCtx) }()
 	t.Cleanup(func() { cancelWorker(); <-done; cleanup() })
-	entry, err := app.Runtimes.Entry(runtimeidentity.Codex)
+	entry, err := app.Runtimes.Entry(engine)
 	require.NoError(t, err)
 	client, _ := connectBootstrapSSH(t, ctx, entry, f.signer)
 	var started struct{ Thread struct{ ID string } }
@@ -161,5 +173,5 @@ func TestWorkerControlNativeQueueLifecycleRealSSH(t *testing.T) {
 		err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox WHERE status<>'completed'`).Scan(&pending)
 		return err == nil && pending == 0
 	})
-	saveBootstrapArtifact(t, "queue-control", runtimeidentity.Codex, map[string]any{"threadId": threadID, "turnIds": turns, "toolResults": toolsReturned.Load(), "schedules": schedules, "deletedSubmissionId": deleted})
+	saveBootstrapArtifact(t, "queue-control", engine, map[string]any{"threadId": threadID, "turnIds": turns, "toolResults": toolsReturned.Load(), "schedules": schedules, "deletedSubmissionId": deleted})
 }

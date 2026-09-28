@@ -78,7 +78,7 @@ func (s *journalStore) queuePath(threadID, clientID string) string {
 }
 
 func (s *journalStore) saveQueue(entry *hostQueueJournal) error {
-	if entry == nil || entry.Version != 1 || entry.Engine != runtimeidentity.Codex || entry.ThreadID == "" || entry.ClientID == "" {
+	if entry == nil || entry.Version != 1 || entry.Engine.Validate() != nil || entry.ThreadID == "" || entry.ClientID == "" {
 		return errors.New("原生队列 Journal 身份无效")
 	}
 	if err := validateQueueAdmission(entry); err != nil {
@@ -104,8 +104,11 @@ func (s *journalStore) readQueue(threadID, clientID string) (*hostQueueJournal, 
 		return nil, err
 	}
 	var entry hostQueueJournal
-	if json.Unmarshal(data, &entry) != nil || entry.Version != 1 || entry.Engine != runtimeidentity.Codex || entry.ThreadID != threadID || entry.ClientID != clientID {
+	if json.Unmarshal(data, &entry) != nil || entry.Version != 1 || entry.Engine.Validate() != nil || entry.ThreadID != threadID || entry.ClientID != clientID {
 		return nil, errors.New("原生队列 Journal 身份不匹配")
+	}
+	if err := validateQueueAdmission(&entry); err != nil {
+		return nil, err
 	}
 	return &entry, nil
 }
@@ -170,7 +173,7 @@ func (c *HostDesktopController) captureQueueInput(ctx context.Context, runtime *
 	if err != nil {
 		return nil, err
 	}
-	entry := &hostQueueJournal{Version: 1, Engine: runtimeidentity.Codex, ThreadID: threadID, ClientID: item.ClientID, Params: localParams}
+	entry := &hostQueueJournal{Version: 1, Engine: runtime.Info().Engine, ThreadID: threadID, ClientID: item.ClientID, Params: localParams}
 	if integration != nil {
 		// queue/add 原生 schema 没有 additionalContext；身份仅保存于本地授权快照。
 		if owner, ok := integration.workspace.ownerParticipant(); ok {

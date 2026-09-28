@@ -19,7 +19,15 @@ func requireControlNetworkIsolation(t *testing.T) {
 		interfaces, err := net.Interfaces()
 		require.NoError(t, err)
 		for _, iface := range interfaces {
-			require.True(t, iface.Flags&net.FlagLoopback != 0, "真实验收必须运行在仅回环的独立 network namespace：%s", iface.Name)
+			if iface.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			// Docker Linux 内核可在空 namespace 中创建未启用的隧道模板。
+			// 仅允许无地址且处于 down 的模板，随后仍必须取得 OS 的明确出网拒绝。
+			require.Zero(t, iface.Flags&net.FlagUp, "网络隔离中存在已启用的非回环接口：%s", iface.Name)
+			addresses, err := iface.Addrs()
+			require.NoError(t, err)
+			require.Empty(t, addresses, "网络隔离中存在非回环地址：%s", iface.Name)
 		}
 	}
 	// 使用文档保留地址，不访问公网模型；只有明确的 OS 拒绝可证明隔离，超时不能代替。
