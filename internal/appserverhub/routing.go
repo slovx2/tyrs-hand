@@ -249,6 +249,7 @@ func (r *Hub) unsubscribe(ctx context.Context, source *session,
 	wasSubscribed := false
 	if source.role == RoleDesktop {
 		wasSubscribed = source.unsubscribe(threadID)
+		r.closeThreadMcpStreams(source.id, threadID)
 		r.signalInteractionChange()
 		r.mu.Lock()
 		r.unbindDesktopTools(source, threadID)

@@ -13,6 +13,7 @@ func TestConnectionResourcesSeparateSameIDsAndEvents(t *testing.T) {
 		{"fs/watch", "fs/changed", "watchId"},
 		{"process/spawn", "process/outputDelta", "processHandle"},
 		{"command/exec", "command/exec/outputDelta", "processId"},
+		{"mcpServer/event/stream/start", "mcpServer/event/stream/notification", "subscriptionId"},
 	} {
 		t.Run(scenario.start, func(t *testing.T) {
 			var received [2][]rpcMessage
@@ -25,7 +26,8 @@ func TestConnectionResourcesSeparateSameIDsAndEvents(t *testing.T) {
 					return nil
 				}, nil)
 				hub.sessions[s.id] = s
-				params, err := json.Marshal(map[string]any{scenario.field: "same:id/中文"})
+				s.subscribe("thread")
+				params, err := json.Marshal(map[string]any{scenario.field: "same:id/中文", "threadId": "thread"})
 				require.NoError(t, err)
 				encoded[index], finishes[index], err = hub.scopeResourceCall(s, scenario.start, params)
 				require.NoError(t, err)

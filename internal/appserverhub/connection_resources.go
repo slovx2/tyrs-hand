@@ -16,12 +16,15 @@ import (
 type connectionResource struct {
 	owner                    int64
 	kind, field, id, cleanup string
+	clientID, threadID       string
 }
 
 // 单条上游连接不能共享客户端的连接级标识，否则相同 watch/进程 ID 会互相覆盖。
 func (r *Hub) scopeResourceCall(source *session, method string, params json.RawMessage) (json.RawMessage, func(error), error) {
 	kind, field, create, release, cleanup := "", "", false, false, ""
 	switch method {
+	case "mcpServer/event/stream/start", "mcpServer/event/stream/stop":
+		return r.scopeMcpStreamCall(source, method, params)
 	case "fs/watch", "fs/unwatch":
 		kind, field, create, release, cleanup = "watch", "watchId", method == "fs/watch", method == "fs/unwatch", "fs/unwatch"
 	case "command/exec", "command/exec/write", "command/exec/resize", "command/exec/terminate":
@@ -96,6 +99,9 @@ func (r *Hub) cleanupResource(resource connectionResource) {
 func (r *Hub) forwardResourceEvent(event codex.Event) bool {
 	field, kind := "", ""
 	switch event.Method {
+	case "mcpServer/event/stream/notification":
+		r.forwardMcpStreamEvent(event)
+		return true
 	case "fs/changed":
 		field, kind = "watchId", "watch"
 	case "command/exec/outputDelta":

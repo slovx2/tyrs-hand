@@ -2017,7 +2017,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["MCP-021"],
         "claude-code": []
       },
       "schema": {
@@ -2035,7 +2035,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["MCP-021"],
         "claude-code": []
       },
       "schema": {
@@ -2053,7 +2053,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["MCP-021"],
         "claude-code": []
       },
       "schema": {

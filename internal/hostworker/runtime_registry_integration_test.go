@@ -96,6 +96,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	claudeAccount := mode == "claude-account"
 	parallelApprovals := mode == "parallel-approvals"
 	codexMcp := mode == "codex-mcp"
+	codexMcpStream := mode == "codex-mcp-stream"
 	codexMcpOAuth := mode == "codex-mcp-oauth"
 	threadPermissions := mode == "thread-permissions"
 	codexSession := mode == "codex-session"
@@ -147,9 +148,14 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	accountFixture := &runtimeCodexAccountFixture{}
 	claudeAccountFixture := &runtimeClaudeAccountFixture{resetsAt: time.Now().Add(time.Hour).Unix()}
 	codexMcpFixture := newRuntimeCodexMcpFixture(root)
+	mcpStreamFixture := newRuntimeMcpStreamFixture()
 	codexOAuthFixture := newRuntimeCodexOAuthFixture(root)
 	parallelFixture := &runtimeParallelApprovalFixture{root: root, codex: runtimeCodexApprovalFixture{root: root}}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if codexMcpStream && request.URL.Path != "/v1/messages" && request.URL.Path != "/v1/responses" {
+			mcpStreamFixture.serve(t, w, request)
+			return
+		}
 		if request.URL.Path == "/v1/messages" || request.URL.Path == "/v1/responses" {
 			modelCalls.Add(1)
 			body, err := io.ReadAll(io.LimitReader(request.Body, 4<<20))
@@ -358,6 +364,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if codexAccount {
 				configuration = accountFixture.configuration(upstream.URL)
 			}
+			if codexMcpStream {
+				configuration = "features.apps = true\n" + accountFixture.configuration(upstream.URL)
+			}
 			if codexError {
 				configuration = strings.Replace(configuration, "stream_max_retries = 0", "stream_max_retries = 1", 1)
 			}
@@ -455,7 +464,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			verifyRuntimeModelCatalog(t, ctx, client, engine)
 			continue
 		}
-		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || claudeAccount || parallelApprovals || codexMcp || codexMcpOAuth || reviewOnly || codexReview || codexContext || codexPlugins || codexError {
+		if codexNative || codexEvents || claudeEvents || hooksOnly || permissionGrants || codexApprovals || experimentalFeatures || claudeEventGaps || shellCommands || contextInjection || codexAccount || claudeAccount || parallelApprovals || codexMcp || codexMcpStream || codexMcpOAuth || reviewOnly || codexReview || codexContext || codexPlugins || codexError {
 			continue
 		}
 		if configOnly {
@@ -519,6 +528,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if codexAccount {
 		verifyRuntimeCodexAccount(t, ctx, registry, clients[runtimeidentity.Codex], accountFixture, root)
 		require.Equal(t, int64(2), modelCalls.Load(), "仅两次业务 Turn 可以请求模型")
+		return
+	}
+	if codexMcpStream {
+		verifyRuntimeCodexMcpEventStream(t, ctx, clients[runtimeidentity.Codex], mcpStreamFixture)
+		require.Zero(t, modelCalls.Load(), "MCP 订阅管理不能触发模型调用")
 		return
 	}
 	if contextInjection {

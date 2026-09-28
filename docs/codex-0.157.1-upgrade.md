@@ -10,7 +10,23 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：自动审查器偏好不阻断 Claude 模型切换
+## 最新接续：Codex MCP 事件订阅的客户端隔离
+
+2026-09-28：固定官方 Codex 0.157.1 的 MCP 事件流只支持 hosted apps，订阅属于单个连接。Worker Hub 复用上游连接时未隔离 `subscriptionId`；Linux 真 SSH 在第二个客户端创建同名订阅时实际收到 -32600 already exists，证据 `linux-mcp-stream/before-isolation/`。更早两次夹具失败分别是空线程没有 rollout、对 hosted-apps 认证头的假设错误，不计作产品复现。
+
+Hub 现在按客户端登记订阅，每次创建使用全新的上游 ID，通知仅投递给所属客户端并恢复客户端 ID。停止、断开连接、会话退订和服务端 terminated 均释放资源；旧代通知和启动回调不能影响复用本地 ID 的新订阅。Desktop 必须仍订阅对应会话，不能借共享上游绕过退订。未修改官方 CLI、SDK、schema 或原始 wire。Claude 事件流能力仍未实现，不据此计为双引擎全部通过。
+
+MCP-021 已加入正式 runner、trace 与三个接口的 Codex 登记。Linux Go race 真 SSH 验证 active 前请求不返回、参数/元数据实际送达、同名双客户端订阅、人工停止/断线后的另一端持续推送、服务端终止与 ID 复用、会话退订清理和零模型请求。正式报告 `linux-mcp-stream/after/runtime-wire.json`：**1 执行/3 wire/60 报文/42 证据/0 错误**。hosted-apps 服务和账户凭据均为隔离回环夹具，不代表公网账户或生产认证验证。Hub 全量 race 通过，新增迟到回调与退订单测通过，integration 增量 lint 0 issues，inventory 24/24。
+
+4a3ab94 的完整 Linux 报告已消费：runId **bdeeb43c-dc8e-4e1a-b68c-6b7b0c0ba886**，**110=97 未登记+1 缺成功报文+3 原生 schema 错误+9 必需语义**，MCP017/REVIEW006 仍失败，PG 无死锁。原始 `ci-4a3/` 与 `summary.json`。单项报文缺口为 Claude QUEUE-003 登记的 queue/list 未在重启专项实际调用；现补齐双引擎重启后读取原条目 ID/重排顺序、无模型副作用、执行后为空的真实断言，保留原登记。Linux Control race **2 执行/6 wire/133 报文/109 证据/0 错误**，PG 无死锁，证据 `linux-mcp-stream/queue-read/`。本轮专项不能直接减算新的完整缺口。
+
+主库完整 `make ci-local` 退出 0，Web 浏览器 5/5，日志 `linux-mcp-stream/main-ci.log`。本轮未改适配器，仍精确锁定 **e7f51376fb1845ebac42a1b31a8531bc34edc0b8**，不重复计算适配器全量。八份变更 Go 源与 Linux 编译快照的 SHA256 一致；两个保护文件保持原哈希、未修改或提交。
+
+上一版 f06dca8 常规 CI **36423530052 success**，协议 CI **36423530055 failure** 已终态。最新完整 Linux runId **e1d8f75e-adaf-47d4-8b9d-8b583f587a79** 仍为 **110=97+1+3+9**，运行时失败仍仅 MCP017/REVIEW006，PG 无死锁；它尚不包含本轮修复。Control **d43e27cf-d349-4aaa-91b3-c9919e67e76d**：28 执行/57 wire/2525 报文/2179 证据/0 错误，runtime failures 为空，PG 无死锁。原始 `ci-f06/` 与聚合 `summary.json`。
+
+生产尚未部署，`releaseReady=false`。macOS Worker 暂缓；Android GUI 自动化 skip、手工验收 required；默认人工交互计时器不恢复。
+
+## 历史接续：自动审查器偏好不阻断 Claude 模型切换
 
 2026-09-28：继续落实用户要求“不支持字段不得阻碍主流程”。真实 Linux SDK/CLI 复现 `turn/settings/update` 附带合法 `auto_review` 或 `guardian_subagent` 时返回 -32602，导致有效模型切换也被拒绝。现在这两个值保留现有用户审批，模型与 effort 正常发布；不声称 Claude 已实现自动审查器。非法审批角色、非法模型/effort 和协议外参数仍整体拒绝，官方 schema、CLI 与 SDK 未改动。
 

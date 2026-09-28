@@ -134,6 +134,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['MCP-015', 'MCP-016'], engines: ['codex'] },
   { name: 'codex-mcp-pagination', pkg: './internal/hostworker', test: 'TestRuntimeCodexMcpPaginationRealSSH',
     cases: ['MCP-017'], engines: ['codex'] },
+  { name: 'codex-mcp-stream', pkg: './internal/hostworker', test: 'TestRuntimeCodexMcpEventStreamRealSSH',
+    cases: ['MCP-021'], engines: ['codex'] },
   { name: 'claude-account', pkg: './internal/hostworker', test: 'TestRuntimeClaudeAccountRealSSH',
     cases: ['ACCOUNT-003'], engines: ['claude-code'] },
   { name: 'codex-account', pkg: './internal/hostworker', test: 'TestRuntimeCodexAccountRealSSH',

@@ -91,6 +91,12 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 	defer p.mu.Unlock()
 	caseName := t.Name()
 	caseIDs := []string{"ENTRY-001", "ISOLATION-001", "FAILURE-001"}
+	if caseName == "TestRuntimeCodexMcpEventStreamRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"MCP-021"}
+		}
+	}
 	if caseName == "TestRuntimeApprovalArbitrationRealSSH" {
 		caseIDs = []string{}
 		if engine == runtimeidentity.Claude {

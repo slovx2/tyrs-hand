@@ -136,11 +136,21 @@ func verifyNativeQueueWorkerRestart(t *testing.T, engine runtimeidentity.Engine)
 	client, _ = connectBootstrapSSH(t, ctx, entry, f.signer)
 	events := client.Subscribe(codex.ThreadFilter{ThreadID: threadID})
 	t.Cleanup(events.Close)
+	var pending struct {
+		Data []struct{ ID string }
+	}
+	require.NoError(t, client.Call(ctx, "thread/queue/list", map[string]any{"threadId": threadID}, &pending))
+	require.Len(t, pending.Data, 2, "完整 Worker 重启后两个原始队列条目必须仍可读取")
+	require.Equal(t, queuedIDs[1], pending.Data[0].ID)
+	require.Equal(t, queuedIDs[0], pending.Data[1].ID, "只读恢复应保留重排顺序")
+	require.EqualValues(t, 1, modelCalls.Load(), "只读 queue/list 不得启动待执行模型")
 	var resumed any
 	require.NoError(t, client.Call(ctx, "thread/resume", map[string]any{"threadId": threadID}, &resumed))
 	watcher := channelsTurnWatcher{events: events}
 	turns := []string{watcher.awaitCompleted(t, ctx, "", nil), watcher.awaitCompleted(t, ctx, "", nil)}
 	require.EqualValues(t, 3, modelCalls.Load(), "预热一次，完整 Worker 重启后队列各执行一次")
+	require.NoError(t, client.Call(ctx, "thread/queue/list", map[string]any{"threadId": threadID}, &pending))
+	require.Empty(t, pending.Data, "两个条目执行完后必须从待执行队列移除")
 	history, err := codex.NewRuntime(client).ReadThread(ctx, threadID)
 	require.NoError(t, err)
 	require.Len(t, history.Turns, 3, "恢复快照必须包含 paginated 线程的完整真实回合")
