@@ -2,6 +2,22 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：原生项目管理与已完成工具恢复边界
+
+2026-09-28：基于主库 `e41a9ff`，适配器固定 `f667d85`，新增 PROJECT-001 并修正恢复验收的前置条件。生产未变更，`releaseReady=false`。
+
+- PROJECT-001 已完成真实 Codex/SSH 的项目增删改查、同幂等键创建与导入、分页排序、线程导入及 metadata 迁移、重启持久化、删除解除归属且保留历史。目录哨兵文件不变，精确一次回环 Mock 模型调用，Claude 运行代不变且只初始化。
+- 实测重启后仅 `thread/read` 未收到删除项目的线程归属通知；加入真实 `thread/resume` 后，已加载线程收到 `thread/project/updated`。保留最初失败，不将只读历史视为已加载会话。
+- 最终普通与 race 均通过，分别为 runId `35fdb4bc-e0e8-4317-88f9-b6a2740cbe4f`、`e9501031-87a3-446c-877d-cbf405e3fda7`；每轮正式 wire/schema 为 **1 执行、3 wire、116 报文、74 证据、0 错误**。只计 Codex 业务，Claude 初始化原始 trace 保留。已登记九个项目方法/通知及正式矩阵入口，inventory 契约 24/24。
+- 21452da 的常规 CI `36379782185` 成功，协议 CI `36379782159` 已失败；最新完整 Linux 基线是 **148 = 136 未登记 + 12 必需语义**，runId `43785c18-4483-479b-9e7b-f6222fb4004e`。新增 FAILURE-006 的原始报告已提取；不再使用 0f 的 147 作为最新基线。
+- FAILURE-006 的两个业务恢复断言均通过，但 Claude 旧进程在 SIGKILL 前发出的 `thread/name/set` 没有响应。静态的“当前无待办请求”快照后，后台标题同步仍可能发起请求；重启后的标题重试成功没有消除旧请求，因此原 schema 门禁正确报红。原始请求为 connection `51512:2`、id 19，时间 `2026-09-28T05:12:42.949Z`。
+- 恢复夹具先等待真实 Control 标题任务完成和同线程、同连接的原生标题成功响应，再进入已完成工具待补报的 SIGKILL 场景。新 helper 拒绝跨连接响应、旧成功掩盖新待办、重启成功掩盖旧待办、错误与重复响应；回放原 CI wire 仍拒绝原失败。没有改产品、CLI、schema 或恢复门禁，没有清空 pending，也没有新增固定等待。
+- 最终三种恢复场景 FAILURE-006/007/008 全部通过，runId `bd3a35f0-c431-4c3b-a071-716ec8563994`；正式 wire/schema **4 执行、10 wire、369 报文、251 证据、0 错误**。007/008 的 Codex 初始化原始记录保留，不冒充其业务执行。门禁及前置条件契约 16/16，并加入正式 CI。
+- 本轮项目源码的完整 `make ci-local` 退出 0，结束于 `2026-09-28T05:38:05Z`，包括 Go/race/数据库/移动 SSH、客户端、Android export、构建和浏览器 5/5。项目 integration lint 0 issues；恢复前置条件另由最终真实三场景与 16 项契约验证。
+- e41a9ff 的常规 `36381360839` 已成功；协议 `36381360841` 中 Control-runtime、macOS-loopback 成功，macOS14 仍仅 MCP017/REVIEW006 失败，Linux 待终态。Control 原始 runId `84a9b98f-9d90-40c8-979f-cb6dd128ec01`：21 执行、39 wire、2064 报文、1795 证据，无 schema 错误或 PG 死锁。本地通过不直接用于减去完整覆盖缺口。
+
+证据根 `.local/validation/2026-09-27-release-goal/`：`native-projects-resumed/`、`native-projects-race/`、`native-projects-final/`、`native-recovery-title-final/`、`ci-214/failure-006-detail/`、`ci-e41/`。`native-projects-membership/` 保留最初失败；Android GUI 自动化继续 skip，手工验收要求不变。
+
 ## 最新接续：原生审批取消与停止通知
 
 2026-09-28：新增 APPROVAL-002 的真实适配器/SDK/CLI 验收，仅模型 HTTP 为回环 Mock，未修改官方 CLI 或协议门禁。生产未变更，`releaseReady=false`。

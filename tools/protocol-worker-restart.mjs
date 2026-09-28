@@ -10,6 +10,7 @@ import { MigrationControl, sha256, until } from './protocol-migration-infra.mjs'
 import { MigrationWorker } from './protocol-migration-worker.mjs'
 import { startMigrationModels } from './protocol-migration-models.mjs'
 import { MigrationFaultProxy, waitJournalDelivered } from './protocol-migration-journal.mjs'
+import { completedTitleProjection } from './protocol-recovery-title.mjs'
 
 // 独立当前版本恢复验收：复用进程/数据库夹具，不构建或运行任何旧版源码。
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -86,6 +87,23 @@ async function quiescentWire() {
   })
 }
 
+async function completedTitle(engine, threadId) {
+  assert.match(threadId, /^[a-zA-Z0-9_-]+$/)
+  assert.ok(['codex', 'claude-code'].includes(engine))
+  return until(engine + ' 后台标题生成及原生回写全部完成', async () => {
+    const tasks = JSON.parse(control.sql(`SELECT COALESCE(json_agg(row_to_json(x)),'[]') FROM (
+      SELECT task.status,session.generated_title AS title
+      FROM workspace_session_title_tasks task
+      JOIN workspace_sessions session ON session.id=task.session_id
+      JOIN codex_thread_controls control ON control.session_id=session.id
+      WHERE control.external_thread_id='${threadId}' AND control.engine='${engine}') x`))
+    if (tasks.length !== 1 || tasks[0].status !== 'completed' || !tasks[0].title) return undefined
+    const rows = (await readFile(resolve(evidence, `wire-${engine}.jsonl`), 'utf8'))
+      .trim().split('\n').map(JSON.parse)
+    return completedTitleProjection(rows, threadId, tasks[0].title)
+  })
+}
+
 try {
   assert.equal(process.versions.node, '24.14.0')
   const pin = JSON.parse(await readFile(resolve(repo, 'protocol/adapter-lock.json')))
@@ -122,6 +140,8 @@ try {
       input: [{ type: 'text', text: marker }] })
     const completed = await client.waitFor('turn/completed', p => p.threadId === thread.id && p.turn.id === turn.id)
     assert.equal(completed.params.turn.status, 'completed')
+    // 此用例只覆盖已完成工具待补报。先等后台标题真实回写，避免把在途元数据请求混入崩溃边界。
+    const titleProjection = await completedTitle(engine, thread.id)
     const previous = await pending(engine, turn.id)
     const sideEffect = resolve(worker.workspace, marker + '.txt')
     assert.equal(await readFile(sideEffect, 'utf8'), marker + '_SIDE_EFFECT\n')
@@ -162,7 +182,7 @@ try {
     const history = await resumed.request('thread/read', { threadId: thread.id, includeTurns: true })
     assert.match(JSON.stringify(history.thread.turns), new RegExp(marker + '_OK'))
     await resumed.close()
-    report.engines[engine] = { passed: true, threadId: thread.id, turnId: turn.id,
+    report.engines[engine] = { passed: true, threadId: thread.id, turnId: turn.id, titleProjection,
       runId: previous.journal.task.claimed.RunID, pidBefore, pidAfter, crash,
       workerSHA256: workerHashBefore, pendingEventCount: previous.journal.pendingEvents.length,
       originalJournalSHA256: sha256(previous.bytes), modelCalls: models.calls[marker],

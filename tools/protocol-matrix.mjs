@@ -148,6 +148,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['MIGRATION-003'], engines: ['codex'] },
   { name: 'codex-metadata', pkg: './internal/hostworker', test: 'TestRuntimeCodexMetadataRealSSH',
     cases: ['SESSION-005', 'HISTORY-004', 'GOAL-004'], engines: ['codex'] },
+  { name: 'codex-projects', pkg: './internal/hostworker', test: 'TestRuntimeCodexProjectsRealSSH',
+    cases: ['PROJECT-001'], engines: ['codex'] },
   { name: 'codex-items', pkg: './internal/hostworker', test: 'TestRuntimeCodexItemsRealSSH',
     cases: ['HISTORY-005'], engines: ['codex'] },
   { name: 'codex-error', pkg: './internal/hostworker', test: 'TestRuntimeCodexErrorRealSSH',
