@@ -537,11 +537,13 @@
     {
       "method": "applyPatchApproval",
       "engines": {
-        "codex": "required",
+        "codex": "not-applicable",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "NA-SERVER-MESSAGE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -555,7 +557,8 @@
         "internal/appserverhub/routing.go"
       ],
       "reasons": {
-        "claude-code": "Codex 旧版 v1 补丁审批请求；Claude 只下发 v2 item/fileChange/requestApproval"
+        "claude-code": "Codex 旧版 v1 补丁审批请求；Claude 只下发 v2 item/fileChange/requestApproval",
+        "codex": "仅用于旧版 sendUserTurn/sendUserMessage 发起的回合；这些旧 API 已从 0.157.1 协议中移除，本系统不会产生此请求"
       }
     },
     {
@@ -967,11 +970,13 @@
     {
       "method": "execCommandApproval",
       "engines": {
-        "codex": "required",
+        "codex": "not-applicable",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "NA-SERVER-MESSAGE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -985,7 +990,8 @@
         "internal/appserverhub/routing.go"
       ],
       "reasons": {
-        "claude-code": "Codex 旧版 v1 命令审批请求；Claude 只下发 v2 item/commandExecution/requestApproval"
+        "claude-code": "Codex 旧版 v1 命令审批请求；Claude 只下发 v2 item/commandExecution/requestApproval",
+        "codex": "仅用于旧版 sendUserTurn/sendUserMessage 发起的回合；这些旧 API 已从 0.157.1 协议中移除，本系统不会产生此请求"
       }
     },
     {
@@ -3645,11 +3651,13 @@
     {
       "method": "thread/compacted",
       "engines": {
-        "codex": "required",
+        "codex": "not-applicable",
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "NA-SERVER-MESSAGE"
+        ],
         "claude-code": [
           "CONTEXT-002"
         ]
@@ -3660,7 +3668,10 @@
       },
       "callers": [
         "wire:claude-code"
-      ]
+      ],
+      "reasons": {
+        "codex": "上游 0.157.1 已弃用，压缩改由 contextCompaction 条目承载（CONTEXT-007 已验证），原生不再发出此通知"
+      }
     },
     {
       "method": "thread/delete",
