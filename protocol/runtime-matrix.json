@@ -263,11 +263,13 @@
     {
       "method": "account/rateLimitResetCredit/consume",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -282,17 +284,20 @@
         "response": "v2/ConsumeAccountRateLimitResetCreditResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "account/rateLimits/read",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "ACCOUNT-002",
           "ACCOUNT-003"
@@ -307,7 +312,8 @@
         "response": "v2/GetAccountRateLimitsResponse.json"
       },
       "reasons": {
-        "claude-code": "仅返回默认cwd显式凭据对应的原生SDK观测值；无观测或动态凭据来源返回未知，不伪造余额"
+        "claude-code": "仅返回默认cwd显式凭据对应的原生SDK观测值；无观测或动态凭据来源返回未知，不伪造余额",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
@@ -360,11 +366,13 @@
     {
       "method": "account/sendAddCreditsNudgeEmail",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -379,7 +387,8 @@
         "response": "v2/SendAddCreditsNudgeEmailResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
@@ -410,11 +419,13 @@
     {
       "method": "account/usage/read",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -429,17 +440,20 @@
         "response": "v2/GetAccountTokenUsageResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "account/workspaceMessages/read",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -454,7 +468,8 @@
         "response": "v2/GetWorkspaceMessagesResponse.json"
       },
       "reasons": {
-        "claude-code": "ChatGPT 工作区消息；Claude 无 ChatGPT 工作区，适配器以 -32004 明确拒绝"
+        "claude-code": "ChatGPT 工作区消息；Claude 无 ChatGPT 工作区，适配器以 -32004 明确拒绝",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
@@ -1197,11 +1212,13 @@
     {
       "method": "feedback/upload",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -1216,7 +1233,8 @@
         "response": "v2/FeedbackUploadResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "上传诊断日志至外部 Sentry；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
@@ -2447,11 +2465,13 @@
     {
       "method": "modelProvider/authRecoveryCompleted",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -2464,17 +2484,20 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "OpenAI 模型提供方认证恢复；Claude provider 认证失败由原生 CLI 报错，不下发此通知"
+        "claude-code": "OpenAI 模型提供方认证恢复；Claude provider 认证失败由原生 CLI 报错，不下发此通知",
+        "codex": "ChatGPT 令牌失效后的 provider 认证恢复通知；随 ChatGPT 登录态能力一并明确不支持、不做门禁"
       }
     },
     {
       "method": "modelProvider/authRecoveryStarted",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -2487,7 +2510,8 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "OpenAI 模型提供方认证恢复；Claude provider 认证失败由原生 CLI 报错，不下发此通知"
+        "claude-code": "OpenAI 模型提供方认证恢复；Claude provider 认证失败由原生 CLI 报错，不下发此通知",
+        "codex": "ChatGPT 令牌失效后的 provider 认证恢复通知；随 ChatGPT 登录态能力一并明确不支持、不做门禁"
       }
     },
     {
@@ -2672,11 +2696,13 @@
     {
       "method": "plugin/share/checkout",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2691,17 +2717,20 @@
         "response": "v2/PluginShareCheckoutResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "plugin/share/delete",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2716,17 +2745,20 @@
         "response": "v2/PluginShareDeleteResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "plugin/share/list",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2741,17 +2773,20 @@
         "response": "v2/PluginShareListResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "plugin/share/save",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2766,17 +2801,20 @@
         "response": "v2/PluginShareSaveResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "plugin/share/updateTargets",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2791,17 +2829,20 @@
         "response": "v2/PluginShareUpdateTargetsResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
       "method": "plugin/skill/read",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -2816,7 +2857,8 @@
         "response": "v2/PluginSkillReadResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型"
+        "claude-code": "OpenAI 专属能力，真实适配器与 SSH 用例确认 -32004 拒绝且不调用模型",
+        "codex": "需要 ChatGPT 账户登录态；用户 2026-09-29 决定明确不支持、不做门禁，Hub 仍原样交给原生 Codex"
       }
     },
     {
@@ -4256,11 +4298,13 @@
     {
       "method": "thread/realtime/item/completed",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -4273,17 +4317,20 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "OpenAI realtime 语音会话条目；Claude 无 realtime 语音，不下发此通知"
+        "claude-code": "OpenAI realtime 语音会话条目；Claude 无 realtime 语音，不下发此通知",
+        "codex": "OpenAI realtime 语音会话；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
       "method": "thread/realtime/item/started",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -4296,17 +4343,20 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "OpenAI realtime 语音会话条目；Claude 无 realtime 语音，不下发此通知"
+        "claude-code": "OpenAI realtime 语音会话条目；Claude 无 realtime 语音，不下发此通知",
+        "codex": "OpenAI realtime 语音会话；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
       "method": "thread/realtime/item/transcript/delta",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -4319,7 +4369,8 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "OpenAI realtime 语音转写增量；Claude 无 realtime 语音，不下发此通知"
+        "claude-code": "OpenAI realtime 语音转写增量；Claude 无 realtime 语音，不下发此通知",
+        "codex": "OpenAI realtime 语音会话；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
@@ -5203,11 +5254,13 @@
     {
       "method": "userVerification/delete",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -5222,17 +5275,20 @@
         "wire:claude-code"
       ],
       "reasons": {
-        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝",
+        "codex": "Touch ID 用户验证在 Linux Worker 上不可用；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
       "method": "userVerification/enroll",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -5247,7 +5303,8 @@
         "wire:claude-code"
       ],
       "reasons": {
-        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝",
+        "codex": "Touch ID 用户验证在 Linux Worker 上不可用；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
@@ -5280,11 +5337,13 @@
     {
       "method": "userVerification/verify",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -5299,7 +5358,8 @@
         "wire:claude-code"
       ],
       "reasons": {
-        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝"
+        "claude-code": "ChatGPT 账户的 Touch ID 用户验证；Claude 无对应账户验证，以 -32004 明确拒绝",
+        "codex": "Touch ID 用户验证在 Linux Worker 上不可用；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {

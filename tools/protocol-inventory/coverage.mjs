@@ -14,6 +14,7 @@ export function semanticCoverage(acceptance, executions, runId) {
 
 // 把真实 wire、schema 和本次通过的用例关联；不信任方法名计数或历史成功文件。
 export const notApplicableServerMessageCase = 'NA-SERVER-MESSAGE'
+export const unsupportedCapabilityCase = 'UNSUPPORTED-NO-GATE'
 const serverOriginatedKinds = new Set(['ServerNotification', 'ServerRequest'])
 
 export function protocolCoverage(manifest, usages, artifacts, executions, runId, index, validate) {
@@ -154,12 +155,18 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
     if (!entry.schema?.params) missing.push({ method: entry.method, reason: '缺少 schema 登记' })
     for (const engine of ['codex', 'claude-code']) {
       const requirement = entry.engines[engine]
-      if (!['required', 'not-applicable'].includes(requirement)) {
+      if (!['required', 'not-applicable', 'unsupported'].includes(requirement)) {
         missing.push({ method: entry.method, engine, reason: '能力分类无效' }); continue
       }
-      if (requirement === 'not-applicable' && !entry.reasons?.[engine])
-        missing.push({ method: entry.method, engine, reason: '不适用能力缺少原因' })
+      if (requirement !== 'required' && !entry.reasons?.[engine])
+        missing.push({ method: entry.method, engine, reason: '不适用或不支持的能力缺少原因' })
       const cases = entry.cases?.[engine] ?? []
+      // 用户明确决定不支持的能力（见 unsupported-capabilities.test.mjs）不做门禁：写明原因并挂占位用例后直接通过。
+      if (requirement === 'unsupported') {
+        if (!cases.includes(unsupportedCapabilityCase))
+          missing.push({ method: entry.method, engine, reason: '明确不支持的能力须登记占位用例' })
+        continue
+      }
       // 通知与服务端请求由服务端单向下发，客户端无从发起请求取得 -32004 拒绝证据。按用户决定，
       // 不适用的这类消息不做门禁：写明原因并登记占位用例后直接通过，见 not-applicable-server-messages.test.mjs。
       if (requirement === 'not-applicable' && serverOriginatedKinds.has(index?.get(entry.method)?.kind)) {
