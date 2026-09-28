@@ -87,11 +87,13 @@
     {
       "method": "account/gatewayOAuth/changed",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -104,17 +106,20 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "OpenAI Gateway OAuth 状态变化；Claude 不使用 Gateway 认证，不下发此通知"
+        "claude-code": "OpenAI Gateway OAuth 状态变化；Claude 不使用 Gateway 认证，不下发此通知",
+        "codex": "企业网关 provider 的 OAuth 状态通知；随 Gateway OAuth 登录一并明确不支持、不做门禁"
       }
     },
     {
       "method": "account/gatewayOAuth/login",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -129,7 +134,8 @@
         "wire:claude-code"
       ],
       "reasons": {
-        "claude-code": "OpenAI Gateway OAuth 认证；Claude 使用独立 provider 凭据，适配器以 -32004 明确拒绝且不调用模型"
+        "claude-code": "OpenAI Gateway OAuth 认证；Claude 使用独立 provider 凭据，适配器以 -32004 明确拒绝且不调用模型",
+        "codex": "企业网关 provider 的 OAuth 登录；需在共享 Hub 上协商 explicitGatewayOauth，用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
@@ -585,11 +591,13 @@
     {
       "method": "autoApprovalReview/strictReviewRequired",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "NA-SERVER-MESSAGE"
         ]
@@ -602,7 +610,8 @@
         "schema:ServerNotification"
       ],
       "reasons": {
-        "claude-code": "Codex Guardian 自动审批复核；Claude 的审批均经 canUseTool 由用户回答，不下发此通知"
+        "claude-code": "Codex Guardian 自动审批复核；Claude 的审批均经 canUseTool 由用户回答，不下发此通知",
+        "codex": "OpenAI Guardian 自动审批复核通知；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
@@ -3493,11 +3502,13 @@
     {
       "method": "thread/approveGuardianDeniedAction",
       "engines": {
-        "codex": "required",
+        "codex": "unsupported",
         "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "UNSUPPORTED-NO-GATE"
+        ],
         "claude-code": [
           "CAPABILITY-001",
           "CAPABILITY-002"
@@ -3512,7 +3523,8 @@
         "response": "v2/ThreadApproveGuardianDeniedActionResponse.json"
       },
       "reasons": {
-        "claude-code": "OpenAI Guardian 预执行安全分类器；Claude 的拒绝均经 canUseTool 审批，不伪造确认，以 -32004 明确拒绝"
+        "claude-code": "OpenAI Guardian 预执行安全分类器；Claude 的拒绝均经 canUseTool 审批，不伪造确认，以 -32004 明确拒绝",
+        "codex": "OpenAI Guardian 安全分类器的放行操作；用户 2026-09-29 决定明确不支持、不做门禁"
       }
     },
     {
