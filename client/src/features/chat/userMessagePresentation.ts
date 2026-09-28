@@ -43,7 +43,7 @@ export function projectUserMessage(item: UserMessage): UserMessagePresentation {
       hasStructuredImage = true;
       attachments.push("url" in input
         ? attachment(`${item.id}:image:${index}`, filename(input.url), input.url, true)
-        : { key: `${item.id}:image:${index}`, name: `图片（${input.fileId}）`, kind: "image",
+        : { key: `${item.id}:image:${index}`, name: `图片暂不可读取（${input.fileId}），请重新附加图片文件`, kind: "image",
           uri: null, remotePath: null });
     } else if (input.type === "localImage") {
       hasStructuredImage = true;

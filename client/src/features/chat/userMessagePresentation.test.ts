@@ -7,7 +7,7 @@ describe("用户消息图片投影", () => {
   it("fileId 图片保留附件标识，不将 ID 当成可下载地址", () => {
     const result = projectUserMessage({ type: "userMessage", id: "user", clientId: null,
       content: [{ type: "image", fileId: "file-image-1" }] });
-    expect(result.attachments).toEqual([{ key: "user:image:0", name: "图片（file-image-1）",
+    expect(result.attachments).toEqual([{ key: "user:image:0", name: "图片暂不可读取（file-image-1），请重新附加图片文件",
       kind: "image", uri: null, remotePath: null }]);
   });
 

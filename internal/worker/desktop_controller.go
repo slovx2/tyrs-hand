@@ -848,9 +848,10 @@ func desktopImagesFromTurn(ctx context.Context, params json.RawMessage,
 ) ([]workerprotocol.DesktopImage, string, error) {
 	var value struct {
 		Input []struct {
-			Type string `json:"type"`
-			Path string `json:"path"`
-			URL  string `json:"url"`
+			Type   string `json:"type"`
+			Path   string `json:"path"`
+			URL    string `json:"url"`
+			FileID string `json:"fileId"`
 		} `json:"input"`
 	}
 	if err := json.Unmarshal(params, &value); err != nil {
@@ -864,6 +865,14 @@ func desktopImagesFromTurn(ctx context.Context, params json.RawMessage,
 		if item.Type == "image" {
 			if len(images) >= workerprotocol.DesktopImageCountLimit {
 				skipped++
+				continue
+			}
+			if item.URL == "" && item.FileID != "" {
+				// 缺少上游下载能力时只报告图片同步失败，正文回合继续执行。
+				images = append(images, workerprotocol.DesktopImage{
+					Filename: fmt.Sprintf("desktop-image-%02d", ordinal+1),
+					Error:    "当前无法下载 fileId 图片，请重新附加图片文件",
+				})
 				continue
 			}
 			image := desktopImageFromDataURL(item.URL, ordinal)

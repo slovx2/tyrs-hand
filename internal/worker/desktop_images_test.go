@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"os"
 	"testing"
 
@@ -74,4 +75,33 @@ func TestDesktopImagesFromTurnRejectsInvalidDataURLs(t *testing.T) {
 		require.NotEmpty(t, images[0].Error)
 		require.Empty(t, images[0].SourcePath)
 	}
+}
+
+func TestDesktopImagesFromTurnFileIDDoesNotBlockOtherImages(t *testing.T) {
+	var encoded bytes.Buffer
+	require.NoError(t, png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	params, err := json.Marshal(map[string]any{"input": []map[string]string{
+		{"type": "text", "text": "正文继续执行"},
+		{"type": "image", "fileId": "/etc/private-image.png"},
+		{"type": "image", "fileId": "https://example.invalid/private-image.png"},
+		{"type": "image", "url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(encoded.Bytes())},
+	}})
+	require.NoError(t, err)
+	images, notice, err := desktopImagesFromTurn(context.Background(), params,
+		func(context.Context, string) (io.ReadCloser, int64, error) {
+			t.Fatal("不能将 fileId 作为文件路径读取")
+			return nil, 0, nil
+		})
+	require.NoError(t, err, "图片同步降级不能阻断正文回合")
+	t.Cleanup(func() { cleanupTemporaryDesktopImages(images, zap.NewNop()) })
+	require.Empty(t, notice)
+	require.Len(t, images, 3)
+	for _, item := range images[:2] {
+		require.Contains(t, item.Error, "无法下载 fileId 图片")
+		require.Empty(t, item.SourcePath)
+		require.False(t, item.Temporary)
+	}
+	require.Empty(t, images[2].Error)
+	require.Equal(t, int64(encoded.Len()), images[2].Size)
+	require.Equal(t, "image/png", images[2].MediaType)
 }

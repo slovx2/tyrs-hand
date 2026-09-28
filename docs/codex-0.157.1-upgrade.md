@@ -10,7 +10,18 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：活动回合设置与主流程兼容
+## 最新接续：fileId 图片不可读时继续主流程
+
+2026-09-28：适配器 **d453f1a2dd766cadaf2511f998299f8a0cca11b5** 修正 fileId 图片被静默丢弃的问题。正文及后续回合继续执行，同时明确告知模型图片不可读取；历史保留原始 fileId，重启不丢失。纯文本提取使用同一提示，标识不会被当作本地路径或 URL 读取。Worker 对 Discord 图片同步给出明确失败原因，并继续处理其他有效图片；客户端显示不可读及重新附加提示。
+
+这是不可读图片的降级修正，**没有实现 fileId 下载**。附件元数据 RPC 不提供内容下载，当前锁定官方协议中也没有独立图片下载 RPC；不得据此宣称跨端图片功能完成或放宽发布门禁。
+
+- Linux 真实 SDK/CLI 专项 2/2：实际模型 HTTP 收到提示，正文与下一回合完成，完整适配器重启后原始附件保留；模型 HTTP 仅回环 Mock。
+- Linux 适配器完整 **355/355、0 skipped**；build/check 通过，既有 99 warnings/97 infos、无 error。Linux Worker 图片专项 3/3，客户端投影 8/8。
+- 完整主库 `make ci-local` 已退出0，含Go/race/数据库与协议、客户端、移动SSH、Android export、构建和Web浏览器5/5；协议inventory24/24。证据根 `.local/validation/2026-09-27-release-goal/linux-fileid-fallback/`。生产未部署，releaseReady=false。Android 手工验收要求不变。
+- 上一提交 fb3a41b 的常规 CI **36404288048 success**，Control 远端验收也成功：**e6f567f3-aec5-4ad8-8ae6-eac7989a6bfa**，21执行/39wire/2062报文/1793证据/0错误，PG无死锁。完整 Ubuntu 协议 CI 36404288032 仍运行，不能用本轮降级专项推算剩余协议缺口。
+
+## 历史接续：活动回合设置与主流程兼容
 
 2026-09-28：适配器 **e2958c55c295754b2a95e8bc1a633264bba94778** 已提交推送。`turn/settings/update` 通过真实SDK的`applyFlagSettings`修改当前回合的模型和effort，启动阶段等待原生CLI就绪；错误目标及已结束回合返回`targetUnavailable`，不写用户文件或线程默认设置。
 
