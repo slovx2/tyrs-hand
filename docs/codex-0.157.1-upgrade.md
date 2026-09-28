@@ -2,6 +2,17 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：补齐标题与终端审批的原生通信证据
+
+2026-09-28：在主库 `959a863` 和适配器 `cb02aa2` 基础上，只为 TITLE-001、APPROVAL-009 的真实集成测试增加 CLI 入口旁路录制。生产未变更，`releaseReady=false`。
+
+- 标题辅助客户端的 `config/read`、Control 仲裁后提交给 CLI 的终端审批答案不经过 SSH 客户端；此前仅记录 SSH 报文，因而缺少这两项成功响应证据。
+- 测试复用现有字节透传录制器，按真实连接分组保存原生报文，不改变请求、响应、通知或全局 CLI 环境变量。检查录制错误和原生进程退出；未交付下游的迟到响应不得计作成功。
+- 固定工具链、仅回环网络沙箱、真实 Control/PostgreSQL/Redis/Worker/SSH/官方 CLI，模型仍为 Mock。两项正常与 race 专项通过；合并正式 wire/schema 门禁得到 **2 个执行、4 个 wire、410 条报文、370 项证据、0 错误**。
+- TITLE-001 具有真实 `config/read` 成功响应；APPROVAL-009 的取消与允许答案均在原生上游记录成功，SSH 的两个 resolved 仍按 interrupted 计数，未放宽门禁。
+- integration lint 为 0 issues，协议覆盖与 wire 门禁契约 17/17 通过。证据位于 `.local/validation/2026-09-27-release-goal/native-upstream-final/`；最初缺少固定 CLI 环境变量的失败保留于 `native-upstream-title/`。
+- 原 959a863 的远端协议验收 `36376750911`：Control-runtime、macOS loopback 已成功；macOS14 仍仅报 MCP017 分页和 REVIEW006 审查失败，Linux 全量尚在运行。本地补证据结果不能代替该版本的新远端全量覆盖。
+
 ## 最新接续：移除默认人工交互计时器
 
 2026-09-28：适配器 `cb02aa202914182f733144527e3779177f93e3ea` 已提交并推送，主库精确更新 adapter-lock。此段替代下文关于“人工等待问题未修复”的当前状态；历史失败证据保留。生产未变更，`releaseReady=false`。

@@ -115,6 +115,7 @@ func TestWorkerControlCodexStdinApprovalRealSSH(t *testing.T) {
 	ready := make(chan struct{})
 	close(ready)
 	f := newControlRuntimeFixture(t, ctx, model.URL, ready)
+	recordBootstrapCodexUpstream(t, &f.cfg, "item/commandExecution/requestApproval", "server")
 	target = filepath.Join(f.cfg.WorkerWorkspaceRoot, "stdin-accepted.txt")
 	discord := startControlDiscordFixture(t, ctx, f)
 	workerCtx, cancelWorker := context.WithCancel(ctx)

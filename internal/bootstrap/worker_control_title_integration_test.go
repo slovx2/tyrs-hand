@@ -82,6 +82,7 @@ func TestWorkerControlCodexTitleIsolationRealSSH(t *testing.T) {
 	ready := make(chan struct{})
 	close(ready)
 	f := newControlRuntimeFixture(t, ctx, model.URL, ready)
+	recordBootstrapCodexUpstream(t, &f.cfg, "config/read", "client")
 	// 持久配置中已有真实 SDK MCP；空对象的深合并不能移除它。
 	node, err := exec.LookPath("node")
 	require.NoError(t, err)
