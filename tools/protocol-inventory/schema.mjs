@@ -1,5 +1,5 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join, basename, relative } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join, basename, dirname, relative, resolve } from 'node:path'
 import Ajv from 'ajv'
 
 export function schemaIndex(root, extensionsRoot) {
@@ -12,6 +12,7 @@ export function schemaIndex(root, extensionsRoot) {
     }
   }
   walk(root)
+  const loadResponse = schemaCorrector(root)
   const index = new Map()
   // null 参数或共用响应的请求，必须显式关联官方生成的响应类型。
   const responseNames = {
@@ -38,7 +39,7 @@ export function schemaIndex(root, extensionsRoot) {
       const responseFile = kind.endsWith('Request') ? files.get(responseName) : undefined
       index.set(method, {
         kind, params: { ...params, definitions: schema.definitions },
-        response: responseFile ? JSON.parse(readFileSync(responseFile, 'utf8')) : undefined,
+        response: responseFile ? loadResponse(responseFile) : undefined,
         references: { params: `${kind}.json${params?.$ref ?? ''}`, response: responseFile ? relative(root, responseFile) : null },
       })
     }
@@ -54,6 +55,34 @@ export function schemaIndex(root, extensionsRoot) {
       } })
   }
   return index
+}
+
+// 官方 JSON Schema 与同版本官方 TS 定义矛盾时，按 protocol/schema-corrections/<版本>.json 做字段改名勘误。
+// 只改名、不放宽：原字段必须存在、新字段必须不存在，任何一条无法命中即报错，上游修正后须删除勘误。
+export function schemaCorrections(root) {
+  const path = resolve(root, '../../../schema-corrections', `${basename(dirname(root))}.json`)
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).corrections : []
+}
+
+function schemaCorrector(root) {
+  const corrections = schemaCorrections(root)
+  return file => {
+    const schema = JSON.parse(readFileSync(file, 'utf8'))
+    for (const correction of corrections.filter(item => join(root, item.file) === file)) {
+      const variants = schema.definitions?.[correction.definition]?.oneOf ?? []
+      const variant = variants.find(item => item.properties?.type?.enum?.[0] === correction.variant)
+      if (!variant) throw new Error(`schema 勘误未命中：${correction.file} ${correction.definition}.${correction.variant}`)
+      for (const [from, to] of Object.entries(correction.rename)) {
+        if (!(from in variant.properties) || to in variant.properties) {
+          throw new Error(`schema 勘误未命中：${correction.definition}.${correction.variant} ${from}→${to}`)
+        }
+        variant.properties[to] = variant.properties[from]
+        delete variant.properties[from]
+        variant.required = variant.required?.map(name => name === from ? to : name)
+      }
+    }
+    return schema
+  }
 }
 
 export function payloadValidator(index) {
