@@ -66,15 +66,34 @@ func readSessionThread(t *testing.T, ctx context.Context, client *codex.SocketCl
 	return result.Thread
 }
 
+// Codex 0.157.1 在回合进行中读取历史有两种瞬态：会话元数据尚未落入状态库时返回 list_turns 不支持；
+// 持久历史仍为 inProgress 而线程已不活跃时规整为 interrupted。真实中断不会再变回完成，持续 2 秒才判定失败。
 func waitSessionTurn(t *testing.T, ctx context.Context, client *codex.SocketClient, threadID, turnID string) sessionThread {
 	t.Helper()
+	var interruptedSince time.Time
 	for {
-		thread := readSessionThread(t, ctx, client, "thread/read", map[string]any{"threadId": threadID, "includeTurns": true})
+		var result struct {
+			Thread sessionThread `json:"thread"`
+		}
+		err := client.Call(ctx, "thread/read", map[string]any{"threadId": threadID, "includeTurns": true}, &result)
+		if err != nil && !strings.Contains(err.Error(), "list_turns is not supported yet") {
+			require.NoError(t, err)
+		}
+		thread := result.Thread
 		for _, turn := range thread.Turns {
-			if turn.ID == turnID && turn.Status != "inProgress" {
-				require.Equal(t, "completed", turn.Status)
-				return thread
+			if err != nil || turn.ID != turnID || turn.Status == "inProgress" {
+				continue
 			}
+			if turn.Status == "interrupted" {
+				if interruptedSince.IsZero() {
+					interruptedSince = time.Now()
+				}
+				if time.Since(interruptedSince) < 2*time.Second {
+					continue
+				}
+			}
+			require.Equal(t, "completed", turn.Status)
+			return thread
 		}
 		select {
 		case <-ctx.Done():
