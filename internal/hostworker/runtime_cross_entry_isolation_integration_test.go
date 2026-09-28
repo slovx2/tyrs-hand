@@ -63,10 +63,13 @@ func verifyRuntimeCrossEntryIsolation(t *testing.T, ctx context.Context, connect
 		thread := readSessionThread(t, ctx, clients[engine], "thread/start", map[string]any{
 			"cwd": root, "approvalPolicy": "never", "sandbox": "read-only"})
 		threads[engine] = thread.ID
+		// 回合进行中轮询 thread/read 会读到 Codex 尚未落库或被规整为 interrupted 的历史，须以终态事件为准。
+		completed := clients[engine].Subscribe(codex.ThreadFilter{ThreadID: thread.ID})
 		var started struct{ Turn struct{ ID string } }
 		require.NoError(t, clients[engine].Call(ctx, "turn/start", map[string]any{"threadId": thread.ID,
 			"input": []map[string]string{{"type": "text", "text": "ISO002_" + string(engine)}}}, &started))
-		waitSessionTurn(t, ctx, clients[engine], thread.ID, started.Turn.ID)
+		waitIsolationTurnCompleted(t, ctx, completed, thread.ID, started.Turn.ID)
+		completed.Close()
 		// 两入口强制使用同一会话名称，名称缓存必须仍按引擎隔离。
 		require.NoError(t, clients[engine].Call(ctx, "thread/name/set", map[string]any{"threadId": thread.ID, "name": "iso002-same-name"}, nil))
 	}
