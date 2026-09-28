@@ -18,17 +18,24 @@ import (
 
 type protocolTraceTransport struct {
 	codex.MessageTransport
-	mu                   sync.Mutex
-	messages             []map[string]any
-	expectedClose        string
-	parameterErrorMethod string
+	mu                  sync.Mutex
+	messages            []map[string]any
+	expectedClose       string
+	expectedErrorMethod string
+	expectedErrorCode   int
 }
 
 // 负例保留原始报文，仅声明预期参数错误；inventory 仍必须验证实际 -32602 答案。
 func (p *protocolTraceTransport) expectParameterError(method string) {
+	p.expectRequestError(method, -32602)
+}
+
+// 在发送负例前声明精确错误码，正式门禁仍检查原生响应，不能把任意失败算通过。
+func (p *protocolTraceTransport) expectRequestError(method string, code int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.parameterErrorMethod = method
+	p.expectedErrorMethod = method
+	p.expectedErrorCode = code
 }
 
 func (p *protocolTraceTransport) expectClose(reason string) {
@@ -44,9 +51,9 @@ func (p *protocolTraceTransport) record(direction string, payload []byte) {
 	}
 	message["direction"] = direction
 	p.mu.Lock()
-	if direction == "client" && message["method"] == p.parameterErrorMethod && p.parameterErrorMethod != "" {
-		message["expectedErrorCode"] = -32602
-		p.parameterErrorMethod = ""
+	if direction == "client" && message["method"] == p.expectedErrorMethod && p.expectedErrorMethod != "" {
+		message["expectedErrorCode"] = p.expectedErrorCode
+		p.expectedErrorMethod = ""
 	}
 	p.messages = append(p.messages, message)
 	p.mu.Unlock()
@@ -133,6 +140,12 @@ func (p *protocolTraceTransport) save(t *testing.T, engine runtimeidentity.Engin
 		caseIDs = []string{}
 		if engine == runtimeidentity.Codex {
 			caseIDs = []string{"CONTEXT-007"}
+		}
+	}
+	if caseName == "TestRuntimeCodexTurnSettingsRealSSH" {
+		caseIDs = []string{}
+		if engine == runtimeidentity.Codex {
+			caseIDs = []string{"TURNSETTINGS-003"}
 		}
 	}
 	if rootName, _, _ := strings.Cut(caseName, "/"); rootName == "TestRuntimeCodexReviewRealSSH" {

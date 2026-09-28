@@ -10,7 +10,19 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
-## 最新接续：Claude 定点回退与 Linux Control 锁序修复
+## 最新接续：Codex 活动回合设置的真实生效验收
+
+2026-09-28：新增 TURNSETTINGS-003，经 Linux 真实 Worker Hub/SSH 与官方 Codex 0.157.1 验证 `turn/settings/update`。前置条件是官方 `features.step_model_switching=true`，仅写入隔离夹具配置，未更改生产配置。默认关闭时原生返回明确拒绝；目标模型只有回退元数据或会改变已确定的 Node REPL 审查要求时也会拒绝，不能据此声称任意模型均可热切换。
+
+测试从真实 `model/list` 确认目录，模型从 GPT-6 Astra 切到 GPT-6 Sol，下一次 HTTP 请求实际携带新模型、high effort、detailed summary 与 priority tier；再次发布 model=null 保留模型、更新 effort/summary、serviceTier=null 清除 tier。请求已发出时的旧设置不变，其他会话、未来回合及完整运行时重启后的持久默认不受活动覆盖影响。通过官方实际声明的 `functions.exec` 调用嵌套 `exec_command`，两次文件写入与真实 `custom_tool_call_output` 均有断言，恢复不重放。模型服务是隔离回环 Mock，不能当作生产模型验收。
+
+最终专项 `linux-codex-turn-settings/persistent-defaults/`：**1 执行/4 wire/230 报文/169 证据/0 错误**，Linux Go race 通过。Codex 以外的初始化 wire 保留，但不计本次业务。不兼容模型的负例在发送前声明精确 -32600，正式门禁仍检查原生响应；既有 -32602 负例接口继续保留，不修改官方 CLI、SDK、schema 或成功门禁。inventory 24/24、integration 增量 lint 0 issues。首次探测与夹具修正的失败证据保留，包括旧工具声明假设、将线程临时 summary 配置误当作持久默认的断言；最终默认值来自真实 config.toml。
+
+完整主库 `make ci-local` 退出 0，含 Go/race/数据库集成、移动 SSH、客户端、Android export、构建及 Web 浏览器 5/5，日志为 `linux-codex-turn-settings/main-ci.log`。共享录制器的既有 FEATURE-002 原生回归通过，正确范围报告 `trace-regression/scoped-runtime-wire.json` 为 1 执行/2 wire/63 报文/32 证据/0 错误；初次汇总误纳入仅初始化的 Codex，范围错误报告保留，未把它当业务覆盖。本轮适配器无源码变化，不重复计为新的适配器全量。
+
+上一版 16a88d2 常规 CI **36414691615 success**，Control 远端 runId **b62934ef-2d29-4a77-a478-b2c334c75332**：**22 执行/43 wire/2168 报文/1882 证据/0 错误**，PG 无死锁、runtime failures 空；Claude 回退已进入远端 Control。完整协议 CI **36414691638** 仍在上传证据，最新已消费完整基线仍是 abac 的 119，不从本轮专项直接减算。生产未部署，`releaseReady=false`。
+
+## 历史接续：Claude 定点回退与 Linux Control 锁序修复
 
 2026-09-28：适配器 **19160973584f8f09105a17a68d309016d3cbae41** 已推送，主库精确锁定。新增 `thread/revert` / `thread/reverted`，按目标回合删除其自身和后续历史，保留真实原生上下文、稳定游标和提交去重记录；支持现有两种历史模式，活动回合拒绝，不撤销工作区文件。CONTEXT-008 与 SESSION-007 已加入正式验收登记。
 

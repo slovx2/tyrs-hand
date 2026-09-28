@@ -89,6 +89,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	reviewOnly := mode == "review"
 	codexReview := mode == "codex-review"
 	codexContext := mode == "codex-context"
+	codexTurnSettings := mode == "codex-turn-settings"
 	codexPlugins := mode == "codex-plugins"
 	codexError := mode == "codex-error"
 	codexAccount := mode == "codex-account"
@@ -140,6 +141,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	reviewFixture := newRuntimeReviewFixture(root)
 	codexReviewFixture := newRuntimeCodexReviewFixture(root)
 	codexContextFixture := &runtimeCodexContextFixture{}
+	codexTurnSettingsFixture := newRuntimeCodexTurnSettingsFixture(root)
 	codexPluginsFixture := newRuntimeCodexPluginsFixture(root)
 	codexErrorFixture := &runtimeCodexErrorFixture{root: root, marker: "ERROR_RECOVERY_" + rand.Text()}
 	accountFixture := &runtimeCodexAccountFixture{}
@@ -213,6 +215,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			if codexContext {
 				require.Equal(t, runtimeidentity.Codex, engine)
 				codexContextFixture.model(t, w, request, body)
+				return
+			}
+			if codexTurnSettings {
+				require.Equal(t, runtimeidentity.Codex, engine)
+				codexTurnSettingsFixture.model(t, w, request, body)
 				return
 			}
 			if codexPlugins {
@@ -303,6 +310,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	t.Cleanup(upstream.Close)
 	t.Cleanup(lifecycle.unblock)
 	t.Cleanup(turnControl.unblock)
+	t.Cleanup(codexTurnSettingsFixture.unblock)
 	t.Cleanup(func() {
 		if directory := os.Getenv("PROTOCOL_ARTIFACT_DIR"); directory != "" {
 			requestsMu.Lock()
@@ -352,6 +360,9 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			}
 			if codexError {
 				configuration = strings.Replace(configuration, "stream_max_retries = 0", "stream_max_retries = 1", 1)
+			}
+			if codexTurnSettings {
+				configuration = "features.step_model_switching = true\nmodel_reasoning_effort = \"low\"\nmodel_reasoning_summary = \"auto\"\n" + configuration
 			}
 			if isolationOnly {
 				configuration += "env_key = \"TYRS_HAND_MODEL_API_KEY\"\n"
@@ -528,6 +539,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 	if codexContext {
 		verifyRuntimeCodexContext(t, ctx, registry, clients[runtimeidentity.Codex], codexContextFixture, root)
 		require.Equal(t, int64(4), modelCalls.Load(), "仅业务回合与真实压缩可以请求模型")
+		return
+	}
+	if codexTurnSettings {
+		verifyRuntimeCodexTurnSettings(t, ctx, registry, clients[runtimeidentity.Codex], codexTurnSettingsFixture, root)
+		require.Equal(t, int64(6), modelCalls.Load(), "只有显式回合和工具结果可请求模型")
 		return
 	}
 	if codexPlugins {

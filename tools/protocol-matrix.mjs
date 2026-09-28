@@ -130,6 +130,8 @@ const suites = controlOnly ? controlSuites : [
     cases: ['CONTEXT-006'], engines: ['claude-code'] },
   { name: 'codex-context', pkg: './internal/hostworker', test: 'TestRuntimeCodexContextRealSSH',
     cases: ['CONTEXT-007'], engines: ['codex'] },
+  { name: 'codex-turn-settings', pkg: './internal/hostworker', test: 'TestRuntimeCodexTurnSettingsRealSSH',
+    cases: ['TURNSETTINGS-003'], engines: ['codex'] },
   { name: 'codex-plugins', pkg: './internal/hostworker', test: 'TestRuntimeCodexPluginsRealSSH',
     cases: ['PLUGIN-002'], engines: ['codex'] },
   { name: 'review', pkg: './internal/hostworker', test: 'TestRuntimeReviewRealSSH',

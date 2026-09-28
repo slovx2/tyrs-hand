@@ -4768,7 +4768,7 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": ["TURNSETTINGS-003"],
         "claude-code": ["TURNSETTINGS-001", "TURNSETTINGS-002"]
       },
       "schema": {
