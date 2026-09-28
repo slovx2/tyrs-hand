@@ -3640,7 +3640,8 @@
         ],
         "claude-code": [
           "CONTEXT-004",
-          "CONTEXT-006"
+          "CONTEXT-006",
+          "CONTEXT-009"
         ]
       },
       "callers": [

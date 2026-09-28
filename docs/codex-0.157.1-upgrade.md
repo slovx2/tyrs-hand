@@ -2,6 +2,34 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 暂停交接：当前进展与卡点（2026-09-28）
+
+本节优先于下方历史状态，保留此前全部记录。用户要求“把现在进展和卡点写进文档（和之前的一起）然后先停在一个稳定状态”。本轮已收尾并暂停，不开展新功能或生产部署；当前修改固定为本地提交，暂不推送触发新 CI。适配器本地 **162a8d67465a95a8f7be842340848acf1cc09d37**，主库pin一致；适配器远端仍为8072dce，主库远端仍为5cecc57。恢复时先推送适配器提交，再推送主库中对应的精确 pin。
+
+### 当前已完成
+
+- 上轮数据库恢复修复已在主库 **5cecc5724346684208162f4bf65090417dec3c8f** 推送：真实 SQLite 写锁导致首次打开失败后，可以在下次显式操作重试；失败连接关闭，并发仍共用打开。Linux SQLite/报告门禁7/7、客户端DB36/36、完整 `make ci-local` 和Web5/5通过。
+- 客户端 v12→v13 的11张表保留与真实旧32→新33 Worker升级联合验收已接入 MIGRATION-001/005。**新 CI 尚未完成确认，暂不计该联合验收通过**；Node SQLite专项也不代表Expo原生绑定或Android手工验收。
+- 本轮落实用户补充的“无法映射的可选字段不能阻断主流程”：真实 Linux SDK/CLI 复现图片 `detail` 偏好导致整批 `thread/inject_items` 返回 -32602。现在合法 `auto/low/high/original` 忽略精度偏好、保留完整正文与图片；不声称Claude提供这些精度语义。非法值、角色和身份校验仍保留。
+- 新 CONTEXT-009 验证四种合法偏好、原生零模型追加、重启后实际模型请求收到四张原图与正文、无效批次不部分写入、无重复追加。连同已有事务失败恢复与分叉回退专项，Linux **3/3**；正式报文 **3执行/6 wire/159报文/107证据/0错误**。模型HTTP仅回环Mock，不代表生产模型验收。已加入正式验收清单和方法登记，原runner自动执行该测试文件。
+- 本轮适配器Linux全量 **363/363，0 skipped**；build、typecheck和Biome检查通过（101 warnings/97 infos，无error），协议inventory **24/24**。所有本轮本地测试进程已正常结束，临时容器自动退出。本轮没有重跑主库完整CI；上一轮完整CI结果不能冒充本轮组合验证。
+- 证据位于 `.local/validation/2026-09-27-release-goal/linux-context-detail/`：`before/`真实失败、`after/`专项、`full/`全量、`build.log`、`check.log`、`inventory.log`、`source-hashes.json`。源码与测试快照哈希一致；两份保护文件保持原哈希、不改不提交。
+
+### 最新已消费完整结果与剩余阻塞
+
+- **事实：**9e90576完整协议CI **36428814364 failure**，runId **80d654d4-6be3-4b18-b526-b2328074ca83**，缺口 **104 = 92未登记 + 3原生schema错误 + 9必需语义**；诊断两项已进入完整结果。运行时失败仍只有MCP017和REVIEW006，PostgreSQL无死锁。证据 `ci-9e/protocol-summary-ubuntu-24.04/`、`ci-9e/summary.json`。9e常规CI **36428814502 success**；Control已通过，28执行/57 wire/2521报文/2174证据/0错误。
+- 原生阻塞：MCP分页遗漏、review缺少turn/started、timeline三项schema差异。继续保留真实失败；不修改官方CLI/SDK、原始wire或放宽协议门禁。
+- 9项必需语义仍是 REVIEW-006、ISOLATION-002、EVENTS-001、PERMISSION-001、MCP-003、MCP-017、FAILURE-002、MIGRATION-001、MIGRATION-002。MIGRATION-001等待新联合迁移证据，不能按专项结果提前减算。
+- fileId跨端真实内容下载、可信userVerification、Android手工验收、最终内部部署和生产验证仍未完成；Claude hosted-apps事件流仍未实现。生产未部署，`releaseReady=false`，不能宣称整体完成。
+- **推测边界：**数据库打开恢复缺陷已真实复现，但没有证据证明它是此前Android真机报错的唯一原因。未登记项也不能直接解释为相同数量的产品故障。
+
+### 恢复工作入口与范围
+
+1. 先读取本节和根交接文档，检查两个仓库的main及保护文件；不切分支、不切/建worktree、不派代理。
+2. 消费5cecc57常规 **36431583926**、协议 **36431583779** 的终态及精简证据。暂停收尾时仍未确认终态，不取消、不重复启动已有CI；重点读取MIGRATION-001/005实际报告，失败则据原始证据定位。
+3. 本轮本地适配器与主库组合尚未远端完整验收；恢复推送前核实旧常规CI已结束，避免cancel-in-progress取消旧验收。适配器先推、主库后推，之后继续剩余Linux门禁。
+4. macOS Worker原生验收暂缓，历史失败不算通过；Android GUI自动化skip，手工验收required；默认人工交互计时器不恢复。部署前重读release-ops及release reference，线上无版本配置先备份、保留4份。
+
 ## 当前验收范围：优先完成 Linux
 
 2026-09-28 用户明确要求“后面 mac os 的问题也先跳过。专注 linux 的问题”。因此暂缓 macOS Worker 的原生 SSH/SDK 验收及 loopback 诊断，不再将这些已知失败作为本轮 Linux 部署的阻塞条件；历史失败保留，不计作通过。协议 CI 矩阵仅调度 ubuntu-24.04，macOS loopback job 明确 skipped，恢复入口保留。
