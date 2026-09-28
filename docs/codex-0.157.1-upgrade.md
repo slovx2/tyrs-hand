@@ -2,6 +2,14 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 当前验收范围：优先完成 Linux
+
+2026-09-28 用户明确要求“后面 mac os 的问题也先跳过。专注 linux 的问题”。因此暂缓 macOS Worker 的原生 SSH/SDK 验收及 loopback 诊断，不再将这些已知失败作为本轮 Linux 部署的阻塞条件；历史失败保留，不计作通过。协议 CI 矩阵仅调度 ubuntu-24.04，macOS loopback job 明确 skipped，恢复入口保留。
+
+Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求不变，原生时间线 schema、MCP017、REVIEW006 和其余覆盖缺口仍须处理，`releaseReady` 继续为 false。Android GUI 自动化仍 skip，Android 手工验收仍 required。本次调整针对 macOS Worker，不改变客户端验收要求。
+
+已启动的 96ed6cd CI 36397003965/36397003889 继续运行，优先消费 Linux 结果，不取消整个流水线而中断 Linux 验收。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
+
 ## 最新接续：Claude 附件持久化与 60fcf16 完整结果
 
 2026-09-28：适配器 **fe30b9bdbbf65dcfd23910269615a4bcb3982517** 已提交推送，主库更新精确锁定及四个附件方法的 Claude 验收登记。生产未变更，完整测试/部署/验证目标 active。

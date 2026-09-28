@@ -5,13 +5,20 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      macos_worker:
+        description: 恢复 macOS Worker 专项验收（默认暂缓）
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   macos-loopback-comparison:
-    # 对比系统版本，保留 macOS 14 的业务门禁；探针不能替代真实 SSH 验收。
+    # 2026-09-28 用户要求暂缓 macOS Worker 验收，集中完成 Linux；保留诊断入口及历史证据。
+    if: github.event_name == 'workflow_dispatch' && inputs.macos_worker
     runs-on: macos-15
     timeout-minutes: 5
     steps:
@@ -99,7 +106,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-24.04]
+        # 默认仅 Linux；用户要求恢复后可手动显式开启 macOS Worker 验收。
+        os: ${{ fromJSON(inputs.macos_worker && '["ubuntu-24.04", "macos-14"]' || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     defaults:
@@ -164,7 +172,7 @@ jobs:
       - name: Complete protocol matrix with real Control and Docker databases
         if: runner.os == 'Linux'
         run: make test-protocol-matrix
-      # 托管 macOS 没有 Docker；保留必须通过的原生 SSH/SDK 验收，完整数据库矩阵由 Linux 执行。
+      # macOS 专项入口暂时保留但不调度；当前完整协议及数据库门禁由 Linux 执行。
       - name: Diagnose macOS loopback sandbox behavior
         if: runner.os == 'macOS'
         run: node tools/protocol-macos-loopback.mjs
