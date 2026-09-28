@@ -563,7 +563,7 @@ func runtimeCodexMcpTurn(t *testing.T, ctx context.Context, connection *ssh.Clie
 	}
 }
 
-// Codex 0.147 不遍历 MCP 服务内部的 tools/list nextCursor；该缺口已单独复现。
+// 原生在 Legacy MCP 协议模式下不遍历 tools/list nextCursor（见 runtimeCodexMcpPagination）。
 // 此服务把两种工具放在同一页，使工具副作用与 elicitation 专项不依赖该目录缺口。
 // mcpServerStatus/list 的 app-server 分页仍在本专项以 limit=1 独立验证。
 func runtimeCodexMcpManager(t *testing.T, root, adapter string) string {
@@ -644,17 +644,21 @@ func runtimeCodexMcpPagination(t *testing.T, ctx context.Context, client *codex.
 	} {
 		require.Contains(t, string(transcript), expected)
 	}
+	// 稳定的 Legacy MCP 协议模式下，原生有意不跟随 tools/list 的 nextCursor（codex-mcp list_tools_for_client_uncached
+	// 对 Legacy 丢弃游标；仅 UnderDevelopment 且默认关闭的 mcp_2026_07_28 跟随），0.157.1、0.158.0 与上游 main 一致。
+	// 精确断言原生行为：不请求第二页、目录恰为首页工具；resources 在 Legacy 下仍须完整分页。
+	require.NotContains(t, string(transcript), `"direction":"request","method":"tools/list","cursor":"tools-second"`)
 	found := false
 	for _, server := range page.Data {
 		if server.Name != "manager" {
 			continue
 		}
 		found = true
-		_, appendFound := server.Tools["append"]
-		_, failFound := server.Tools["fail"]
-		if !appendFound || !failFound {
-			t.Error("原生 tools/list 分页遗漏：必须同时发现 append 和 fail")
+		tools := make([]string, 0, len(server.Tools))
+		for name := range server.Tools {
+			tools = append(tools, name)
 		}
+		require.Equal(t, []string{"append"}, tools, "Hub 必须如实呈现原生加载的首页工具目录")
 		if len(server.Resources) != 2 {
 			t.Errorf("原生 resources/list 分页不完整：实际%d，期望2", len(server.Resources))
 		}

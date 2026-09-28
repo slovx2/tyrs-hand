@@ -3275,7 +3275,9 @@
         "claude-code": "required"
       },
       "cases": {
-        "codex": [],
+        "codex": [
+          "REVIEW-006"
+        ],
         "claude-code": [
           "REVIEW-001",
           "REVIEW-004"

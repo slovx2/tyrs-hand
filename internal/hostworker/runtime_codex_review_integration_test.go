@@ -29,7 +29,7 @@ type runtimeCodexReviewFixture struct {
 }
 
 func newRuntimeCodexReviewFixture(root string) *runtimeCodexReviewFixture {
-	return &runtimeCodexReviewFixture{root: root, contents: map[string]string{"inline": "CODEX_READ_INLINE_" + rand.Text(), "detached": "CODEX_READ_DETACHED_" + rand.Text()}}
+	return &runtimeCodexReviewFixture{root: root, contents: map[string]string{"inline": "CODEX_READ_INLINE_" + rand.Text(), "separate": "CODEX_READ_SEPARATE_" + rand.Text()}}
 }
 
 func (f *runtimeCodexReviewFixture) model(t *testing.T, w http.ResponseWriter, request *http.Request, body []byte) {
@@ -39,7 +39,7 @@ func (f *runtimeCodexReviewFixture) model(t *testing.T, w http.ResponseWriter, r
 	require.LessOrEqual(t, step, int64(4), "审查管理和恢复不能额外请求模型")
 	mode := "inline"
 	if step > 2 {
-		mode = "detached"
+		mode = "separate"
 	}
 	id := "codex-review-" + mode
 	var parsed struct {
@@ -101,23 +101,27 @@ func verifyRuntimeCodexReview(t *testing.T, ctx context.Context, registry *Runti
 		state                  runtimeReviewState
 	}
 	var completed []record
-	for _, mode := range []string{"inline", "detached"} {
+	// separate 按原生弃用说明的替代路径：新建同工作区会话后做 inline 审查，得到独立审查会话。
+	for _, mode := range []string{"inline", "separate"} {
 		t.Logf("真实SSH Codex审查：%s", mode)
 		require.NoError(t, os.WriteFile(path, []byte(fixture.contents[mode]), 0o600))
+		target := parent.Thread.ID
 		var before runtimeReviewThread
-		if mode == "detached" {
+		if mode == "separate" {
 			before = runtimeReviewRead(t, ctx, client, parent.Thread.ID)
+			var separate runtimeReviewState
+			require.NoError(t, client.Call(ctx, "thread/start", map[string]any{"cwd": parent.Cwd, "approvalPolicy": "never", "sandbox": "danger-full-access"}, &separate))
+			target = separate.Thread.ID
 		}
 		events := client.Subscribe(codex.ThreadFilter{})
 		var started struct {
 			Turn           struct{ ID, Status string }
 			ReviewThreadID string
 		}
-		require.NoError(t, client.Call(ctx, "review/start", map[string]any{"threadId": parent.Thread.ID, "delivery": mode, "target": map[string]string{"type": "custom", "instructions": "REVIEW_CODEX_" + mode + ": read " + path + " and report the finding"}}, &started))
+		require.NoError(t, client.Call(ctx, "review/start", map[string]any{"threadId": target, "delivery": "inline", "target": map[string]string{"type": "custom", "instructions": "REVIEW_CODEX_" + mode + ": read " + path + " and report the finding"}}, &started))
 		require.Equal(t, "inProgress", started.Turn.Status)
-		if mode == "inline" {
-			require.Equal(t, parent.Thread.ID, started.ReviewThreadID)
-		} else {
+		require.Equal(t, target, started.ReviewThreadID)
+		if mode == "separate" {
 			require.NotEqual(t, parent.Thread.ID, started.ReviewThreadID)
 		}
 		runtimeReviewWait(t, ctx, events, started.ReviewThreadID, started.Turn.ID)
@@ -127,34 +131,38 @@ func verifyRuntimeCodexReview(t *testing.T, ctx context.Context, registry *Runti
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 		require.Equal(t, fixture.contents[mode], string(content), "本次真实审查不能修改目标文件")
-		if mode == "detached" {
+		if mode == "separate" {
 			after := runtimeReviewRead(t, ctx, client, parent.Thread.ID)
 			require.Equal(t, before.Turns, after.Turns, "独立审查不能改变父会话历史")
 		}
 		runtimeReviewPermissions(t, parent, runtimeReviewResume(t, ctx, client, parent.Thread.ID))
 		state := runtimeReviewResume(t, ctx, client, started.ReviewThreadID)
-		if mode == "detached" {
-			// 原生独立审查使用只读策略，不能要求扩大为父会话的完全访问。
-			require.JSONEq(t, `"never"`, string(state.ApprovalPolicy))
-			require.JSONEq(t, `{"type":"readOnly","networkAccess":false}`, string(state.Sandbox))
-			require.Equal(t, parent.Cwd, state.Cwd)
-			require.Equal(t, parent.Model, state.Model)
-			require.Equal(t, parent.ModelProvider, state.ModelProvider)
-		} else {
-			runtimeReviewPermissions(t, parent, state)
-		}
+		runtimeReviewPermissions(t, parent, state)
 		completed = append(completed, record{started.ReviewThreadID, started.Turn.ID, mode, state})
 	}
 	require.Equal(t, int64(4), fixture.calls.Load())
+	// 0.157.1 的会话默认为分页历史，原生明确拒绝其 detached 审查（且 detached 已弃用），不得有任何副作用。
+	before := runtimeReviewRead(t, ctx, client, parent.Thread.ID)
+	var ignored any
+	err := client.Call(ctx, "review/start", map[string]any{"threadId": parent.Thread.ID, "delivery": "detached",
+		"target": map[string]string{"type": "custom", "instructions": "REVIEW_CODEX_detached: must be rejected"}}, &ignored)
+	require.ErrorContains(t, err, "paginated threads do not support detached review")
+	require.Equal(t, before.Turns, runtimeReviewRead(t, ctx, client, parent.Thread.ID).Turns, "被拒绝的审查不能改变父会话历史")
+	require.Equal(t, int64(4), fixture.calls.Load(), "被拒绝的审查不能请求模型")
 	trace.expectClose("runtime-restart")
 	require.NoError(t, registry.Restart(runtimeidentity.Codex))
 	require.Equal(t, claudeGeneration, registry.entries[runtimeidentity.Claude].Runtime.Generation())
 	resumed, _ := connectRuntimeSSHWithTrace(t, ctx, connection, runtimeidentity.Codex, codex.SocketClientOptions{})
 	for _, record := range completed {
-		runtimeReviewPermissions(t, record.state, runtimeReviewResume(t, ctx, resumed, record.threadID))
+		// 重启后原生按最后一个回合的持久上下文重建权限；审查回合以只读无网络沙箱运行，恢复结果只能更窄、不能扩大。
+		restored := runtimeReviewResume(t, ctx, resumed, record.threadID)
+		require.JSONEq(t, `{"type":"readOnly","networkAccess":false}`, string(restored.Sandbox))
+		restored.Sandbox = record.state.Sandbox
+		runtimeReviewPermissions(t, record.state, restored)
 		runtimeCodexReviewHistory(t, runtimeReviewRead(t, ctx, resumed, record.threadID), record.turnID, record.mode)
 	}
-	require.Len(t, runtimeReviewRead(t, ctx, resumed, parent.Thread.ID).Turns, 1)
+	// 原生在分页会话上的 inline 审查会另留一个装审查提示的 interrupted 回合；以重启前后逐项一致对账，不写死回合数。
+	require.Equal(t, before.Turns, runtimeReviewRead(t, ctx, resumed, parent.Thread.ID).Turns, "重启后父会话历史必须逐项一致")
 	require.Equal(t, int64(4), fixture.calls.Load(), "重启恢复不得重放工具或模型请求")
 }
 
@@ -219,8 +227,11 @@ func runtimeCodexReviewEvents(t *testing.T, trace *protocolTraceTransport, threa
 		key := method + ":" + value.Item.Type
 		indices[key] = append(indices[key], index)
 	}
+	// 原生 inline 审查直接提交 Op::Review，core 的审查任务不发 TurnStarted，开始信号是 review/start 响应中的
+	// inProgress 回合（0.157.1 至 0.160.0-alpha.2 及上游 main 均如此），Hub 不得补造。
+	require.Empty(t, indices["turn/started"], "原生 inline 审查不发 turn/started")
 	last := -1
-	for _, key := range []string{"turn/started", "item/started:enteredReviewMode", "item/completed:enteredReviewMode", "item/started:exitedReviewMode", "item/completed:exitedReviewMode", "turn/completed"} {
+	for _, key := range []string{"item/started:enteredReviewMode", "item/completed:enteredReviewMode", "item/started:exitedReviewMode", "item/completed:exitedReviewMode", "turn/completed"} {
 		require.Len(t, indices[key], 1, "审查事件必须恰好一次：%s", key)
 		require.Greater(t, indices[key][0], last, "审查进入、退出和终态必须有序")
 		last = indices[key][0]
