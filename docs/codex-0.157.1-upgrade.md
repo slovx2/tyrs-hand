@@ -10,6 +10,19 @@ Linux 的完整协议、Control、数据库、恢复迁移及生产验证要求�
 
 96ed6cd 两项 CI 已终态，常规通过、协议失败；Linux 优先策略 9467870 已推送，macOS loopback 明确 skipped。946 常规 CI 36399143808 的恢复身份测试失败，修正和验收见下文；协议 CI 36399143830 也已终态，Control通过、Ubuntu完整协议仍失败。后文关于 macOS 阻塞发布的表述为历史状态，以本段为准。
 
+## 最新接续：活动回合设置与主流程兼容
+
+2026-09-28：适配器 **e2958c55c295754b2a95e8bc1a633264bba94778** 已提交推送。`turn/settings/update` 通过真实SDK的`applyFlagSettings`修改当前回合的模型和effort，启动阶段等待原生CLI就绪；错误目标及已结束回合返回`targetUnavailable`，不写用户文件或线程默认设置。
+
+用户明确补充“不支持字段可以拒绝，但不能阻碍主流程，必要时宁可忽略或兼容”。因此附带的合法 `summary`、`serviceTier` 在Claude没有同等语义时忽略，不阻断模型切换；不声称这些偏好实际生效。非法模型/effort、未知字段和非用户审批角色仍拒绝，完整校验后才向SDK发布。
+
+- TURNSETTINGS-001/002验证真实模型HTTP请求的模型及effort变化、附带偏好兼容、非法组合无部分更新、其他线程和未来回合不变、重启后默认值保持、启动后立即发布。模型服务为回环Mock，SDK/CLI及持久化真实。
+- 最终Linux适配器全量 **353/353、0 skipped**，build/typecheck/check通过（99 warnings/97 infos，无error）。正式wire runId **2f005cc8-8ce5-49cd-958d-d61b6f18820d**：**2执行/3wire/116报文/85证据/0错误**；inventory24/24，正式runner和Claude登记已补齐。
+- 上一版主库71ff9a9常规CI **36401553185 success**，恢复身份夹具修正已获远端通过。协议CI **36401552853 failure** 已终态，Control **419d8e91-8fd2-4791-8559-32d42f831693** 为21执行/39wire/2079报文/1808证据/0错误，PG无死锁。
+- 最新完整Linux基线 runId **045405c8-588b-43d0-aced-f646f3289b36**：**122=109未登记+3schema错误+10必需语义**。项目九项缺口已在正式CI关闭；运行时仍MCP017/REVIEW006失败，时间线schema三项仍存在，PG无死锁。原始报告 `ci-71/`，聚合 `protocol-71-summary.json`；本轮活动设置专项尚未计入该完整基线。
+
+主库完整 `make ci-local` 已退出0，含生成、静态检查、Go/race/数据库与协议、移动SSH、客户端、Android export、构建及Web浏览器5/5。证据 `.local/validation/2026-09-27-release-goal/linux-turn-settings/`：修前RPC未实现、原生别名断言诊断、最终专项、源码哈希、适配器完整回归和`main-ci-local.log`均保留。原生opus别名在锁定CLI下实际解析为`claude-opus-5-5`，初稿预期4.8的失败属于测试断言错误。新版本远端矩阵仍待完成，不从专项推算新的完整缺口数。生产未部署，releaseReady=false。
+
 ## 最新接续：Linux Claude 项目持久化
 
 2026-09-28：适配器 **2740342ba2fc1c858250ff6c6b1095534d66a338** 已提交推送，主库精确锁定该版本。生产未部署，完整门禁尚未通过。
