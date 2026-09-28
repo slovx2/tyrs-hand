@@ -236,15 +236,12 @@ try {
   assert.ok(!originalJournal.result && !originalJournal.failure)
   const callsBefore = { ...models.calls }
   const pidBefore = worker.process.child.pid
-  const processRows = output('ps', ['-axo', 'pid=,ppid=']).split('\n').map(line => line.trim().split(/\s+/).map(Number))
-  const processTree = [pidBefore]
-  for (let index = 0; index < processTree.length; index++) {
-    for (const [pid, parent] of processRows) if (parent === processTree[index]) processTree.push(pid)
-  }
   mark(pendingMode ? '审批未回答且无副作用，SIGKILL真实Worker' : '真实工具有副作用但无终态，SIGKILL真实Worker')
   const crash = await worker.crash()
   assert.equal(worker.process.child.signalCode, 'SIGKILL')
-  crashEvidence = { ...crash, pidBefore, processTree }
+  assert.equal(crash.workerPID, pidBefore)
+  // 使用实际发出终止信号时记录的范围，不能由另一份更早的进程快照覆盖。
+  crashEvidence = { ...crash, pidBefore }
   await until('fixture原生监听确实已关闭', async () => { await worker.clearInstrumentationSockets('new'); return true })
   await worker.start('new')
   crashEvidence.pidAfter = worker.process.child.pid

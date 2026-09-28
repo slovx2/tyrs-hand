@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { lstat, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -134,6 +134,62 @@ test('Worker崩溃等待真实后代退出后再清理Codex socket入口', { tim
     }
   } finally {
     await worker.close()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Worker崩溃包含所属进程组内已重归属的监听子进程', { timeout: 15_000 }, async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'tyrs-crash-group-'))
+  const worker = new MigrationWorker({ root })
+  await mkdir(worker.state, { recursive: true })
+  const alias = resolve(worker.state, 'app-server.sock.native')
+  const physical = resolve(root, 'physical.sock')
+  const pidFile = resolve(root, 'listener.pid')
+  const intermediaryExited = resolve(root, 'intermediary-exited')
+  const listenerFile = resolve(root, 'listener.mjs')
+  const intermediaryFile = resolve(root, 'intermediary.mjs')
+  const leaderFile = resolve(root, 'leader.mjs')
+  await writeFile(listenerFile, 'import {createServer} from "node:net";import {symlinkSync,writeFileSync} from "node:fs";' +
+    'createServer(c=>c.end()).listen(' + JSON.stringify(physical) + ',()=>{' +
+    'symlinkSync(' + JSON.stringify(physical) + ',' + JSON.stringify(alias) + ');' +
+    'writeFileSync(' + JSON.stringify(pidFile) + ',String(process.pid));});')
+  await writeFile(intermediaryFile, 'import {spawn} from "node:child_process";' +
+    'const child=spawn(process.execPath,[' + JSON.stringify(listenerFile) + '],{stdio:"ignore"});child.unref();')
+  await writeFile(leaderFile, 'import {spawn} from "node:child_process";import {writeFileSync} from "node:fs";' +
+    'const child=spawn(process.execPath,[' + JSON.stringify(intermediaryFile) + '],{stdio:"ignore"});' +
+    'child.once("exit",()=>writeFileSync(' + JSON.stringify(intermediaryExited) + ',String(child.pid)));setInterval(()=>{},1000);')
+  // 为本测试创建独立进程组；退出中间父进程后，监听者仍属于该组但不在父子树中。
+  const leader = spawn(process.execPath, [leaderFile], { detached: true, stdio: 'ignore' })
+  const exit = once(leader, 'exit').then(([code, signal]) => ({ code, signal }))
+  const peer = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore' })
+  const peerExit = once(peer, 'exit')
+  worker.process = { child: leader, exit }
+  let listenerPID
+  try {
+    await until('真实监听进程已重归属且保留独立进程组', async () => {
+      listenerPID = Number(await readFile(pidFile, 'utf8'))
+      const exitedPID = Number(await readFile(intermediaryExited, 'utf8'))
+      const values = execFileSync('ps', ['-p', String(listenerPID), '-o', 'ppid=,pgid='], { encoding: 'utf8' })
+        .trim().split(/\s+/).map(Number)
+      return values[0] !== exitedPID && values[0] !== leader.pid &&
+        values[1] === leader.pid && (await stat(alias)).isSocket()
+    }, 5000)
+    const crash = await worker.crash()
+    assert.equal(crash.signal, 'SIGKILL')
+    assert.ok(crash.processCount >= 2, '退出范围必须包含已重归属的所属监听进程')
+    assert.ok(crash.processTree.includes(listenerPID))
+    assert.deepEqual(crash.processGroups, [leader.pid])
+    assert.equal(peer.exitCode, null, '同名进程的无关独立组必须保持运行')
+    assert.equal(peer.signalCode, null)
+    process.kill(peer.pid, 0)
+    await assert.rejects(lstat(alias), { code: 'ENOENT' })
+    assert.ok((await stat(physical)).isSocket(), '仍由原生 CLI 回收物理 socket')
+  } finally {
+    // 只清理本测试刚创建的独立组，不能按进程名或主测试进程组查杀。
+    try { process.kill(-leader.pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error }
+    await exit
+    peer.kill('SIGKILL')
+    await peerExit
     await rm(root, { recursive: true, force: true })
   }
 })

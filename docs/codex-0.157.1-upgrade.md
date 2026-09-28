@@ -2,6 +2,20 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：SIGKILL 所属进程组的完整清理
+
+2026-09-28：基于已推送的 d42e680，适配器仍固定 f667d85。只修改迁移/恢复测试夹具，生产未变更，releaseReady=false。
+
+- e41 的 Linux MIGRATION-007 失败于回滚后的 old-worker-3 被 SIGKILL 后，测试 socket 仍有监听。new-worker-2 正常退出；原始报告没有记录被杀进程树，不能由现有报错断言唯一原因。本地原样 macOS 回滚通过，正式校验 2 执行/8 wire/351 报文/235 证据/0 错误，仍保留远端失败。
+- 新增真实进程回归：中间父进程退出，监听子进程保留在本测试创建的独立进程组中。旧实现只取当前 PPID 树，漏杀已重归属的监听者，稳定复现相同“上代测试中继 socket 仍有监听进程”错误。
+- 夹具只把组长在本次 Worker 父子树中的独立组纳入退出范围，排除继承自主测试进程的共享组；同时记录真实 PID/PGID 审计。继续等待实际进程退出并探测 socket 已无监听后才清理旁路入口，不强删活 socket、不按进程名查杀、不改官方 CLI 或产品逻辑。
+- 回归修前失败、修后通过；新增断言确认另一同名进程的独立组保持运行。四项进程清理回归均通过，迁移/恢复/PG 契约合计 17/17。待审批恢复改为使用实际终止时的统一进程范围，避免更早的第二份快照覆盖真实记录。
+- 最终真实三种迁移与三种恢复组合全通过，runId e7a07a3d-382e-456b-8811-9f1e8cc581fc：**10 执行、26 wire、1121 报文、780 证据、0 错误**。证据 native-crash-group-final/scoped-result.json；模型为回环 Mock，Worker、数据库、SSH、CLI/SDK 均真实。该组缺陷已实证修复，但仍需 Linux 新 CI 验证原失败，不以本地通过关闭远端问题。
+- d42e680 常规 CI 36383010337 已成功。协议 CI 36383010328 的 Control-runtime 成功：21 执行/39 wire/2066 报文/1797 证据，无 PG 死锁。macOS14 的 PROJECT-001 正式执行通过；该任务另有七项失败，除既知 MCP017/REVIEW006，runtime、files、codex-events 直接报回环 TCP EPERM，Claude review 为 failed，bootstrap 未到达 Mock 模型。后两项尚不能归因于网络；没有 skip 或重试覆盖原失败。
+- 最新完整覆盖仍取自 e41 原始 Linux runId b3e2fc78-4f28-4081-a03d-42646e0d8d74：**149 = 136 未登记 + 2 缺成功 wire/schema + 11 必需语义**。APPROVAL-002 和 FAILURE-006 已在该轮成功，但 MIGRATION-007 新失败增加相关缺口；不继续使用旧 148/147 基线，也不从本地专项推算 d42 全量数字。
+
+证据根 .local/validation/2026-09-27-release-goal/：native-rollback-group-before.log、native-rollback-group-after.log、native-rollback-baseline/、native-crash-group-final/、ci-e41/migration-007-detail/、ci-d42/macos-job.log。d42 的完整本地 CI 已通过；本轮夹具改动另由上述完整迁移/恢复组合及 17 项契约验证。
+
 ## 最新接续：原生项目管理与已完成工具恢复边界
 
 2026-09-28：基于主库 `e41a9ff`，适配器固定 `f667d85`，新增 PROJECT-001 并修正恢复验收的前置条件。生产未变更，`releaseReady=false`。

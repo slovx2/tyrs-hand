@@ -225,17 +225,30 @@ stream_max_retries=0
   async crash() {
     const parent = this.process.child.pid
     assert.ok(parent && this.process.child.exitCode === null)
-    const entries = output('ps', ['-axo', 'pid=,ppid=']).split('\n')
+    const entries = output('ps', ['-axo', 'pid=,ppid=,pgid=']).split('\n')
       .map(line => line.trim().split(/\s+/).map(Number))
     const owned = [parent]
     for (let index = 0; index < owned.length; index++) {
       for (const [pid, ppid] of entries) if (ppid === owned[index]) owned.push(pid)
     }
-    // 仅对刚从此 fixture 父 PID 收集的树操作，不按进程名匹配。
+    // 只接受组长本身在本次父子树中的独立进程组，不能碰继承自主测试进程的共享组。
+    const groups = [...new Set(entries.filter(([pid]) => owned.includes(pid))
+      .map(([, , pgid]) => pgid).filter(pgid => pgid > 1 && owned.includes(pgid)))]
+    for (const [pid, , pgid] of entries) {
+      if (groups.includes(pgid) && !owned.includes(pid)) owned.push(pid)
+    }
+    // 先停止本次 Worker，再终止其独立组；包含中间父进程已退出的监听者，绝不按进程名查杀。
     process.kill(parent, 'SIGKILL')
+    for (const group of groups) {
+      try { process.kill(-group, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error }
+    }
     for (const pid of owned.slice(1).reverse()) {
       try { process.kill(pid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error }
     }
+    const crash = { signal: 'SIGKILL', workerPID: parent, processCount: owned.length,
+      processTree: owned, processGroups: groups }
+    if (this.evidence) await writeFile(resolve(this.evidence, 'crash-' + parent + '.json'),
+      JSON.stringify(crash, null, 2), { mode: 0o600, flag: 'wx' })
     await this.process.exit
     // SIGKILL 返回只表示已发送信号；父进程退出也不能证明后代已经释放监听句柄。
     // 只等待上面记录的本次进程树，不按名称查杀，不删除仍有监听的入口。
@@ -250,7 +263,7 @@ stream_max_retries=0
     // 仅清理此 fixture 的旁路 socket，正式 socket 和全部会话状态留给真实 Worker 恢复。
     const instrumentationSocket = resolve(this.state, 'app-server.sock.native')
     assert.ok(await removeStaleInstrumentationSocket(instrumentationSocket, true), '真实 Codex 录制器入口必须存在')
-    return { signal: 'SIGKILL', processCount: owned.length, instrumentationSocketRemoved: true }
+    return { ...crash, instrumentationSocketRemoved: true }
   }
 
   async close() {
