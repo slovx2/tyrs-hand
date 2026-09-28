@@ -13,6 +13,9 @@ export function semanticCoverage(acceptance, executions, runId) {
 }
 
 // 把真实 wire、schema 和本次通过的用例关联；不信任方法名计数或历史成功文件。
+export const notApplicableServerMessageCase = 'NA-SERVER-MESSAGE'
+const serverOriginatedKinds = new Set(['ServerNotification', 'ServerRequest'])
+
 export function protocolCoverage(manifest, usages, artifacts, executions, runId, index, validate) {
   const missing = []
   const evidence = []
@@ -157,6 +160,13 @@ export function protocolCoverage(manifest, usages, artifacts, executions, runId,
       if (requirement === 'not-applicable' && !entry.reasons?.[engine])
         missing.push({ method: entry.method, engine, reason: '不适用能力缺少原因' })
       const cases = entry.cases?.[engine] ?? []
+      // 通知与服务端请求由服务端单向下发，客户端无从发起请求取得 -32004 拒绝证据。按用户决定，
+      // 不适用的这类消息不做门禁：写明原因并登记占位用例后直接通过，见 not-applicable-server-messages.test.mjs。
+      if (requirement === 'not-applicable' && serverOriginatedKinds.has(index?.get(entry.method)?.kind)) {
+        if (!cases.includes(notApplicableServerMessageCase))
+          missing.push({ method: entry.method, engine, reason: '不适用的服务端消息须登记占位用例' })
+        continue
+      }
       if (!cases.length) missing.push({ method: entry.method, engine, reason: '未登记自动化用例' })
       const outcome = requirement === 'required' ? 'success' : 'not-applicable'
       for (const id of cases) {

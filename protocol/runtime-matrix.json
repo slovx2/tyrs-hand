@@ -85,11 +85,13 @@
       "method": "account/gatewayOAuth/changed",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/GatewayOAuthChangedNotification",
@@ -97,7 +99,10 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI Gateway OAuth 状态变化；Claude 不使用 Gateway 认证，不下发此通知"
+      }
     },
     {
       "method": "account/gatewayOAuth/login",
@@ -186,7 +191,9 @@
         "codex": [
           "ACCOUNT-001"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/AccountLoginCompletedNotification",
@@ -531,11 +538,13 @@
       "method": "applyPatchApproval",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerRequest.json#/definitions/ApplyPatchApprovalParams",
@@ -544,17 +553,22 @@
       "callers": [
         "client/src/app-server/officialClient.ts",
         "internal/appserverhub/routing.go"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "Codex 旧版 v1 补丁审批请求；Claude 只下发 v2 item/fileChange/requestApproval"
+      }
     },
     {
       "method": "autoApprovalReview/strictReviewRequired",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/StrictReviewRequiredNotification",
@@ -562,7 +576,10 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "Codex Guardian 自动审批复核；Claude 的审批均经 canUseTool 由用户回答，不下发此通知"
+      }
     },
     {
       "method": "collaborationMode/list",
@@ -845,14 +862,16 @@
       "method": "configWarning",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "MIGRATION-006",
           "MIGRATION-007"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "callers": [
         "wire:codex"
@@ -860,19 +879,24 @@
       "schema": {
         "params": "ServerNotification.json#/definitions/ConfigWarningNotification",
         "response": null
+      },
+      "reasons": {
+        "claude-code": "Codex 配置文件告警；Claude 原生 settings 由 CLI 自行校验报错，适配器不转译为 Codex 配置告警"
       }
     },
     {
       "method": "deprecationNotice",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "SESSION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "callers": [
         "wire:codex"
@@ -880,6 +904,9 @@
       "schema": {
         "params": "ServerNotification.json#/definitions/DeprecationNoticeNotification",
         "response": null
+      },
+      "reasons": {
+        "claude-code": "Codex 协议弃用提示；Claude 适配器不产生 Codex 弃用事件"
       }
     },
     {
@@ -941,11 +968,13 @@
       "method": "execCommandApproval",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerRequest.json#/definitions/ExecCommandApprovalParams",
@@ -954,7 +983,10 @@
       "callers": [
         "client/src/app-server/officialClient.ts",
         "internal/appserverhub/routing.go"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "Codex 旧版 v1 命令审批请求；Claude 只下发 v2 item/commandExecution/requestApproval"
+      }
     },
     {
       "method": "experimentalFeature/enablement/set",
@@ -1056,13 +1088,15 @@
       "method": "externalAgentConfig/import/completed",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "MIGRATION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "callers": [
         "wire:codex"
@@ -1070,19 +1104,24 @@
       "schema": {
         "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportCompletedNotification",
         "response": null
+      },
+      "reasons": {
+        "claude-code": "外部代理配置导入 Codex 的完成通知；Claude 以 -32004 拒绝导入，不下发此通知"
       }
     },
     {
       "method": "externalAgentConfig/import/progress",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "MIGRATION-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "callers": [
         "wire:codex"
@@ -1090,6 +1129,9 @@
       "schema": {
         "params": "ServerNotification.json#/definitions/ExternalAgentConfigImportProgressNotification",
         "response": null
+      },
+      "reasons": {
+        "claude-code": "外部代理配置导入 Codex 的进度通知；Claude 以 -32004 拒绝导入，不下发此通知"
       }
     },
     {
@@ -1620,13 +1662,15 @@
       "method": "item/commandExecution/terminalInteraction",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "APPROVAL-009"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/TerminalInteractionNotification",
@@ -1634,7 +1678,10 @@
       },
       "callers": [
         "wire:codex"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "Codex 交互式终端输入事件；Claude 的 Bash 为非交互执行，不产生终端交互"
+      }
     },
     {
       "method": "item/completed",
@@ -1818,13 +1865,15 @@
       "method": "item/reasoning/summaryPartAdded",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "EVENTS-008"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ReasoningSummaryPartAddedNotification",
@@ -1833,19 +1882,24 @@
       "callers": [
         "client/src/store/threadNotificationReducer.ts",
         "wire:codex"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 推理摘要分段；Claude 只提供原始 thinking（item/reasoning/textDelta），无推理摘要"
+      }
     },
     {
       "method": "item/reasoning/summaryTextDelta",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "EVENTS-008"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ReasoningSummaryTextDeltaNotification",
@@ -1855,7 +1909,10 @@
         "client/src/store/appStore.ts",
         "client/src/store/threadNotificationReducer.ts",
         "wire:codex"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 推理摘要增量；Claude 只提供原始 thinking（item/reasoning/textDelta），无推理摘要"
+      }
     },
     {
       "method": "item/reasoning/textDelta",
@@ -2111,11 +2168,15 @@
       "method": "mcpServer/event/stream/notification",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
-        "codex": ["MCP-021"],
-        "claude-code": []
+        "codex": [
+          "MCP-021"
+        ],
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/McpServerEventStreamNotification",
@@ -2123,7 +2184,10 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 托管应用的 MCP 事件流；Claude 以 -32004 拒绝订阅，不下发事件"
+      }
     },
     {
       "method": "mcpServer/event/stream/start",
@@ -2378,11 +2442,13 @@
       "method": "modelProvider/authRecoveryCompleted",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/AuthRecoveryNotification",
@@ -2390,17 +2456,22 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 模型提供方认证恢复；Claude provider 认证失败由原生 CLI 报错，不下发此通知"
+      }
     },
     {
       "method": "modelProvider/authRecoveryStarted",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/AuthRecoveryNotification",
@@ -2408,7 +2479,10 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI 模型提供方认证恢复；Claude provider 认证失败由原生 CLI 报错，不下发此通知"
+      }
     },
     {
       "method": "modelProvider/capabilities/read",
@@ -3101,7 +3175,7 @@
       "method": "remoteControl/status/changed",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
@@ -3109,7 +3183,9 @@
           "MIGRATION-006",
           "MIGRATION-007"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "callers": [
         "wire:codex"
@@ -3117,6 +3193,9 @@
       "schema": {
         "params": "ServerNotification.json#/definitions/RemoteControlStatusChangedNotification",
         "response": null
+      },
+      "reasons": {
+        "claude-code": "ChatGPT 远程控制状态；Claude 无远程控制通道，不下发此通知"
       }
     },
     {
@@ -4167,11 +4246,13 @@
       "method": "thread/realtime/item/completed",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadRealtimeItemCompletedNotification",
@@ -4179,17 +4260,22 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI realtime 语音会话条目；Claude 无 realtime 语音，不下发此通知"
+      }
     },
     {
       "method": "thread/realtime/item/started",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadRealtimeItemStartedNotification",
@@ -4197,17 +4283,22 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI realtime 语音会话条目；Claude 无 realtime 语音，不下发此通知"
+      }
     },
     {
       "method": "thread/realtime/item/transcript/delta",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "schema": {
         "params": "ServerNotification.json#/definitions/ThreadRealtimeItemTranscriptDeltaNotification",
@@ -4215,7 +4306,10 @@
       },
       "callers": [
         "schema:ServerNotification"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "OpenAI realtime 语音转写增量；Claude 无 realtime 语音，不下发此通知"
+      }
     },
     {
       "method": "thread/resume",
@@ -5278,7 +5372,9 @@
         "codex": [
           "CAPABILITY-003"
         ],
-        "claude-code": []
+        "claude-code": [
+          "NA-SERVER-MESSAGE"
+        ]
       },
       "callers": [
         "wire:codex"
