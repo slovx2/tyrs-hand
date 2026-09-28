@@ -2,6 +2,35 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：移除默认人工交互计时器
+
+2026-09-28：适配器 `cb02aa202914182f733144527e3779177f93e3ea` 已提交并推送，主库精确更新 adapter-lock。此段替代下文关于“人工等待问题未修复”的当前状态；历史失败证据保留。生产未变更，`releaseReady=false`。
+
+- 移除 PendingInteractions 的默认 120 秒计时器，回答、主动取消、连接断开、回合中断和运行时停止继续准确一次结束请求。
+- 移除 NativeMcpBridge 的默认 120 秒工具时限。固定 MCP SDK 不支持关闭 request 计时器，因此默认工具请求改经公开 transport 等待，保留 SDK 的工具输出校验、进度、取消通知与断线清理。未修改官方 Codex 或 Claude CLI/SDK，也没有用超大 timeout 冒充关闭计时器。
+- 握手、管理请求、用户显式设置的 `tool_timeout_sec` 和第三方服务自身的执行上限仍有效。移动手工夹具去除显式 `tool_timeout_sec:120`；夹具服务自身设十分钟清理预算，仅用于测试，不是产品的人工回答时限。
+- APPROVAL-007、EVENTS-006 保留并更新语义为真实等待 125 秒后仍可回答、拒绝或中断；补齐 MCP form/url 长等待及中断后迟到接受无副作用。没有删除或 skip 这些协议用例。
+- 最终适配器全量 345/345 通过、0 skipped，build/typecheck/check 通过；check 有 99 warnings、97 infos、无 error。另有仅回环网络隔离的原生专项 20/20、管理/OAuth及等待回归 21/21，主库移动夹具与协议清单契约 44/44 通过。未将旧 d19 的完整主库 CI 当作新版本结果。
+- Android API35 AVD 手工从新会话发起 MCP FORM DECLINE，原始 wire 记录等待 **176589ms** 后回答有效。界面显示 `_OK`，Run `4c92bd39-68ac-4f2b-896c-66d80d23f89e` 为 completed，恰好一个 resolved 和回合终态，无副作用文件。自动化 GUI 继续 skipped，未运行 Maestro。
+- 手工复验复用原 Control/数据/配对与 APK，重新编译适配器并重启隔离 Worker；Worker 二进制未重建。启动时夹具遗留 Unix socket 导致暂时连接失败，确认 ECONNREFUSED 后清理该 socket 并恢复。模型仍为回环 Mock，未覆盖外部真实模型、实体 Android 或外部 URL 页面。
+
+本轮证据位于 `.local/validation/2026-09-27-release-goal/timer-removal-native/`，包括全量与专项日志、原生长等待 wire、`manual-result.json` 和起始/超过120秒/完成截图。原 12 场景汇总保留为旧适配器的历史结果。完整协议覆盖、可信 userVerification、fileId 跨端、跨 Workspace 队列及生产部署仍未完成；149 项缺口仍仅是 d19 的已核实基线，未对新版本全量重算。
+
+## 最新接续：Android 手工正向场景与冷启动完成
+
+本段优先于后文历史状态。当前 main 产品基线为 `d19b07a32badae49766eb547f4ca9fbaf9507fc5`，适配器仍固定 `25bf4ee`。Android 自动化 GUI 保持 skipped，手工 GUI 已完成下列范围；生产未变更。
+
+- 在 API35 AVD 上手工完成 12 个正向场景：Codex CHAT，Claude CHAT/FULL/APPROVAL/DENY/PLAN，MCP FORM 和 URL 的 ACCEPT/DECLINE/CANCEL。逐项核对界面、12 个不同 Control Run 的 completed 终态及实际文件副作用。
+- 表单接受覆盖 `count=0` 的无效提交与修正为 3 后继续、note 输入后清空、`ratio=0` 和 `enabled=false` 类型保留。最终文件恰好一行，完整 JSON 与预期等值，不仅检查 `_OK` 回复。拒绝和取消不生成副作用文件。
+- 通过 Android 系统设置强制停止 Dev 客户端后重新打开；双引擎机器及 Control Worker 关联、项目、各自历史仍保留。Codex 列表只见自己的会话，Claude 恢复对应表单接受历史。
+- **已发现但未修复**：适配器 `pending-interactions.mts` 与 `native-mcp-bridge.mts` 各有默认两分钟计时。PLAN、FORM DECLINE 和本轮 FORM ACCEPT 出现人工等待期间失败；FORM ACCEPT 后续 1 分 4 秒提交成功。失败截图保留，快速重试通过不消除长等待问题；具体先触发哪一层尚未从报文确认。本轮未修改适配器或超时策略。
+- 范围限制：真实 Control/PG/Redis/Worker/SSH/官方 CLI/SDK，模型为回环 Mock；没有执行实体设备或真实外部模型验收。URL 场景未打开外部确认网页。后端沿用此前启动进程，未在 d19 提交后重建；尚未结束环境并生成模型夹具退出汇总。
+- d19 常规 CI `36369543209` 与 Android-only `36369780776` 成功；协议 CI `36369543204` 失败。新 Linux 原始 runId `1438ff64-eca0-4508-82df-ab5a3d9ba27f` 确认仍有 **149 项缺口（136 未登记、2 无成功 wire/schema、11 必需语义）**，PG 死锁检查通过。两个已登记证据缺口为 TITLE-001/config/read 与 APPROVAL-009/item/commandExecution/requestApproval；运行时失败仍为 codex-mcp-pagination、codex-review。
+
+手工汇总：`.local/validation/2026-09-27-release-goal/android-manual-v3/manual-acceptance-summary.json`；最新协议摘要：同证据根下 `protocol-d19-summary.json`。APK SHA-256 仍为 `90062d630932d42fb44a98d54b7e4a343fe0120730fbb2869d596c7343da7b9a`。本轮未修改产品代码，既有完整本地 CI 结果仍对应 d19 产品基线。
+
+人工等待生命周期、完整协议门禁、可信 userVerification、图片 fileId 跨端和真实跨 Workspace 队列端到端证据仍待处理。正向手工场景完成不等于整体验收或生产发布条件满足。
+
 ## 最新接续：队列已推送与 Android 相机手工修复
 
 本段优先于后文。当前 main/HEAD 为 `94bc990`，已推送；适配器仍为 `25bf4ee`。Android 自动化 GUI 保持 skip，手工 GUI required；生产未变更。

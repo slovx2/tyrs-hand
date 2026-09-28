@@ -18,7 +18,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     enum: Object.keys(mobileMcpScenarios) } }, required: ['scenario'], additionalProperties: false },
   _meta: { 'anthropic/alwaysLoad': true },
 }] }))
-server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+server.setRequestHandler(CallToolRequestSchema, async ({ params }, extra) => {
   assert.equal(params.name, 'confirm_mobile')
   const marker = params.arguments?.scenario
   const scenario = mobileMcpScenarios[marker]
@@ -27,8 +27,9 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     ? { mode: 'form', message: 'MOBILE_MCP_TYPED_FORM', requestedSchema: mobileMcpSchema }
     : { mode: 'url', message: 'MOBILE_MCP_URL_CONFIRMATION',
       url: 'http://127.0.0.1/mobile-mcp-confirmation', elicitationId: marker.toLowerCase() }
-  // 与 Worker 的真实工具等待窗口一致，不能让 SDK 默认 60 秒提前取消人工表单。
-  const response = await server.elicitInput(request, { timeout: 120_000 })
+  // 仅测试夹具使用十分钟清理预算，允许手工验收跨过旧的120秒边界。
+  const response = await server.elicitInput(request, { timeout: 600_000, signal: extra.signal })
+  extra.signal.throwIfAborted()
   const result = { action: response.action, content: response.content ?? null }
   if (response.action === 'accept') {
     await appendFile(resolve(workspace, marker + '.jsonl'), JSON.stringify(result) + '\n')

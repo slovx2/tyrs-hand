@@ -99,7 +99,7 @@ stream_max_retries=0
     await writeFile(resolve(this.state, 'claude-code/config.json'), JSON.stringify({ overrides: {
       mcp_servers: { mobile_fixture: { command: process.execPath,
         args: [resolve(this.repoRoot, 'tools/mobile-e2e/fixtures/mcp-server.mjs'), this.adapter, this.workspace],
-        startup_timeout_sec: 30, tool_timeout_sec: 120 } },
+        startup_timeout_sec: 30 } },
     } }), { mode: 0o600 })
     const binaries = { codex: this.codex, 'claude-code': resolve(this.adapter, 'scripts/worker-runtime') }
     const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'"
