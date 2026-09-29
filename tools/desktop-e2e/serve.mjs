@@ -73,8 +73,13 @@ async function main() {
   await new Promise((done) => {
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, done)
   })
+  // 通过标准：所需场景都有真实模型终态、文件副作用与工具结果回模（Mock LLM 断言），且全部真实通信符合固定 schema。
+  const expected = argumentsMap.get('--expect')?.split(',') ?? Object.values(markers).flat()
+  await models.verify(expected)
   const report = await validateRuntimeWire(repoRoot, resolve(runDir, 'worker'))
-  console.log('[desktop-e2e] wire ' + JSON.stringify({ passed: report.passed, errors: report.errors?.length ?? 0 }))
+  await writeFile(resolve(runDir, 'desktop-result.json'), JSON.stringify({ passed: true, expected,
+    wire: { passed: report.passed, errors: report.errors?.length ?? 0 } }, null, 2))
+  console.log('[desktop-e2e] passed ' + JSON.stringify({ expected, wireErrors: report.errors?.length ?? 0 }))
 }
 
 let failure
