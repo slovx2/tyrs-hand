@@ -32,7 +32,15 @@ node tools/desktop-e2e/serve.mjs   # 就绪后输出 [desktop-e2e] ready {...}
 | `MOBILE_CLAUDE_DENY` | Claude，请求批准 | 点“拒绝”，无文件 |
 | `MOBILE_CLAUDE_FULL` | Claude，完全访问（新聊天） | 无审批直接落盘 |
 | `MOBILE_CLAUDE_PLAN` | Claude，“+ → 计划模式” | 选 Blue，执行计划，文件内容为 Blue |
+| `DESKTOP_CLAUDE_TOOLS` | Claude，完全访问 | 命令运行中同时显示过程说明与“正在运行”的命令；结束后可展开查看命令与真实输出 |
+| `DESKTOP_CLAUDE_ASK` | Claude | 非计划模式的提问，选第二项 Grape，模型收到该选择 |
+| `DESKTOP_CLAUDE_STOP` | Claude | 模型请求挂起时点“停止”；须有真实 `turn/interrupt`、回合 interrupted、迟到回复不下发 |
+| `DESKTOP_CLAUDE_STEER` | Claude | 命令运行期间发送 `STEER_PAYLOAD_7F`；须为真实 `turn/steer` 且进入同一回合的下一次模型请求 |
+| `DESKTOP_CLAUDE_MODEL` | Claude | 依次切换到 Sonnet、Haiku，模型请求的 model 须为 haiku；结束后恢复默认模型 |
 | `MOBILE_CODEX_CHAT` | Codex | 回复 `_OK` |
+
+`MOBILE_CLAUDE_PLAN` 另须在界面看到模型输出的计划（`MOBILE_PLAN_OUTPUT`）后再确认执行。桌面场景定义见 `scenarios.mjs`，
+停止与 steer 的真实协议请求由 `serve.mjs` 退出时从 wire 复核。
 
 同一会话内工具调用 ID 固定，重复同一场景需新开聊天。
 

@@ -19,6 +19,9 @@
    - `remoteControl/status/read` 的参数为 null，缺少响应关联，已补；
    - Hub 显式分类为透传；Codex 以 CAPABILITY-003 取得真实证据；Claude 如实应答 `getAuthStatus`，远程控制状态按专属能力 -32004 登记为不适用。
 
+**扩展场景（同日追加）**：工具调用显示（运行中与结束后展开均可见命令与真实输出）、中间过程显示（运行中同时可见过程说明与正在运行的命令）、计划模式输出计划、用户回答问题（计划模式内外各一）、停止对话（真实 `turn/interrupt`，回合 interrupted，迟到回复不下发）、steer 插入消息（真实 `turn/steer`，进入同一回合下一次模型请求）、更换模型（Sonnet → Haiku，模型请求随之改变）。连同原六个场景共 11 项全部自动执行通过，wire 0 错误。
+尚待决策：Claude 的 thinking 以 reasoning `content` 下发且 `summary` 为空（上游 #57 的有意设计），桌面端只展示推理摘要，因此 Claude 思考过程在桌面不可见。
+
 **用户机器上的配置**：`~/.ssh/config` 顶部一行 Include（备份 `~/.ssh/config.bak-tyrs-desktop-e2e`）；ChatGPT.app 中的 `tyrs-e2e-claude`、`tyrs-e2e-codex` 主机及 `desktop-e2e`、`desktop-e2e-codex` 项目。环境未运行时主机显示连接失败，属正常。
 
 ## 最新接续：门禁分类收口与剩余上游缺口（2026-09-29）

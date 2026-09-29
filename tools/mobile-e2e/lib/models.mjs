@@ -22,7 +22,8 @@ export function structuredTitleResponse(request) {
   return undefined
 }
 
-export async function startModels(adapter, evidenceDir) {
+// extra：可选的附加场景（如桌面端），按标记返回模型回复；未命中的标记仍按移动端场景处理。
+export async function startModels(adapter, evidenceDir, extra = {}) {
   const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'dist/test/fixtures/mock-llm.mjs')))
   const models = {}, urls = {}, completed = new Set(), mcpResults = {}
   let workspace
@@ -35,13 +36,14 @@ export async function startModels(adapter, evidenceDir) {
       if (auxiliary) return auxiliary
       const messages = request.messages ?? request.input ?? []
       const user = Array.isArray(messages) ? messages.filter((message) => message.role === 'user') : []
-      const matches = JSON.stringify(user).match(/MOBILE_(?:CODEX|CLAUDE)_[A-Z_]+/g) ?? []
+      const matches = JSON.stringify(user).match(/(?:MOBILE|DESKTOP)_(?:CODEX|CLAUDE)_[A-Z_]+/g) ?? []
       const marker = matches.at(-1)
       assert.ok(marker, '未登记的模型请求，不能以默认成功回答掩盖')
       assert.equal(marker.includes('CODEX'), engine === 'codex', '模型请求串入另一引擎')
       const result = (id) => user.flatMap((message) => Array.isArray(message.content) ? message.content : [])
         .findLast((block) => block.type === 'tool_result' && block.tool_use_id === id)
       const finish = (answer) => { completed.add(marker); return text(answer) }
+      if (extra[marker]) return extra[marker]({ engine, request, user, result, finish, text, tool, workspace })
       if (marker.endsWith('_CHAT')) return finish(marker + '_OK')
       assert.equal(engine, 'claude-code')
       assert.ok(workspace, '真实项目路径尚未就绪')

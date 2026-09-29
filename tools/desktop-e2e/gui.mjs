@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
+import { progressNote, steerPayload, toolOutput } from './scenarios.mjs'
 
 const peekaboo = process.env.PEEKABOO_BIN ??
   resolve(homedir(), '.local/share/peekaboo/node_modules/@steipete/peekaboo/peekaboo')
@@ -21,6 +22,11 @@ const scenarios = [
   { marker: 'MOBILE_CLAUDE_DENY', ...claude, permission: 'ask', approval: 'decline' },
   { marker: 'MOBILE_CLAUDE_FULL', ...claude, permission: 'full' },
   { marker: 'MOBILE_CLAUDE_PLAN', ...claude, permission: 'full', plan: true },
+  { marker: 'DESKTOP_CLAUDE_TOOLS', ...claude, permission: 'full', tools: true },
+  { marker: 'DESKTOP_CLAUDE_ASK', ...claude, permission: 'full', answer: 'Grape' },
+  { marker: 'DESKTOP_CLAUDE_STOP', ...claude, permission: 'full', stop: true },
+  { marker: 'DESKTOP_CLAUDE_STEER', ...claude, permission: 'full', steer: true },
+  { marker: 'DESKTOP_CLAUDE_MODEL', ...claude, permission: 'full', models: ['Claude Sonnet', 'Claude Haiku'] },
   { marker: 'MOBILE_CODEX_CHAT', ...codex },
 ]
 const only = argumentsMap.get('--only')?.split(',')
@@ -69,6 +75,41 @@ const press = (keys) => run(['press', keys, ...target(), '--foreground'])
 // 中文输入法会改写逐字键入，文本一律经剪贴板粘贴（Peekaboo 事后恢复原剪贴板）。
 const paste = (value) => { try { run(['paste', value, ...target(), '--foreground']) } catch { /* 结果由界面确认 */ } }
 
+// 同一快照中须同时出现全部文本（用于证明回合进行中的中间状态）。
+async function waitForAll(label, texts, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const data = see(label)
+    if (texts.every((expected) => find(data, (value) => value.includes(expected)))) return data
+    if (Date.now() > deadline) throw new Error(`等待界面超时：${label}`)
+    await sleep(700)
+  }
+}
+
+// 模型菜单为弹层且不进入辅助功能树（其小号灰字 OCR 也不可靠）；弹层与模型按钮右对齐，按右缘相对位置点击。
+// 模型顺序即适配器 model/list 的固定顺序；每次选择后都以按钮标签确认结果。
+const claudeModels = ['Claude configured default', 'Claude Sonnet', 'Claude Opus', 'Claude Fable', 'Claude Haiku',
+  'Claude Sonnet 1M', 'Claude Opus Plan / Sonnet Execute']
+
+function clickFromRight(element, dx, dy) {
+  clickNear(element, element.bounds.width / 2 + dx, dy)
+}
+
+async function selectModel(name) {
+  const index = claudeModels.indexOf(name)
+  if (index < 0) throw new Error(`未登记的模型：${name}`)
+  const chip = await waitFor('model-chip', (value, element) => element.role === 'button' && /^Claude .+ \S+$/.test(value))
+  clickNear(chip.element, 0, 0)
+  await sleep(900)
+  // 弹层首行是强度，次行是当前模型入口；进入后自上而下列出全部模型。
+  clickFromRight(chip.element, -109, -80)
+  await sleep(900)
+  clickFromRight(chip.element, -184, -213 + index * 28.7)
+  await sleep(700)
+  press('escape')
+  await waitFor('model-selected', (value, element) => element.role === 'button' && value.startsWith(`${name} `), 10_000)
+}
+
 async function waitFor(label, predicate, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs
   for (;;) {
@@ -109,7 +150,9 @@ async function setPermission(permission) {
 }
 
 async function send(scenario) {
+  for (const name of scenario.models ?? []) await selectModel(name)
   const { data, element } = await waitFor('composer', (value) => value === '随心输入')
+  scenario.composer = element
   click(data, element)
   if (scenario.plan) {
     paste('/plan')
@@ -130,10 +173,43 @@ async function interact(scenario) {
   if (scenario.plan) {
     await waitFor('plan-question', (value) => value.includes('Choose a color'))
     press('1')
-    await waitFor('plan-exit', (value) => value.includes('执行计划'))
+    // 计划模式须在界面展示模型输出的计划，再由用户确认退出。
+    await waitForAll('plan-output', ['MOBILE_PLAN_OUTPUT', '执行计划'])
     press('1')
   }
+  if (scenario.tools) {
+    // 中间过程：命令运行期间界面同时展示过程说明与正在运行的真实命令。
+    await waitForAll('tools-running', [progressNote, `正在运行 sleep 6; echo ${toolOutput}`])
+  }
+  if (scenario.answer) {
+    const { data, element } = await waitFor('question', (value, candidate) =>
+      candidate.role === 'checkbox' && value === scenario.answer)
+    click(data, element)
+  }
+  if (scenario.stop) {
+    const { data, element } = await waitFor('running', (value, candidate) => candidate.role === 'button' && value === '停止')
+    await sleep(3_000)
+    click(data, element)
+    await waitFor('stopped', (value) => /后停止了$/.test(value), 30_000)
+    return
+  }
+  if (scenario.steer) {
+    // 命令运行期间立即插入；输入框位置沿用发送前定位的结果，避免额外快照耗时。
+    await waitFor('steer-window', (value) => value.includes('正在运行 sleep 20; echo STEER_WINDOW'), 30_000)
+    clickNear(scenario.composer, 0, 0)
+    paste(steerPayload)
+    press('return')
+  }
   await waitFor('reply', (value) => value === `${scenario.marker}_OK`, 120_000)
+  if (scenario.tools) {
+    // 回合结束后折叠的过程仍可展开查看工具调用及其真实输出。
+    const summary = await waitFor('process-summary', (value, element) => element.role === 'button' && value.startsWith('用时'))
+    click(summary.data, summary.element)
+    const command = await waitFor('tool-item', (value, element) => element.role === 'button' &&
+      value === `已运行 sleep 6; echo ${toolOutput}`)
+    click(command.data, command.element)
+    await waitFor('tool-output', (value, element) => element.role !== 'button' && value === toolOutput, 15_000)
+  }
 }
 
 for (const scenario of scenarios.filter((item) => !only || only.includes(item.marker))) {
@@ -144,5 +220,11 @@ for (const scenario of scenarios.filter((item) => !only || only.includes(item.ma
   await send(scenario)
   await interact(scenario)
   console.log(`[desktop-gui] ${scenario.marker} 界面已出现回复`)
+}
+// 换模场景会持久化所选模型；恢复默认，避免改变用户后续新建聊天。
+if (!only || only.includes('DESKTOP_CLAUDE_MODEL')) {
+  window = mainWindow()
+  await newChat(claude)
+  await selectModel('Claude configured default')
 }
 console.log('[desktop-gui] 全部场景已在 GUI 执行；以 serve.mjs 退出结果为准')
