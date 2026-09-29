@@ -14,8 +14,9 @@ const sandboxPolicy = '(version 1)(allow default)(deny network-outbound)' +
   '(allow network-outbound (remote ip "localhost:*") (remote unix-socket))'
 
 export class WorkerHarness {
-  constructor({ repoRoot, runDir, control, registration, modelURLs }) {
-    Object.assign(this, { repoRoot, runDir, control, registration, modelURLs })
+  // root 可选：桌面端需固定目录，使 GUI 中登记的项目路径跨次运行有效；缺省为一次性临时目录。
+  constructor({ repoRoot, runDir, control, registration, modelURLs, root }) {
+    Object.assign(this, { repoRoot, runDir, control, registration, modelURLs, fixedRoot: root })
     this.relays = []
     this.runtimes = {}
     this.ports = {}
@@ -35,7 +36,11 @@ export class WorkerHarness {
     run('go', ['build', '-o', this.binary, './cmd/tyrs-hand-worker'], { cwd: this.repoRoot })
     // 短路径避免 macOS Unix Socket 的路径长度上限。
     // 手机目录选择返回真实路径，Control 的项目登记必须使用同一身份。
-    this.root = await realpath(await mkdtemp('/tmp/000-tyrs-mobile-'))
+    if (this.fixedRoot) {
+      await rm(this.fixedRoot, { recursive: true, force: true })
+      await mkdir(this.fixedRoot, { recursive: true, mode: 0o700 })
+    }
+    this.root = await realpath(this.fixedRoot ?? await mkdtemp('/tmp/000-tyrs-mobile-'))
     this.workspace = resolve(this.root, 'project')
     this.home = resolve(this.root, 'home')
     this.state = resolve(this.root, 'state')
