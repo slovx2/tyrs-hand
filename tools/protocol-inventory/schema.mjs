@@ -30,6 +30,7 @@ export function schemaIndex(root, extensionsRoot) {
     'windowsSandbox/readiness': 'WindowsSandboxReadinessResponse',
     'account/usage/read': 'GetAccountTokenUsageResponse',
     'account/workspaceMessages/read': 'GetWorkspaceMessagesResponse',
+    'remoteControl/status/read': 'RemoteControlStatusReadResponse',
   }
   for (const kind of ['ClientRequest', 'ServerRequest', 'ClientNotification', 'ServerNotification']) {
     const schema = JSON.parse(readFileSync(join(root, `${kind}.json`), 'utf8'))

@@ -5487,6 +5487,56 @@
       "reasons": {
         "claude-code": "Claude 的 windowsSandbox/setupStart 如实返回未启动，不产生 Windows 沙箱完成通知"
       }
+    },
+    {
+      "method": "getAuthStatus",
+      "engines": {
+        "codex": "required",
+        "claude-code": "required"
+      },
+      "cases": {
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-003"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:codex-desktop"
+      ],
+      "schema": {
+        "params": "extensions/get-auth-status.json#/params",
+        "response": "extensions/get-auth-status.json#/response"
+      }
+    },
+    {
+      "method": "remoteControl/status/read",
+      "engines": {
+        "codex": "required",
+        "claude-code": "not-applicable"
+      },
+      "cases": {
+        "codex": [
+          "CAPABILITY-003"
+        ],
+        "claude-code": [
+          "CAPABILITY-001",
+          "CAPABILITY-002"
+        ]
+      },
+      "callers": [
+        "internal/appserverhub/methods.go",
+        "wire:codex-desktop"
+      ],
+      "schema": {
+        "params": "ClientRequest.json",
+        "response": "v2/RemoteControlStatusReadResponse.json"
+      },
+      "reasons": {
+        "claude-code": "ChatGPT 远程控制；Claude 运行时没有远程控制，适配器以 -32004 明确拒绝"
+      }
     }
   ]
 }

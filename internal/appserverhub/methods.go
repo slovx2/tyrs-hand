@@ -13,10 +13,13 @@ const (
 )
 
 var methodClasses = map[string]methodClass{
-	"initialize":        methodLocal,
-	"runtime/info":      methodForward,
-	"thread/turns/list": methodForward,
-	"thread/items/list": methodForward,
+	"initialize":   methodLocal,
+	"runtime/info": methodForward,
+	// Codex Desktop 每次连接都会读取：v1 认证状态（官方 JSON Schema 不导出 v1，见扩展登记）与远程控制状态。
+	"getAuthStatus":             methodForward,
+	"remoteControl/status/read": methodForward,
+	"thread/turns/list":         methodForward,
+	"thread/items/list":         methodForward,
 
 	// 0.157.1 新增接口。共享 CODEX_HOME 的配置仍遵循单用户原生语义。
 	"server/diagnostics":           methodForward,

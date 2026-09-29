@@ -37,6 +37,17 @@ func verifyRuntimeCapabilitySurface(t *testing.T, ctx context.Context, connectio
 	var detected struct{ Items []json.RawMessage }
 	require.NoError(t, client.Call(ctx, "externalAgentConfig/detect", map[string]any{}, &detected))
 	require.Empty(t, detected.Items)
+	// Codex Desktop 的 v1 认证状态查询：Claude 没有 OpenAI 登录，必须如实回答而非报错。
+	var auth struct {
+		AuthMethod         *string
+		AuthToken          *string
+		RequiresOpenaiAuth *bool
+	}
+	require.NoError(t, client.Call(ctx, "getAuthStatus", map[string]any{"includeToken": false, "refreshToken": false}, &auth))
+	require.Nil(t, auth.AuthMethod)
+	require.Nil(t, auth.AuthToken)
+	require.NotNil(t, auth.RequiresOpenaiAuth)
+	require.False(t, *auth.RequiresOpenaiAuth)
 }
 
 func verifyRuntimeCodexSurface(t *testing.T, ctx context.Context, connection *ssh.Client) {
@@ -60,6 +71,9 @@ func verifyRuntimeCodexSurface(t *testing.T, ctx context.Context, connection *ss
 		{"userVerification/cancel", map[string]any{"requestId": "capability-003"}, nil},
 		{"windowsSandbox/readiness", nil, []string{"status"}},
 		{"windowsSandbox/setupStart", map[string]any{"mode": "elevated"}, []string{"started"}},
+		// Codex Desktop 每次连接都会读取远程控制状态与 v1 认证状态。
+		{"remoteControl/status/read", nil, []string{"status", "installationId"}},
+		{"getAuthStatus", map[string]any{"includeToken": false, "refreshToken": false}, []string{"authMethod", "requiresOpenaiAuth"}},
 	} {
 		var result map[string]json.RawMessage
 		require.NoError(t, client.Call(ctx, call.method, call.params, &result), "%s 必须由原生 CLI 成功响应", call.method)
