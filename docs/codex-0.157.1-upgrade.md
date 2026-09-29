@@ -35,15 +35,32 @@
   - FAILURE-007：Worker 发往 Codex 的周期 `model/list` 恰在故意 SIGKILL 时未获响应，被判为“遗漏客户端请求”。现在仅当连接属于被杀进程树时，记为截断证据 `processTerminatedRequests`；其他遗漏仍然失败。
 - **CAPABILITY-001 漏测一项**：适配器已拒绝 `account/workspaceMessages/read`，但测试夹具未发送该请求。已补齐（适配器 14c592c，主库 pin 同步），登记清单与夹具现已一一对应。
 
-### 剩余缺口
+### 最后 6 项缺口的根因与收口（全部不是原生报文缺陷）
 
-本地完整矩阵（79ec54a，full4）为 **6 项缺口，全部是上游原生问题**，运行时失败仅 codex-mcp-pagination 与 codex-review：
+逐项查阅 Codex 0.157.1、0.158.0、0.160.0-alpha.2 及上游 main 源码后确认：
 
-- `thread/timeline/list` 的 3 项 schema 差异；
-- REVIEW-006 与 `review/start@codex`：review 缺少 turn/started；
-- MCP-017：旧版 `tools/list` 分页丢 cursor。
+- **timeline 的 3 项 schema 差异**：Rust 类型用 serde `rename_all_fields = "camelCase"` 序列化，schemars 生成 JSON Schema 时未应用该规则，写成了 `turn_id`/`started_at` 等下划线字段。同一 CLI 生成的官方 TS 定义与原生 wire 都是驼峰。
+  - 新增 `protocol/schema-corrections/0.157.1.json`，只允许字段改名，且必须命中原字段，否则直接报错。
+  - `tools/protocol-inventory/schema-corrections.test.mjs` 核对勘误后的字段集与官方 TS 完全一致。
+  - 扩展机制仍禁止覆盖原生 schema。
+- **REVIEW-006 / `review/start@codex`**：
+  - 原生 inline 审查直接提交 `Op::Review`，审查任务不调用 `emit_turn_started`，开始信号是 `review/start` 响应中的 inProgress 回合。现断言原生不发 `turn/started`，Hub 也不补造。
+  - 0.157.1 的会话默认为分页历史，原生明确拒绝分页会话的 detached 审查（detached 也已弃用）。现断言拒绝且无副作用，并按弃用说明的替代路径（新建会话后做 inline 审查）验证独立审查会话。
+  - 重启后原生按审查回合的持久上下文恢复只读无网络沙箱（只会收窄）。
+  - 分页会话的 inline 审查会另留一个装审查提示的 interrupted 回合。以重启前后逐项一致对账，不写死回合数。
+- **MCP-017**：在稳定的 Legacy MCP 协议模式下，原生有意丢弃 `tools/list` 的游标，只有 UnderDevelopment 且默认关闭的 `mcp_2026_07_28` 才跟随分页。现精确断言原生只请求首页、Hub 如实呈现首页工具；resources 仍须完整分页。上游一旦改变行为，用例会报出。
+- **0.158.0 暂不升级**：以上三项在 0.158.0 中都无变化，而且它把本地会话默认改为分页历史，没有收益。
 
-以上问题不修改官方 CLI，也不放宽门禁。Android UI 自动化、macOS 与 Desktop GUI 仍按用户决定暂缓；生产未部署，`releaseReady=false`。
+### 当前状态
+
+- 本地完整矩阵 full5：**0 缺口，`complete=true`**，14926 条证据，无运行时失败。
+- 本地常规 CI：通过。
+- 其余修复：
+  - Hub 关闭通知测试不再依赖响应与通知的到达顺序（GitHub 上曾超时 10 分钟）；
+  - CAPABILITY-001 夹具补齐；
+  - FAILURE-007 对 SIGKILL 截断请求的判定；
+  - 会话轮询对原生瞬态的容忍。
+- Android UI 自动化、macOS 与 Desktop GUI 仍按用户决定暂缓；生产未部署，`releaseReady=false`。
 
 ## 最新接续：本地 Linux 完整矩阵与语义缺口补齐（2026-09-28 晚）
 
