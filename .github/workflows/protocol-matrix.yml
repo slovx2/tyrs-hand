@@ -109,7 +109,8 @@ jobs:
         # 默认仅 Linux；用户要求恢复后可手动显式开启 macOS Worker 验收。
         os: ${{ fromJSON(inputs.macos_worker && '["ubuntu-24.04", "macos-14"]' || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # 完整矩阵约 23 分钟，另需约 2 分钟上传全部证据；留出余量，避免验收已通过却在上传时被取消。
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: tyrs-hand
