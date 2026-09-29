@@ -34,4 +34,18 @@ node tools/desktop-e2e/serve.mjs   # 就绪后输出 [desktop-e2e] ready {...}
 | `MOBILE_CLAUDE_PLAN` | Claude，“+ → 计划模式” | 选 Blue，执行计划，文件内容为 Blue |
 | `MOBILE_CODEX_CHAT` | Codex | 回复 `_OK` |
 
-同一会话内工具调用 ID 固定，重复同一场景需新开聊天。GUI 可由 Peekaboo 驱动；中文输入法会改写输入，应使用粘贴而非逐字输入。
+同一会话内工具调用 ID 固定，重复同一场景需新开聊天。
+
+## 自动执行
+
+`serve.mjs` 就绪后另开终端运行（需已安装 Peekaboo 并授予终端辅助功能、屏幕录制权限）：
+
+```sh
+node tools/desktop-e2e/gui.mjs --screenshots <证据目录>/gui   # 可加 --only MOBILE_CLAUDE_CHAT,...
+```
+
+脚本逐场景新开聊天、选择项目与权限、发送标记词、处理审批与计划问答，并等待界面出现回复。随后对 `serve.mjs` 按 Ctrl+C：
+模型断言（6 个场景的真实终态、文件副作用、工具结果回模）与 wire schema 全部通过时输出 `[desktop-e2e] passed` 并以 0 退出。
+
+操作要点：Electron 按钮需前台真实点击；中文输入法会改写逐字键入，文本一律粘贴；权限菜单不在辅助功能树中，按“更改权限”按钮的相对位置点击；
+用户可能同时使用 ChatGPT.app，冲突时应退避。
