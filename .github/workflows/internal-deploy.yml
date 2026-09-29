@@ -136,13 +136,13 @@ jobs:
           path: adapter-source
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
         with: { cosign-release: v2.5.3 }
-      # 适配器拒绝无沙箱降级，打包后的 --runtime-info 自检需要与生产宿主一致的 bubblewrap。
+      # 适配器拒绝无沙箱降级，打包后的 --runtime-info 自检需要沙箱依赖 bubblewrap 与 socat。
       - name: Prepare Claude sandbox dependency
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update
-          sudo apt-get install --no-install-recommends bubblewrap=0.9.0-1ubuntu0.3
-          command -v bwrap
+          sudo apt-get install --no-install-recommends bubblewrap=0.9.0-1ubuntu0.3 socat=1.8.0.0-4ubuntu0.1
+          command -v bwrap socat
       - name: Build and sign isolated Claude runtime
         run: |
           sh tools/package-claude-runtime.sh adapter-source .artifacts/claude-runtime
