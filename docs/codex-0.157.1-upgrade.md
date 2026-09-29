@@ -51,9 +51,19 @@
 - **MCP-017**：在稳定的 Legacy MCP 协议模式下，原生有意丢弃 `tools/list` 的游标，只有 UnderDevelopment 且默认关闭的 `mcp_2026_07_28` 才跟随分页。现精确断言原生只请求首页、Hub 如实呈现首页工具；resources 仍须完整分页。上游一旦改变行为，用例会报出。
 - **0.158.0 暂不升级**：以上三项在 0.158.0 中都无变化，而且它把本地会话默认改为分页历史，没有收益。
 
+### 用户确认（2026-09-29）
+
+以上三项口径已由用户确认：
+- MCP-017 按原生行为验收；
+- REVIEW-006 按原生行为验收；
+- 接受 timeline 的 JSON Schema 勘误。
+
+本轮"CI 通过"不含 iOS：Mobile E2E 的 iPhone GUI 流程失败，断言为 `automations:list is visible`；Android 已通过，iOS 仍暂缓。
+
 ### 当前状态
 
 - 本地完整矩阵 full5：**0 缺口，`complete=true`**，14926 条证据，无运行时失败。
+- GitHub（cef41ee）：常规 CI 与完整协议验收均通过。
 - 本地常规 CI：通过。
 - 其余修复：
   - Hub 关闭通知测试不再依赖响应与通知的到达顺序（GitHub 上曾超时 10 分钟）；
