@@ -2,6 +2,25 @@
 
 更新时间：2026-09-28。Phase 1，以及 Phase 2 的回退、stdin 审批和扩展表单链路已完成；升级整体验收尚未完成，`releaseReady=false`，不能据此发布生产。
 
+## 最新接续：ChatGPT.app 桌面 GUI 验收（2026-09-29）
+
+按用户提议：本地起真实 Control、回环 Mock LLM 与双入口 Worker（`tools/desktop-e2e/serve.mjs`），安装版 ChatGPT.app（内置 Codex 客户端 0.158.0-alpha.2.1）经 `~/.ssh/config` 发现的专用 SSH Host 直接连入。GUI 由 Peekaboo 驱动（`tools/desktop-e2e/gui.mjs`），通过与否由 `serve.mjs` 退出时的模型断言与 wire schema 校验判定。用法见 `tools/desktop-e2e/README.md`。
+
+**结果**：六个场景全部通过，wire 0 错误。
+- Claude：聊天、请求批准后允许（文件落盘）、请求批准后拒绝（无文件）、完全访问（无审批直接落盘）、计划模式（问答、确认退出后执行）；
+- Codex：聊天。
+
+**验收发现并已修复**：
+1. ChatGPT.app 下发的动态工具 `inputSchema` 声明 JSON Schema 2020-12 草案，Claude 适配器的 Ajv 只认 draft-07，每个 Claude 回合一开始即失败。现在按 `$schema` 选择 Ajv2020/Ajv2019，覆盖动态工具、MCP 表单与结构化输出（适配器 928c2d3）。
+2. Claude 回合的 `turn/diff/updated` 取的是整个工作区相对 HEAD 的差异，既有未提交改动与此前回合的结果都显示为本回合“已编辑”。现在回合开始时用临时索引写出基线树，只比较本回合的变化，真实索引不被修改（适配器 40f6041）。
+3. `Write` 新建文件时，fileChange 给的是带 `---/+++/@@` 头的伪 diff，单行文件显示 `+4`。现在与原生一致：新建给完整内容，覆盖给统一 diff（适配器 011f302）。
+4. 门禁缺口：
+   - 桌面客户端每次连接都会调用 v1 `getAuthStatus`（原生支持，但官方 JSON Schema 不导出），已按官方 TS 定义补扩展 schema；
+   - `remoteControl/status/read` 的参数为 null，缺少响应关联，已补；
+   - Hub 显式分类为透传；Codex 以 CAPABILITY-003 取得真实证据；Claude 如实应答 `getAuthStatus`，远程控制状态按专属能力 -32004 登记为不适用。
+
+**用户机器上的配置**：`~/.ssh/config` 顶部一行 Include（备份 `~/.ssh/config.bak-tyrs-desktop-e2e`）；ChatGPT.app 中的 `tyrs-e2e-claude`、`tyrs-e2e-codex` 主机及 `desktop-e2e`、`desktop-e2e-codex` 项目。环境未运行时主机显示连接失败，属正常。
+
 ## 最新接续：门禁分类收口与剩余上游缺口（2026-09-29）
 
 本节优先于下方所有历史状态。验证仍以本地 Linux 为主（见下一节运行器），推送前先跑通本地完整常规 CI（`.local/linux-matrix/ci-local/run.sh`）。
