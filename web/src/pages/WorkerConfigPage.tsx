@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
@@ -20,6 +20,7 @@ export function WorkerConfigPage({ worker }: { worker: Worker }) {
   const [engine, setEngine] = useState<Engine>('codex')
   return (
     <div className="worker-detail-stack">
+      <SharedInstructions worker={worker} />
       <label>
         <span className="label">运行时</span>
         <select
@@ -33,6 +34,90 @@ export function WorkerConfigPage({ worker }: { worker: Worker }) {
       </label>
       <RuntimeConfig key={engine} worker={worker} engine={engine} />
     </div>
+  )
+}
+
+// 全局指令只维护一份：Codex 读取 Codex Home 的 AGENTS.md，Claude Code 的 CLAUDE.md 是指向它的软链。
+function SharedInstructions({ worker }: { worker: Worker }) {
+  const queryClient = useQueryClient()
+  const config = useQuery({
+    queryKey: ['worker-config', worker.id, 'codex'],
+    queryFn: () =>
+      api<WorkerConfig>(`/workers/${worker.id}/runtimes/codex/config`),
+  })
+  if (config.isError)
+    return (
+      <p role="alert" className="error-text">
+        {config.error.message}
+      </p>
+    )
+  if (!config.data) return <p className="muted">正在读取全局指令…</p>
+  return (
+    <SharedInstructionsEditor
+      key={config.data.revision}
+      worker={worker}
+      initialConfig={config.data}
+      onSaved={() =>
+        queryClient.invalidateQueries({
+          queryKey: ['worker-config', worker.id],
+        })
+      }
+    />
+  )
+}
+
+function SharedInstructionsEditor({
+  worker,
+  initialConfig,
+  onSaved,
+}: {
+  worker: Worker
+  initialConfig: WorkerConfig
+  onSaved: () => Promise<unknown>
+}) {
+  const showToast = useUI((state) => state.showToast)
+  const [agents, setAgents] = useState(initialConfig.agents)
+  const save = useMutation({
+    mutationFn: () =>
+      api<{ revision: string }>(
+        `/workers/${worker.id}/runtimes/codex/config/agents`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            revision: initialConfig.revision,
+            content: agents,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      showToast('success', '全局指令已保存')
+      void onSaved()
+    },
+    onError: (error: Error) => showConfigError(showToast, error),
+  })
+  return (
+    <section className="panel worker-config-section">
+      <h2 className="text-xl font-semibold">全局指令</h2>
+      <p className="muted mt-1 text-sm">
+        Codex 与 Claude Code 共用：写入该 Worker 的 Codex Home AGENTS.md，Claude
+        的 CLAUDE.md 指向同一文件。新会话生效。
+      </p>
+      <textarea
+        aria-label="全局指令"
+        className="field mt-4 min-h-52 font-mono text-xs leading-5"
+        value={agents}
+        onChange={(event) => setAgents(event.target.value)}
+      />
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          className="button-secondary"
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+        >
+          保存全局指令
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -63,7 +148,7 @@ function RuntimeConfig({ worker, engine }: { worker: Worker; engine: Engine }) {
         重新读取配置
       </button>
       <WorkerConfigEditor
-        key={`${engine}:${reload}`}
+        key={`${engine}:${reload}:${config.data.revision}`}
         worker={worker}
         engine={engine}
         initialConfig={config.data}
@@ -86,14 +171,12 @@ function WorkerConfigEditor({
 }) {
   const claude = engine === 'claude-code'
   const engineLabel = claude ? 'Claude Code' : 'Codex'
-  const instructionsFile = claude ? 'CLAUDE.md' : 'AGENTS.md'
   const configURL = `/workers/${worker.id}/runtimes/${engine}/config`
   const [authMethod, setAuthMethod] = useState<string>(
     initialConfig.authMethod || 'api-key',
   )
   const [model, setModel] = useState(initialConfig.model || '')
   const showToast = useUI((state) => state.showToast)
-  const [agents, setAgents] = useState(initialConfig.agents)
   const [revision, setRevision] = useState(initialConfig.revision)
   const [baseUrl, setBaseUrl] = useState(initialConfig.baseUrl ?? '')
   const [apiKey, setApiKey] = useState('')
@@ -107,19 +190,6 @@ function WorkerConfigEditor({
       ),
     refetchInterval: (query) =>
       query.state.data?.status === 'pending' ? 2_000 : false,
-  })
-  const saveAgents = useMutation({
-    mutationFn: () =>
-      api<{ revision: string }>(`${configURL}/agents`, {
-        method: 'PUT',
-        body: JSON.stringify({ revision, content: agents }),
-      }),
-    onSuccess: (result) => {
-      setRevision(result.revision)
-      showToast('success', `${instructionsFile} 已保存`)
-      void refetchConfig()
-    },
-    onError: (error: Error) => showConfigError(showToast, error),
   })
   const saveProvider = useMutation<{ revision: string }, Error, boolean>({
     mutationFn: (clearApiKey) =>
@@ -262,25 +332,12 @@ function WorkerConfigEditor({
       </section>
 
       <section className="panel worker-config-section">
-        <h2 className="text-xl font-semibold">{instructionsFile}</h2>
+        <h2 className="text-xl font-semibold">重启 {engineLabel}</h2>
         <p className="muted mt-1 text-sm">
-          {claude
-            ? '此指令文件应用于该 Worker 的 Claude 会话。'
-            : '内容直接读取和写入当前 Worker 的 Codex Home。'}
+          全局指令与 Provider 修改对新会话生效；重启会中断当前 {engineLabel}{' '}
+          会话。
         </p>
-        <textarea
-          className="field mt-4 min-h-52 font-mono text-xs leading-5"
-          value={agents}
-          onChange={(event) => setAgents(event.target.value)}
-        />
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            className="button-secondary"
-            onClick={() => saveAgents.mutate()}
-            disabled={saveAgents.isPending}
-          >
-            保存 {instructionsFile}
-          </button>
           <button
             className="button-danger"
             onClick={() =>

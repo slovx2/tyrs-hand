@@ -18,10 +18,68 @@ type ClaudeService struct {
 	home    string
 	mu      sync.Mutex
 	restart func() error
+	// sharedAgents 非空时，全局指令与 Codex 共用该 AGENTS.md，CLAUDE.md 只是指向它的软链。
+	sharedAgents string
 }
 
 func NewClaudeService(home string) *ClaudeService   { return &ClaudeService{home: home} }
 func (s *ClaudeService) SetRestart(fn func() error) { s.restart = fn }
+
+// NewSharedClaudeService 创建与 Codex 共用全局指令的 Claude 配置服务：读写都作用于同一 AGENTS.md。
+func NewSharedClaudeService(home, codexAgents string) *ClaudeService {
+	return &ClaudeService{home: home, sharedAgents: codexAgents}
+}
+
+func (s *ClaudeService) instructionsPath() string {
+	if s.sharedAgents != "" {
+		return s.sharedAgents
+	}
+	return filepath.Join(s.home, "CLAUDE.md")
+}
+
+// ShareClaudeInstructions 让 Claude 的 CLAUDE.md 成为 Codex AGENTS.md 的软链，两引擎共用一份全局指令。
+// 既有独立 CLAUDE.md 的内容不丢：AGENTS.md 缺失或为空时迁入，否则另存为 CLAUDE.md.pre-shared。
+func ShareClaudeInstructions(claudeHome, codexAgents string) error {
+	if err := os.MkdirAll(claudeHome, 0o700); err != nil {
+		return err
+	}
+	link := filepath.Join(claudeHome, "CLAUDE.md")
+	info, err := os.Lstat(link)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return err
+	case info.Mode()&os.ModeSymlink != 0:
+		if target, _ := os.Readlink(link); target == codexAgents {
+			return nil
+		}
+		if err := os.Remove(link); err != nil {
+			return err
+		}
+	default:
+		content, err := os.ReadFile(link)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(string(content)) != "" {
+			existing, err := readOptional(codexAgents)
+			if err != nil {
+				return err
+			}
+			destination := link + ".pre-shared"
+			if strings.TrimSpace(string(existing)) == "" {
+				destination = codexAgents
+			}
+			if err := atomicWrite(destination, content, 0o600); err != nil {
+				return err
+			}
+		}
+		if err := os.Remove(link); err != nil {
+			return err
+		}
+	}
+	return os.Symlink(codexAgents, link)
+}
 func (s *ClaudeService) Restart() error {
 	if s.restart == nil {
 		return errors.New("尚未启用 Claude 运行时")
@@ -61,7 +119,7 @@ func (s *ClaudeService) read() (workerprotocol.WorkerConfig, map[string]json.Raw
 	if err != nil {
 		return result, nil, err
 	}
-	agents, err := readOptional(filepath.Join(s.home, "CLAUDE.md"))
+	agents, err := readOptional(s.instructionsPath())
 	if err != nil {
 		return result, nil, err
 	}
@@ -106,7 +164,12 @@ func (s *ClaudeService) UpdateAgents(expected, content string) (workerprotocol.W
 	if len(content) > 1024*1024 {
 		return current, errors.New("配置长度超限")
 	}
-	if err := writeWithBackups(filepath.Join(s.home, "CLAUDE.md"), []byte(content)); err != nil {
+	// 共用时与 Codex 一致直接原子写入 AGENTS.md，不在 Codex Home 留下 Claude 的备份文件。
+	write := writeWithBackups
+	if s.sharedAgents != "" {
+		write = func(path string, data []byte) error { return atomicWrite(path, data, 0o600) }
+	}
+	if err := write(s.instructionsPath(), []byte(content)); err != nil {
 		return current, err
 	}
 	current, _, err = s.read()

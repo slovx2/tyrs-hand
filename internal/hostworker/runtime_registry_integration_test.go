@@ -422,7 +422,11 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 			settings, err := json.Marshal(map[string]any{"model": model, "env": modelEnv})
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(filepath.Join(claudeConfig, "settings.json"), settings, 0o600))
-			require.NoError(t, os.WriteFile(filepath.Join(claudeConfig, "CLAUDE.md"), []byte("CLAUDE_RUNTIME_INSTRUCTIONS_7319"), 0o600))
+			// 生产中 CLAUDE.md 是指向 Codex AGENTS.md 的软链：真实 CLI 必须经软链读到共用指令。
+			sharedAgents := filepath.Join(root, "shared-codex-home", "AGENTS.md")
+			require.NoError(t, os.MkdirAll(filepath.Dir(sharedAgents), 0o700))
+			require.NoError(t, os.WriteFile(sharedAgents, []byte("CLAUDE_RUNTIME_INSTRUCTIONS_7319"), 0o600))
+			require.NoError(t, os.Symlink(sharedAgents, filepath.Join(claudeConfig, "CLAUDE.md")))
 		} else {
 			configuration := fmt.Sprintf("model = \"mock-model\"\nmodel_provider = \"mock\"\napproval_policy = \"never\"\n[model_providers.mock]\nname = \"Mock\"\nbase_url = %q\nwire_api = \"responses\"\nrequest_max_retries = 0\nstream_max_retries = 0\nsupports_websockets = false\n", upstream.URL+"/v1")
 			if codexAccount {

@@ -7,14 +7,19 @@ Worker 的 Claude 配置目录为：
 
 ```text
 <WorkerDataRoot>/claude-code/config/claude/
-  CLAUDE.md
+  CLAUDE.md -> <Codex Home>/AGENTS.md
   settings.json
   settings.json.bak.1 … settings.json.bak.4
 ```
 
 该目录作为 Claude runtime 的 `CLAUDE_CONFIG_DIR`，对应原生默认的 `~/.claude`。
-不会改写运行 Worker 的用户个人配置目录，也不复制 Codex 的 AGENTS.md 或登录态。
-全局 `CLAUDE.md` 对该 runtime 下的项目生效；项目自己的指令文件继续按原生规则加载。
+不会改写运行 Worker 的用户个人配置目录，也不复制 Codex 的登录态。
+
+全局指令两引擎共用一份：Worker 启动时把 `CLAUDE.md` 建成指向 Codex Home
+`AGENTS.md` 的软链，控制台 Worker「运行时配置」页顶部的“全局指令”只编辑这一个文件，
+Codex 与 Claude 的新会话都会读取它。经 Claude 配置接口写入指令同样落到该 `AGENTS.md`，
+不会把软链替换成独立文件。启用共用前已有的独立 `CLAUDE.md` 不会丢失：`AGENTS.md`
+缺失或为空时迁入，否则另存为 `CLAUDE.md.pre-shared`。项目自己的指令文件继续按原生规则加载。
 
 Provider 示例（虚拟凭据）：
 

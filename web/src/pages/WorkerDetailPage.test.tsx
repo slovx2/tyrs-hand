@@ -59,7 +59,7 @@ function commonHandlers(role: 'admin' | 'user' = 'admin') {
 }
 
 describe('WorkerDetailPage', () => {
-  it('Claude 配置使用独立路径并隐藏 OpenAI 登录，切换回 Codex 不混入草稿', async () => {
+  it('Claude 配置使用独立路径并隐藏 OpenAI 登录，全局指令两引擎共用一份', async () => {
     commonHandlers()
     const provider = vi.fn()
     const agents = vi.fn()
@@ -99,10 +99,10 @@ describe('WorkerDetailPage', () => {
     )
     renderRoute(`/workers/${workerId}/codex`)
     const user = userEvent.setup()
-    await screen.findByText('AGENTS.md')
+    await screen.findByRole('heading', { name: '全局指令' })
     const oauthCalls = oauth.mock.calls.length
     await user.selectOptions(screen.getByLabelText('运行时'), 'claude-code')
-    await screen.findByText('CLAUDE.md')
+    await screen.findByRole('heading', { name: '重启 Claude Code' })
     expect(screen.queryByText('登录 ChatGPT 账号')).not.toBeInTheDocument()
     expect(oauth).toHaveBeenCalledTimes(oauthCalls)
     expect(screen.getByLabelText('默认模型')).toHaveValue('claude-config-model')
@@ -116,23 +116,16 @@ describe('WorkerDetailPage', () => {
         model: 'claude-config-model',
       }),
     )
-    const instructions = screen.getByDisplayValue('claude-code instructions')
-    await user.clear(instructions)
-    await user.type(instructions, 'Claude runtime instructions')
-    await user.click(screen.getByRole('button', { name: '保存 CLAUDE.md' }))
-    await vi.waitFor(() =>
-      expect(agents).toHaveBeenCalledWith({
-        revision: 'rev-2',
-        content: 'Claude runtime instructions',
-      }),
-    )
-    await user.selectOptions(screen.getByLabelText('运行时'), 'codex')
+    // Claude 不再单独维护 CLAUDE.md：页面只有一份来自 Codex AGENTS.md 的全局指令。
+    expect(screen.getAllByLabelText('全局指令')).toHaveLength(1)
+    expect(screen.getByLabelText('全局指令')).toHaveValue('codex instructions')
     expect(
-      await screen.findByDisplayValue('codex instructions'),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByDisplayValue('Claude runtime instructions'),
+      screen.queryByDisplayValue('claude-code instructions'),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: '保存 CLAUDE.md' }),
+    ).not.toBeInTheDocument()
+    expect(agents).not.toHaveBeenCalled()
   })
 
   it('直接访问详情路由并在进入 Codex 页后才读取配置', async () => {
@@ -163,7 +156,7 @@ describe('WorkerDetailPage', () => {
     expect(configRequest).toHaveBeenCalledTimes(1)
   })
 
-  it('在 Codex 子页更新 Provider、AGENTS.md、OAuth 和重启', async () => {
+  it('在 Codex 子页更新 Provider、全局指令、OAuth 和重启', async () => {
     commonHandlers()
     const provider = vi.fn()
     const agents = vi.fn()
@@ -246,11 +239,13 @@ describe('WorkerDetailPage', () => {
     const agentsInput = screen.getByDisplayValue('old agents')
     await user.clear(agentsInput)
     await user.type(agentsInput, 'new agents')
-    await user.click(screen.getByRole('button', { name: '保存 AGENTS.md' }))
-    expect(agents).toHaveBeenCalledWith({
-      revision: 'rev-2',
-      content: 'new agents',
-    })
+    await user.click(screen.getByRole('button', { name: '保存全局指令' }))
+    await vi.waitFor(() =>
+      expect(agents).toHaveBeenCalledWith({
+        revision: 'rev-2',
+        content: 'new agents',
+      }),
+    )
     await user.click(screen.getByRole('button', { name: '重启 Codex' }))
     await user.click(screen.getByRole('button', { name: '登录 ChatGPT 账号' }))
     expect(restart).toHaveBeenCalledOnce()

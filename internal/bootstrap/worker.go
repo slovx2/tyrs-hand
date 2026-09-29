@@ -142,6 +142,11 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 			cleanupFailure(nil)
 			return nil, nil, fmt.Errorf("安装 Claude Skill 失败: %w", err)
 		}
+		// 全局指令只维护一份：Claude 的 CLAUDE.md 指向 Codex Home 的 AGENTS.md。
+		if err := workerconfig.ShareClaudeInstructions(cfg.ClaudeConfigDir(), filepath.Join(cfg.WorkerCodexHome, "AGENTS.md")); err != nil {
+			cleanupFailure(nil)
+			return nil, nil, fmt.Errorf("共用 Claude 全局指令失败: %w", err)
+		}
 		claudeConfig := cfg
 		claudeConfig.WorkerDataRoot = cfg.ClaudeStateDir()
 		claudeConfig.WorkerHome = cfg.ClaudeHome()
@@ -247,7 +252,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	if configService != nil && cfg.ControlSyncEnabled() {
 		configService.SetWorkspaceRoot(cfg.WorkerWorkspaceRoot)
 		configService.SetRestart(func() error { return registry.Restart(runtimeidentity.Codex) })
-		claudeConfig := workerconfig.NewClaudeService(cfg.ClaudeConfigDir())
+		claudeConfig := workerconfig.NewSharedClaudeService(cfg.ClaudeConfigDir(), filepath.Join(cfg.WorkerCodexHome, "AGENTS.md"))
 		claudeConfig.SetRestart(func() error { return registry.Restart(runtimeidentity.Claude) })
 		go runControlChannel(ctx, cfg, credential, configService, claudeConfig, runner, logger)
 	}
