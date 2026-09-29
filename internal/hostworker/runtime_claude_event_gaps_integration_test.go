@@ -273,7 +273,7 @@ func collectClaudeEventGaps(t *testing.T, ctx context.Context, events *codex.Eve
 func verifyClaudeActualDiff(t *testing.T, diff string) {
 	t.Helper()
 	for _, part := range []string{"diff --git a/tracked.txt b/tracked.txt", "--- a/tracked.txt\n+++ b/tracked.txt", "@@ -1,3 +1,3 @@", "-BEFORE", "+ACTUAL_AFTER", " KEEP", " TAIL",
-		"diff --git a/created.txt b/created.txt", "--- /dev/null\n+++ b/created.txt", "@@ -0,0 +1,1 @@", "+ACTUAL_CREATED"} {
+		"diff --git a/created.txt b/created.txt", "new file mode", "--- /dev/null\n+++ b/created.txt", "@@ -0,0 +1 @@", "+ACTUAL_CREATED"} {
 		require.Contains(t, diff, part, "最终 diff 必须包含真实磁盘变更的路径与 hunk")
 	}
 	paths := []string{}
@@ -316,7 +316,8 @@ func verifyClaudeEventGapHistory(t *testing.T, history claudeEventTurn, complete
 				require.Contains(t, change.Diff, "+ACTUAL_AFTER")
 			} else {
 				require.Equal(t, filepath.Join(cwd, "created.txt"), change.Path)
-				require.Contains(t, change.Diff, "+ACTUAL_CREATED")
+				// 与原生 Codex 一致：新建文件的 diff 为完整内容，客户端据此按行计为新增。
+				require.Equal(t, "ACTUAL_CREATED\n", change.Diff)
 			}
 		}
 	}

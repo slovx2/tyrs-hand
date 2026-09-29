@@ -26,7 +26,7 @@ func verifyClaudeInapplicableCapabilities(t *testing.T, ctx context.Context, cli
 		Params json.RawMessage `json:"params"`
 	}
 	require.NoError(t, json.Unmarshal(data, &cases))
-	require.Len(t, cases, 43)
+	require.Len(t, cases, 44)
 	// 带会话范围的请求须使用本连接真实可见的会话，Hub 校验通过后才由适配器判定是否适用；临时会话不进入会话目录。
 	var thread struct{ Thread struct{ ID string } }
 	require.NoError(t, client.Call(ctx, "thread/start", map[string]any{
