@@ -33,6 +33,7 @@ node tools/desktop-e2e/serve.mjs   # 就绪后输出 [desktop-e2e] ready {...}
 | `MOBILE_CLAUDE_FULL` | Claude，完全访问（新聊天） | 无审批直接落盘 |
 | `MOBILE_CLAUDE_PLAN` | Claude，“+ → 计划模式” | 选 Blue，执行计划，文件内容为 Blue |
 | `DESKTOP_CLAUDE_TOOLS` | Claude，完全访问 | 命令运行中同时显示过程说明与“正在运行”的命令；结束后可展开查看命令与真实输出 |
+| `DESKTOP_CLAUDE_THINK` | Claude，完全访问 | 模型持续思考 6 秒期间，界面显示思考内容（推理摘要作为回合最新条目） |
 | `DESKTOP_CLAUDE_ASK` | Claude | 非计划模式的提问，选第二项 Grape，模型收到该选择 |
 | `DESKTOP_CLAUDE_STOP` | Claude | 模型请求挂起时点“停止”；须有真实 `turn/interrupt`、回合 interrupted、迟到回复不下发 |
 | `DESKTOP_CLAUDE_STEER` | Claude | 命令运行期间发送 `STEER_PAYLOAD_7F`；须为真实 `turn/steer` 且进入同一回合的下一次模型请求 |

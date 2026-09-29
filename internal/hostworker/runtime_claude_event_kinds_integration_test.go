@@ -200,7 +200,7 @@ func verifyRuntimeClaudeEventKinds(t *testing.T, ctx context.Context, connection
 		}
 		require.True(t, kinds[kind], "缺少 %s 条目，实际 %v", kind, kinds)
 	}
-	for _, method := range []string{"item/reasoning/textDelta", "item/agentMessage/delta", "item/commandExecution/outputDelta"} {
+	for _, method := range []string{"item/reasoning/summaryTextDelta", "item/agentMessage/delta", "item/commandExecution/outputDelta"} {
 		require.True(t, deltaKinds[method], "缺少 %s 增量，实际 %v", method, deltaKinds)
 	}
 	require.True(t, tokenUsage, "缺少真实用量事件")

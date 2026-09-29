@@ -159,7 +159,7 @@ completed:
 	for _, event := range peer.capture.snapshot()[checkpoint:] {
 		var params struct {
 			ThreadID, TurnID, ItemID, Delta string
-			ContentIndex                    int
+			SummaryIndex                    int
 			Item                            json.RawMessage
 			Turn                            struct {
 				ID, Status string
@@ -182,8 +182,8 @@ completed:
 			require.Equal(t, 1, turnStarts)
 			require.Zero(t, turnEnds)
 			var item struct {
-				ID, Type, Text string
-				Content        []any
+				ID, Type, Text   string
+				Summary, Content []any
 			}
 			require.NoError(t, json.Unmarshal(params.Item, &item))
 			if event.Method == "item/started" {
@@ -195,18 +195,22 @@ completed:
 				require.NotContains(t, ends, item.ID)
 				ends[item.ID] = params.Item
 				completedItems = append(completedItems, params.Item)
+				// Claude thinking 以推理摘要下发（客户端只展示摘要），不重复为原始内容。
 				if item.Type == "reasoning" {
-					require.Equal(t, []any{"CLAUDE_REASONING_A_B"}, item.Content)
+					require.Equal(t, []any{"CLAUDE_REASONING_A_B"}, item.Summary)
+					require.Empty(t, item.Content)
 				}
 				if item.Type == "agentMessage" {
 					require.Equal(t, "CLAUDE_EVENT_TEXT_A_B", item.Text)
 				}
 			}
-		case "item/reasoning/textDelta", "item/agentMessage/delta":
+		case "item/reasoning/textDelta":
+			t.Fatal("Claude thinking 不能再以原始推理内容下发")
+		case "item/reasoning/summaryTextDelta", "item/agentMessage/delta":
 			require.Zero(t, turnEnds)
-			require.Equal(t, map[string]string{"item/reasoning/textDelta": "reasoning", "item/agentMessage/delta": "agentMessage"}[event.Method], starts[params.ItemID])
+			require.Equal(t, map[string]string{"item/reasoning/summaryTextDelta": "reasoning", "item/agentMessage/delta": "agentMessage"}[event.Method], starts[params.ItemID])
 			require.NotContains(t, ends, params.ItemID)
-			require.Zero(t, params.ContentIndex)
+			require.Zero(t, params.SummaryIndex)
 			deltas[event.Method] += params.Delta
 			chunks[event.Method]++
 		case "turn/completed":
@@ -220,8 +224,8 @@ completed:
 	require.Equal(t, 1, turnStarts)
 	require.Equal(t, 1, turnEnds)
 	require.Equal(t, []string{"reasoning", "agentMessage"}, order)
-	require.Equal(t, map[string]int{"item/reasoning/textDelta": 2, "item/agentMessage/delta": 2}, chunks)
-	require.Equal(t, map[string]string{"item/reasoning/textDelta": "CLAUDE_REASONING_A_B", "item/agentMessage/delta": "CLAUDE_EVENT_TEXT_A_B"}, deltas)
+	require.Equal(t, map[string]int{"item/reasoning/summaryTextDelta": 2, "item/agentMessage/delta": 2}, chunks)
+	require.Equal(t, map[string]string{"item/reasoning/summaryTextDelta": "CLAUDE_REASONING_A_B", "item/agentMessage/delta": "CLAUDE_EVENT_TEXT_A_B"}, deltas)
 	// 用户输入保存在历史；推理和回答还必须与实时 Item 事件逐项一致。
 	require.Len(t, history.Items, len(completedItems)+1)
 	var input struct {

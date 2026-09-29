@@ -23,6 +23,7 @@ const scenarios = [
   { marker: 'MOBILE_CLAUDE_FULL', ...claude, permission: 'full' },
   { marker: 'MOBILE_CLAUDE_PLAN', ...claude, permission: 'full', plan: true },
   { marker: 'DESKTOP_CLAUDE_TOOLS', ...claude, permission: 'full', tools: true },
+  { marker: 'DESKTOP_CLAUDE_THINK', ...claude, permission: 'full', thinking: true },
   { marker: 'DESKTOP_CLAUDE_ASK', ...claude, permission: 'full', answer: 'Grape' },
   { marker: 'DESKTOP_CLAUDE_STOP', ...claude, permission: 'full', stop: true },
   { marker: 'DESKTOP_CLAUDE_STEER', ...claude, permission: 'full', steer: true },
@@ -180,6 +181,10 @@ async function interact(scenario) {
   if (scenario.tools) {
     // 中间过程：命令运行期间界面同时展示过程说明与正在运行的真实命令。
     await waitForAll('tools-running', [progressNote, `正在运行 sleep 6; echo ${toolOutput}`])
+  }
+  if (scenario.thinking) {
+    // 模型持续思考期间，思考内容作为回合最新条目显示在界面上（推理摘要）。
+    await waitFor('thinking', (value) => value.includes('DESKTOP_THINKING_BODY'), 15_000)
   }
   if (scenario.answer) {
     const { data, element } = await waitFor('question', (value, candidate) =>

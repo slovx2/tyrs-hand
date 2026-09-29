@@ -1904,14 +1904,15 @@
       "method": "item/reasoning/summaryPartAdded",
       "engines": {
         "codex": "required",
-        "claude-code": "not-applicable"
+        "claude-code": "required"
       },
       "cases": {
         "codex": [
           "EVENTS-008"
         ],
         "claude-code": [
-          "NA-SERVER-MESSAGE"
+          "EVENTS-009",
+          "EVENTS-001"
         ]
       },
       "schema": {
@@ -1921,23 +1922,21 @@
       "callers": [
         "client/src/store/threadNotificationReducer.ts",
         "wire:codex"
-      ],
-      "reasons": {
-        "claude-code": "OpenAI 推理摘要分段；Claude 只提供原始 thinking（item/reasoning/textDelta），无推理摘要"
-      }
+      ]
     },
     {
       "method": "item/reasoning/summaryTextDelta",
       "engines": {
         "codex": "required",
-        "claude-code": "not-applicable"
+        "claude-code": "required"
       },
       "cases": {
         "codex": [
           "EVENTS-008"
         ],
         "claude-code": [
-          "NA-SERVER-MESSAGE"
+          "EVENTS-009",
+          "EVENTS-001"
         ]
       },
       "schema": {
@@ -1948,23 +1947,20 @@
         "client/src/store/appStore.ts",
         "client/src/store/threadNotificationReducer.ts",
         "wire:codex"
-      ],
-      "reasons": {
-        "claude-code": "OpenAI 推理摘要增量；Claude 只提供原始 thinking（item/reasoning/textDelta），无推理摘要"
-      }
+      ]
     },
     {
       "method": "item/reasoning/textDelta",
       "engines": {
         "codex": "required",
-        "claude-code": "required"
+        "claude-code": "not-applicable"
       },
       "cases": {
         "codex": [
           "EVENTS-008"
         ],
         "claude-code": [
-          "EVENTS-009"
+          "NA-SERVER-MESSAGE"
         ]
       },
       "schema": {
@@ -1975,7 +1971,10 @@
         "client/src/store/appStore.ts",
         "client/src/store/threadNotificationReducer.ts",
         "wire:codex"
-      ]
+      ],
+      "reasons": {
+        "claude-code": "Claude thinking 以推理摘要（summaryPartAdded/summaryTextDelta）下发，客户端只展示摘要；不再下发原始推理内容（用户 2026-09-29 决定）"
+      }
     },
     {
       "method": "item/started",

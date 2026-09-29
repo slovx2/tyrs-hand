@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 export const steerPayload = 'STEER_PAYLOAD_7F'
 export const progressNote = 'DESKTOP_PROGRESS_NOTE'
 export const toolOutput = 'DESKTOP_TOOL_STDOUT'
+export const thinkingHeading = 'Checking desktop thinking'
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 
 const resultText = (found) => JSON.stringify(found?.content ?? '')
@@ -23,6 +24,15 @@ export const desktopScenarios = {
     }
     assert.ok(!found.is_error && resultText(found).includes(toolOutput), '真实命令输出必须回到模型')
     return finish('DESKTOP_CLAUDE_TOOLS_OK')
+  },
+  // 思考显示：客户端把推理摘要作为回合进行中最新的条目展示；模型持续思考期间界面须可见思考内容。
+  DESKTOP_CLAUDE_THINK({ result, finish, tool }) {
+    if (!result('toolu_desktop_think')) return [
+      // 思考之后持续 6 秒无其他输出，思考即为回合中最新的条目。
+      { type: 'thinking', thinking: `**${thinkingHeading}**\n\nDESKTOP_THINKING_BODY`, signature: 'mock', pauseAfterMs: 6_000 },
+      tool('Bash', 'toolu_desktop_think', { command: 'echo THINK_WINDOW', description: 'desktop thinking display' }),
+    ]
+    return finish('DESKTOP_CLAUDE_THINK_OK')
   },
   // 用户回答问题（非计划模式）：须收到用户在界面选择的第二项。
   DESKTOP_CLAUDE_ASK({ result, finish, tool }) {
