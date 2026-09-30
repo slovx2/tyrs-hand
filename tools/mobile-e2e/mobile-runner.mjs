@@ -292,19 +292,29 @@ async function main() {
   failed = false
 }
 
+let cleanupRun
+const cleanup = (primaryError) => cleanupRun ??= (async () => {
+  pairingAbort.abort()
+  const cleanupErrors = await cleanupManaged({ maestro: maestroProcesses, resources: processes, controls })
+  await writeFile(resolve(runDir, 'cleanup-report.json'), JSON.stringify({
+    primaryError: primaryError?.message ?? null, cleanupErrors,
+  }, null, 2)).catch((error) => { cleanupErrors.push({ name: 'cleanup-report', error: error.message }) })
+  if (cleanupErrors.length) process.stderr.write(`[mobile-e2e] 清理异常 ${cleanupErrors.length} 项，详见 cleanup-report.json\n`)
+  process.stderr.write(`[mobile-e2e] ${failed ? '失败证据' : '证据'}：${runDir}\n`)
+  return cleanupErrors
+})()
+// Ctrl+C 或 CI 取消同样须回收 Worker、原生运行时与容器，否则它们会在本轮结束后常驻。
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(signal, () => {
+  process.stderr.write(`[mobile-e2e] 收到 ${signal}，清理后退出\n`)
+  cleanup(new Error(`收到 ${signal}`)).finally(() => process.exit(code))
+})
+
 let primaryError
 try {
   await main()
 } catch (error) {
   primaryError = error
 } finally {
-  pairingAbort.abort()
-  const cleanupErrors = await cleanupManaged({ maestro: maestroProcesses, resources: processes, controls })
-  await writeFile(resolve(runDir, 'cleanup-report.json'), JSON.stringify({
-    primaryError: primaryError?.message ?? null, cleanupErrors,
-  }, null, 2)).catch((error) => { cleanupErrors.push({ name: 'cleanup-report', error: error.message }) })
-  primaryError = completionError(primaryError, cleanupErrors)
-  if (cleanupErrors.length) process.stderr.write(`[mobile-e2e] 清理异常 ${cleanupErrors.length} 项，详见 cleanup-report.json\n`)
-  process.stderr.write(`[mobile-e2e] ${failed ? '失败证据' : '证据'}：${runDir}\n`)
+  primaryError = completionError(primaryError, await cleanup(primaryError))
 }
 if (primaryError) throw primaryError

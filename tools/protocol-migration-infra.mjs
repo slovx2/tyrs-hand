@@ -151,6 +151,6 @@ export class MigrationControl {
 
   async close() {
     for (const process of this.processes.reverse()) await process.stop()
-    for (const container of this.containers.reverse()) this.docker(['rm', '-f', container])
+    for (const container of this.containers.reverse()) this.docker(['rm', '-f', '-v', container])
   }
 }

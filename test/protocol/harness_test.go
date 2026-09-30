@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -33,6 +34,18 @@ func fixedCodexBinary(t *testing.T) string {
 	}
 	require.NoError(t, codex.ValidateVersion(context.Background(), path))
 	return path
+}
+
+// 固定 Codex 是 Node 包装脚本，只杀包装进程会让原生 app-server 成为孤儿，
+// 并在临时目录删除后继续写回锁文件；放入独立进程组，清理时整组终止。
+func startCodexProcess(t *testing.T, process *exec.Cmd) {
+	t.Helper()
+	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, process.Start())
+	t.Cleanup(func() {
+		_ = syscall.Kill(-process.Process.Pid, syscall.SIGKILL)
+		_ = process.Wait()
+	})
 }
 
 func temporaryDir(t *testing.T, prefix string) string {
@@ -101,8 +114,7 @@ supports_websockets = false
 	process := exec.Command(fixedCodexBinary(t), "app-server", "--listen", "unix://"+appSocket)
 	process.Dir = workspace
 	process.Env = append(os.Environ(), "CODEX_HOME="+home, "HOME="+root, "RUST_LOG=warn")
-	require.NoError(t, process.Start())
-	t.Cleanup(func() { _ = process.Process.Kill(); _ = process.Wait() })
+	startCodexProcess(t, process)
 	waitForUnixSocket(t, appSocket)
 	if controller == nil {
 		controller = appserverhub.PassThroughController{}

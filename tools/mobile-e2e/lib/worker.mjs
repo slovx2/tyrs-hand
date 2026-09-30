@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -194,6 +194,8 @@ stream_max_retries=0
 
   async stop() {
     await this.process?.stop()
+    // Worker 被强杀时其运行时进程组不会随之退出；按本轮唯一根目录回收残留的原生运行时。
+    if (this.root) spawnSync('pkill', ['-KILL', '-f', this.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')])
     for (const item of this.relays.reverse()) await item.close()
     if (this.root) await rm(this.root, { recursive: true, force: true })
   }

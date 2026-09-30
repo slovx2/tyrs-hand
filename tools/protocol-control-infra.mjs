@@ -25,7 +25,7 @@ export async function startControlInfrastructure({ evidenceDir } = {}) {
     } finally {
       // 证据目录写入失败也必须回收本轮资源；原始写入错误继续向上传递。
       for (const id of containers.reverse()) {
-        try { docker(['rm', '-f', id]) } catch (error) { console.error('清理临时数据库失败:', error.message) }
+        try { docker(['rm', '-f', '-v', id]) } catch (error) { console.error('清理临时数据库失败:', error.message) }
       }
       rmSync(root, { recursive: true, force: true })
     }

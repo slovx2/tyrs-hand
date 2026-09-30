@@ -43,7 +43,7 @@ cleanup() {
     kill "${server_pid}" 2>/dev/null || true
     wait "${server_pid}" 2>/dev/null || true
   fi
-  docker rm --force "${postgres_name}" "${redis_name}" >/dev/null 2>&1 || true
+  docker rm --force --volumes "${postgres_name}" "${redis_name}" >/dev/null 2>&1 || true
   if [[ ${status} -ne 0 ]]; then
     echo "本地 CI 失败，Server 最近日志：" >&2
     tail -n 100 "${server_log}" >&2 || true

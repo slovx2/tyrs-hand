@@ -124,7 +124,7 @@ export class ControlHarness {
     for (const managed of this.processes.reverse()) await managed.stop()
     if (!this.nativeServices) {
       for (const name of [this.postgresName, this.redisName]) {
-        try { run('docker', ['rm', '--force', name]) } catch { /* 最佳努力清理 */ }
+        try { run('docker', ['rm', '--force', '--volumes', name]) } catch { /* 最佳努力清理 */ }
       }
     }
   }

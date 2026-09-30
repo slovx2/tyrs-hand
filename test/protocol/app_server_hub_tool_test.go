@@ -83,11 +83,7 @@ supports_websockets = false
 	process := exec.Command(bin, "app-server", "--listen", "unix://"+appSocket)
 	process.Dir = workspace
 	process.Env = append(os.Environ(), "CODEX_HOME="+home, "HOME="+root, "RUST_LOG=warn")
-	require.NoError(t, process.Start())
-	t.Cleanup(func() {
-		_ = process.Process.Kill()
-		_ = process.Wait()
-	})
+	startCodexProcess(t, process)
 	waitForUnixSocket(t, appSocket)
 
 	hubSocket := filepath.Join(root, "hub.sock")
