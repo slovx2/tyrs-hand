@@ -15,6 +15,7 @@ go test -p=1 -tags=integration \
 	./internal/codex \
 	./internal/codexcontrol \
   ./internal/config \
+  ./internal/database \
   ./internal/discordintegration \
   ./internal/githubtools \
 	./internal/httpapi \
@@ -24,7 +25,8 @@ go test -p=1 -tags=integration \
   ./internal/settings \
   ./internal/tools \
   ./internal/worker \
-  ./test/integration
+  ./test/integration \
+  ./test/protocol
 
 coverage=$(go tool cover -func=coverage/go.out | awk '/^total:/ {gsub("%", "", $3); print $3}')
 threshold=80.0

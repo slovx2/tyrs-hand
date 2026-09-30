@@ -114,7 +114,7 @@ jobs:
             tyrs-hand-worker_*.tar.gz
             tyrs-hand-worker_*.tar.gz.sha256
             tyrs-hand-worker_*.tar.gz.sigstore.json
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: error
 
   claude-runtime:
@@ -153,5 +153,5 @@ jobs:
         with:
           name: claude-runtime-linux-amd64
           path: .artifacts/claude-runtime/*
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: error

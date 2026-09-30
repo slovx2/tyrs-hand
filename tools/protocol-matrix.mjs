@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
@@ -12,7 +13,12 @@ import { writePostgresDiagnostics } from './protocol-postgres-diagnostics.mjs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
 const artifactsRoot = resolve(process.env.PROTOCOL_ARTIFACT_DIR ?? resolve(root, '.artifacts/protocol'))
-const runId = randomUUID()
+// CI 各分片共用同一 runId；汇总作业合并执行记录与通信证据后统一跑覆盖率门禁。
+const runId = process.env.PROTOCOL_RUN_ID || randomUUID()
+const shard = process.env.PROTOCOL_SHARD || 'all'
+if (!['all', 'control', 'ssh-1', 'ssh-2', 'migration', 'recovery-adapter'].includes(shard))
+  throw new Error(`未知协议分片: ${shard}`)
+const runsShard = name => shard === 'all' || shard === name
 const artifacts = resolve(artifactsRoot, 'runs', runId)
 const codex = process.env.TYRS_HAND_TEST_CODEX_BIN ?? 'codex'
 const go = process.env.GO ?? 'go'
@@ -20,7 +26,7 @@ const controlOnly = process.argv.includes('--control-only')
 if (process.versions.node !== '24.14.0') throw new Error('协议矩阵必须使用 Node 24.14.0')
 mkdirSync(artifacts, { recursive: true })
 writeFileSync(resolve(artifactsRoot, 'latest.json'), JSON.stringify({ runId, directory: artifacts,
-  scope: controlOnly ? 'control-runtime-e2e' : process.argv.includes('--runtime-only') ? 'runtime-only' : 'full-matrix' }))
+  scope: controlOnly ? 'control-runtime-e2e' : process.argv.includes('--runtime-only') ? 'runtime-only' : 'full-matrix', shard }))
 const env = { ...process.env, PROTOCOL_ARTIFACT_DIR: artifacts,
   CODEX_SCHEMA_DIR: resolve(root, 'protocol/codex-app-server/0.157.1/json-schema'),
   PROTOCOL_RUN_ID: runId, TYRS_HAND_TEST_CODEX_BIN: codex,
@@ -221,12 +227,22 @@ const suites = controlOnly ? controlSuites : [
   { name: 'bootstrap-queue-budget', pkg: './internal/bootstrap', test: 'TestWorkerBootstrapQueueRealSSHSharedBudgetAndGitTool',
     cases: ['QUEUE-001'] },
 ]
-if (!controlOnly && !process.argv.includes('--runtime-only')) {
+// 分片模式下 Control 专项由 control 分片（--control-only）执行，完整矩阵不再重复。
+if (!controlOnly && !process.argv.includes('--runtime-only') && shard === 'all') {
   suites.push(...controlSuites)
 }
-for (const suite of suites) {
-  suite.binary = resolve(artifacts, `${suite.name}.test`)
-  run(go, ['test', '-c', '-tags=integration', '-o', suite.binary, suite.pkg])
+const selected = controlOnly || shard === 'all' ? suites
+  : shard.startsWith('ssh-') ? suites.filter((_, index) => index % 2 === Number(shard.at(-1)) - 1) : []
+// 每个包只编译一次；测试二进制放在临时目录，不进入上传的证据。
+const binaries = mkdtempSync(resolve(tmpdir(), 'tyrs-protocol-bin-'))
+const compiled = new Map()
+for (const suite of selected) {
+  if (!compiled.has(suite.pkg)) {
+    const binary = resolve(binaries, `${suite.pkg.replaceAll(/[^A-Za-z0-9]+/g, '-')}.test`)
+    run(go, ['test', '-c', '-tags=integration', '-o', binary, suite.pkg])
+    compiled.set(suite.pkg, binary)
+  }
+  suite.binary = compiled.get(suite.pkg)
 }
 const command = process.platform === 'darwin' ? '/usr/bin/sandbox-exec' : 'unshare'
 const isolation = process.platform === 'darwin'
@@ -236,11 +252,11 @@ const xml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt
 let runtimeExecutions = ''
 const runtimeFailures = []
 const failedWindows = []
-const infrastructure = suites.some(suite => suite.name === 'bootstrap-control')
+const infrastructure = selected.some(suite => suite.name === 'bootstrap-control')
   ? await startControlInfrastructure({ evidenceDir: artifacts }) : undefined
 Object.assign(env, infrastructure?.env ?? {})
 try {
-for (const suite of suites) {
+for (const suite of selected) {
   // macOS 禁止套用第二层 sandbox-exec。此专项无 Turn/模型调用，测试的就是运行时 OS 沙箱。
   // 所有含 SDK/LLM 的链路仍运行在仅允许本机网络的外层沙箱内。
   const nativePermissionTest = suite.name === 'command-permissions' && process.platform === 'darwin'
@@ -249,6 +265,7 @@ for (const suite of suites) {
     '-test.v', `-test.run=^${suite.test}$`, '-test.timeout=180s'],
     { cwd: root, env, encoding: 'utf8', timeout: 200_000, maxBuffer: 16 * 1024 * 1024 })
   writeFileSync(resolve(artifacts, `${suite.name}.jsonl`), runtime.stdout ?? '')
+  console.log(`[protocol] ${suite.name} ${Math.round((Date.now() - startedAt) / 1000)}s`)
   const events = (runtime.stdout ?? '').split('\n').filter(Boolean).map(line => JSON.parse(line))
   const succeeded = events.some(event => event.Action === 'pass' && event.Test === suite.test)
   const failed = runtime.error || runtime.status !== 0 || !succeeded || events.some(event => event.Action === 'skip' || event.Action === 'fail')
@@ -268,7 +285,10 @@ for (const suite of suites) {
   // 每个专项均即时落盘；前序失败不能吞掉后续真实验收或冒充成功。
   writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
 }
-} finally { infrastructure?.close() }
+} finally {
+  infrastructure?.close()
+  rmSync(binaries, { recursive: true, force: true })
+}
 if (infrastructure) {
   try {
     const database = writePostgresDiagnostics(artifacts, runId)
@@ -280,12 +300,16 @@ if (infrastructure) {
 }
 collectMacNetworkDiagnostics(artifacts, failedWindows)
 if (!controlOnly && !process.argv.includes('--runtime-only')) {
-  const migration = await runMigrationMatrix({ root, artifacts, runId, env })
-  runtimeFailures.push(...migration.failures)
-  runtimeExecutions += migration.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
-  const recovery = await runRecoveryMatrix({ root, artifacts, runId, env })
-  runtimeFailures.push(...recovery.failures)
-  runtimeExecutions += recovery.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
+  if (runsShard('migration')) {
+    const migration = await runMigrationMatrix({ root, artifacts, runId, env })
+    runtimeFailures.push(...migration.failures)
+    runtimeExecutions += migration.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
+  }
+  if (runsShard('recovery-adapter')) {
+    const recovery = await runRecoveryMatrix({ root, artifacts, runId, env })
+    runtimeFailures.push(...recovery.failures)
+    runtimeExecutions += recovery.executions.map(value => JSON.stringify(value)).join('\n') + '\n'
+  }
 }
 if (controlOnly) {
   try {
@@ -303,14 +327,15 @@ if (!runtimeFailures.length) console.log(controlOnly ? '真实 Control、双 SSH
   '真实 SSH 双引擎和 Worker 启动验收通过；这不代表完整协议矩阵通过。')
 writeFileSync(resolve(artifacts, 'runtime-failures.json'), JSON.stringify({ runId, failures: runtimeFailures }, null, 2))
 writeFileSync(resolve(artifacts, 'executions.jsonl'), runtimeExecutions)
-if (!process.argv.includes('--runtime-only') && !controlOnly) {
+if (!process.argv.includes('--runtime-only') && !controlOnly && runsShard('recovery-adapter')) {
   let adapterFailure
   try { run('npm', ['run', 'test:protocol'], adapter) } catch (error) { adapterFailure = error }
   const executionPath = resolve(artifacts, 'executions.jsonl')
   writeFileSync(executionPath, readFileSync(executionPath, 'utf8') + runtimeExecutions)
-  // 即使 adapter 用例失败仍输出本轮覆盖缺口，不能由旧成功报表掩盖失败。
+  // 即使 adapter 用例失败仍输出本轮覆盖缺口，不能由旧成功报表掩盖失败；分片模式由汇总作业统一计算。
   let inventoryFailure
-  try { run(process.execPath, ['tools/protocol-inventory/inventory.mjs']) } catch (error) { inventoryFailure = error }
+  if (shard === 'all')
+    try { run(process.execPath, ['tools/protocol-inventory/inventory.mjs']) } catch (error) { inventoryFailure = error }
   if (runtimeFailures.length) throw new Error(`真实运行时验收失败: ${runtimeFailures.map(item => item.suite).join(', ')}；完整报告已保留`)
   if (adapterFailure) throw adapterFailure
   if (inventoryFailure) throw inventoryFailure

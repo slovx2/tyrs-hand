@@ -2,8 +2,10 @@ name: Dual engine protocol acceptance
 
 on:
   pull_request:
+    paths-ignore: ['docs/**', '**/*.md', 'web/**']
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md', 'web/**']
   workflow_dispatch:
     inputs:
       macos_worker:
@@ -15,9 +17,18 @@ on:
 permissions:
   contents: read
 
+# 同一分支的新提交取消旧验收；只有最新提交需要完整结果。
+concurrency:
+  group: protocol-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 各分片共用同一 runId，汇总作业据此合并执行记录与通信证据。
+  PROTOCOL_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+
 jobs:
   macos-loopback-comparison:
-    # 2026-09-28 用户要求暂缓 macOS Worker 验收，集中完成 Linux；保留诊断入口及历史证据。
+    # 2026-09-28 用户要求暂缓 macOS Worker 验收，集中完成 Linux；保留诊断入口。
     if: github.event_name == 'workflow_dispatch' && inputs.macos_worker
     runs-on: macos-15
     timeout-minutes: 5
@@ -39,7 +50,10 @@ jobs:
           name: macos-15-loopback
           path: .artifacts/protocol/macos-loopback
           if-no-files-found: error
+          retention-days: 7
+
   control-runtime:
+    name: protocol (control)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -78,39 +92,40 @@ jobs:
       - name: Real Control, SSH, SDK and automation after Worker restart
         env:
           TYRS_HAND_ADAPTER_ROOT: ${{ github.workspace }}/.local/protocol-adapter
+          PROTOCOL_SHARD: control
         run: make test-control-runtime-e2e
-      - name: Preserve Control acceptance evidence
-        if: always()
+      - name: Preserve shard coverage inputs
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: control-runtime
+          name: protocol-shard-control
+          path: |
+            .artifacts/protocol/runs/*/run.json
+            .artifacts/protocol/runs/*/executions.jsonl
+            .artifacts/protocol/runs/*/runtime-failures.json
+            .artifacts/protocol/runs/*/wire-*.json
+            .artifacts/protocol/runs/*/fault-injection-*.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: protocol-evidence-control
           path: |
             .artifacts/control-runtime
             .artifacts/protocol
-          if-no-files-found: error
-      - name: Preserve compact Control summary
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: control-runtime-summary
-          path: |
-            .artifacts/protocol/latest.json
-            .artifacts/protocol/runs/*/run.json
-            .artifacts/protocol/runs/*/combination.json
-            .artifacts/protocol/runs/*/runtime-failures.json
-            .artifacts/protocol/runs/*/executions.jsonl
-            .artifacts/protocol/runs/*/runtime-wire.json
-            .artifacts/protocol/runs/*/postgres-diagnostics.json
           if-no-files-found: warn
+          retention-days: 7
+
   protocol:
+    name: protocol (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        # 默认仅 Linux；用户要求恢复后可手动显式开启 macOS Worker 验收。
-        os: ${{ fromJSON(inputs.macos_worker && '["ubuntu-24.04", "macos-14"]' || '["ubuntu-24.04"]') }}
-    runs-on: ${{ matrix.os }}
-    # 完整矩阵约 23 分钟，另需约 2 分钟上传全部证据；留出余量，避免验收已通过却在上传时被取消。
-    timeout-minutes: 40
+        shard: [ssh-1, ssh-2, migration, recovery-adapter]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: tyrs-hand
@@ -140,17 +155,18 @@ jobs:
           npm ci --prefix tools/protocol-inventory
           go mod download
       - name: Verify coverage gate itself
+        if: matrix.shard == 'recovery-adapter'
         run: |
           npm test --prefix tools/protocol-inventory
-          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs tools/protocol-recovery-matrix.test.mjs tools/protocol-recovery-title.test.mjs tools/protocol-postgres-diagnostics.test.mjs tools/protocol-macos-diagnostics.test.mjs
+          node --test tools/protocol-migration-matrix.test.mjs tools/protocol-migration-worker.test.mjs tools/protocol-recovery-matrix.test.mjs tools/protocol-recovery-title.test.mjs tools/protocol-postgres-diagnostics.test.mjs tools/protocol-macos-diagnostics.test.mjs tools/protocol-merge-shards.test.mjs
       - name: Prepare Linux sandbox dependencies
-        if: runner.os == 'Linux'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update
           sudo apt-get install --no-install-recommends bubblewrap=0.9.0-1ubuntu0.3 socat=1.8.0.0-4ubuntu0.1
           command -v unshare ip bwrap socat docker
       - name: Real Codex recorder shutdown boundaries
+        if: matrix.shard == 'recovery-adapter'
         run: |
           TYRS_HAND_TEST_CODEX_NATIVE_BIN=$(node --input-type=module - <<'JS'
           import { execFileSync } from 'node:child_process';
@@ -159,51 +175,132 @@ jobs:
           const root = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
           const require = createRequire(resolve(root, '@openai/codex/package.json'));
           const packagePath = require.resolve(`@openai/codex-${process.platform}-${process.arch}/package.json`);
-          const target = { 'darwin-arm64': 'aarch64-apple-darwin', 'linux-x64': 'x86_64-unknown-linux-musl' }[`${process.platform}-${process.arch}`];
-          if (!target) throw new Error('未登记的 CI 原生平台');
-          console.log(resolve(dirname(packagePath), 'vendor', target, 'bin/codex'));
+          console.log(resolve(dirname(packagePath), 'vendor', 'x86_64-unknown-linux-musl', 'bin/codex'));
           JS
           )
           export TYRS_HAND_TEST_CODEX_NATIVE_BIN
-          if [[ "${RUNNER_OS}" == "Linux" ]]; then
-            unshare --user --map-root-user --net /bin/sh -ec 'ip link set lo up; exec node --test tools/mobile-e2e/record-runtime-native-check.mjs'
-          else
-            sandbox-exec -p '(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*") (remote unix-socket))' node --test tools/mobile-e2e/record-runtime-native-check.mjs
-          fi
-      - name: Complete protocol matrix with real Control and Docker databases
-        if: runner.os == 'Linux'
+          unshare --user --map-root-user --net /bin/sh -ec 'ip link set lo up; exec node --test tools/mobile-e2e/record-runtime-native-check.mjs'
+      - name: Protocol matrix shard with real Control and Docker databases
+        env:
+          PROTOCOL_SHARD: ${{ matrix.shard }}
         run: make test-protocol-matrix
-      # macOS 专项入口暂时保留但不调度；当前完整协议及数据库门禁由 Linux 执行。
+      - name: Preserve shard coverage inputs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: protocol-shard-${{ matrix.shard }}
+          path: |
+            tyrs-hand/.artifacts/protocol/runs/*/run.json
+            tyrs-hand/.artifacts/protocol/runs/*/executions.jsonl
+            tyrs-hand/.artifacts/protocol/runs/*/runtime-failures.json
+            tyrs-hand/.artifacts/protocol/runs/*/wire-*.json
+            tyrs-hand/.artifacts/protocol/runs/*/fault-injection-*.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: protocol-evidence-${{ matrix.shard }}
+          path: tyrs-hand/.artifacts/protocol
+          if-no-files-found: warn
+          retention-days: 7
+
+  protocol-gate:
+    name: 完整协议覆盖率门禁
+    needs: [control-runtime, protocol]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.14.0'
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: go.sum
+      - run: npm ci --prefix tools/protocol-inventory
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: protocol-shard-*
+          path: .artifacts/protocol-shards
+      - name: Merge shards and compute complete protocol coverage
+        env:
+          PROTOCOL_SHARDS: control,ssh-1,ssh-2,migration,recovery-adapter
+        run: |
+          target=".artifacts/protocol/runs/${PROTOCOL_RUN_ID}"
+          status=0
+          node tools/protocol-merge-shards.mjs .artifacts/protocol-shards "${target}" || status=1
+          PROTOCOL_ARTIFACT_DIR="${target}" node tools/protocol-inventory/inventory.mjs || status=1
+          exit "${status}"
+      - name: Preserve protocol summary
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: protocol-summary
+          path: |
+            .artifacts/protocol/runs/*/run.json
+            .artifacts/protocol/runs/*/executions.jsonl
+            .artifacts/protocol/runs/*/runtime-failures.json
+            .artifacts/protocol/runs/*/coverage.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Reject failed or missing shards
+        env:
+          CONTROL_RESULT: ${{ needs.control-runtime.result }}
+          PROTOCOL_RESULT: ${{ needs.protocol.result }}
+        run: |
+          test "${CONTROL_RESULT}" = success
+          test "${PROTOCOL_RESULT}" = success
+
+  macos-worker:
+    # 用户要求恢复 macOS Worker 验收时手动开启；默认不调度。
+    if: github.event_name == 'workflow_dispatch' && inputs.macos_worker
+    runs-on: macos-14
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: tyrs-hand
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: tyrs-hand
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.14.0'
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: tyrs-hand/go.sum
+      - id: adapter
+        name: Read pinned adapter commit
+        run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: slovx2/claude-codex
+          ref: ${{ steps.adapter.outputs.commit }}
+          path: claude-codex
+      - name: Install exact dependencies
+        run: |
+          npm install --global @openai/codex@0.157.1
+          npm ci --prefix ../claude-codex
+          go mod download
       - name: Diagnose macOS loopback sandbox behavior
-        if: runner.os == 'macOS'
         run: node tools/protocol-macos-loopback.mjs
       - name: macOS native SSH and command permissions
-        if: runner.os == 'macOS'
         run: make test-runtime-e2e
       - name: macOS native SDK contracts and Mock LLM
-        if: runner.os == 'macOS'
         env:
           PROTOCOL_ARTIFACT_DIR: ${{ github.workspace }}/tyrs-hand/.artifacts/protocol/macos-sdk
           CODEX_SCHEMA_DIR: ${{ github.workspace }}/tyrs-hand/protocol/codex-app-server/0.157.1/json-schema
         run: npm run test:protocol --prefix ../claude-codex
-      - name: Preserve failure and coverage evidence
+      - name: Preserve macOS evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: protocol-${{ matrix.os }}
+          name: protocol-macos-14
           path: tyrs-hand/.artifacts/protocol
-          if-no-files-found: error
-      - name: Preserve compact protocol summary
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: protocol-summary-${{ matrix.os }}
-          path: |
-            tyrs-hand/.artifacts/protocol/latest.json
-            tyrs-hand/.artifacts/protocol/runs/*/run.json
-            tyrs-hand/.artifacts/protocol/runs/*/combination.json
-            tyrs-hand/.artifacts/protocol/runs/*/runtime-failures.json
-            tyrs-hand/.artifacts/protocol/runs/*/executions.jsonl
-            tyrs-hand/.artifacts/protocol/runs/*/postgres-diagnostics.json
-            tyrs-hand/.artifacts/protocol/runs/*/coverage.json
           if-no-files-found: warn
+          retention-days: 7

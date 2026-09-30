@@ -208,10 +208,11 @@ jobs:
             !**/worker/tyrs-hand-worker
             !**/postgres/**
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   iphone:
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'both' || inputs.platform == 'ios'
+    # 2026-09 用户决定 iOS 暂缓：定时与 PR 只跑 Android，iPhone 仅手动触发。
+    if: github.event_name == 'workflow_dispatch' && (inputs.platform == 'both' || inputs.platform == 'ios')
     runs-on: macos-15
     timeout-minutes: 120
     env:
@@ -272,11 +273,11 @@ jobs:
             !**/worker/tyrs-hand-worker
             !**/postgres/**
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   complete-mobile-acceptance:
     name: Android 与 iOS 自动化 GUI 验收
-    if: always() && needs.android-phone.outputs.gui_enabled == 'true'
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.platform == 'both' && needs.android-phone.outputs.gui_enabled == 'true'
     needs: [android-phone, iphone]
     runs-on: ubuntu-24.04
     steps:

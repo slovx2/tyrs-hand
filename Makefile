@@ -16,7 +16,7 @@ test-runtime-e2e:
 test-control-runtime-e2e:
 	node tools/protocol-matrix.mjs --control-only
 
-.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-export-android client-export-ios client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-mobile-transport-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
+.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-export-android client-export-ios client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-mobile-transport-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-static ci-go ci-race ci-web ci-local
 
 dependencies:
 	go mod download
@@ -144,7 +144,9 @@ worker-binaries:
 		go build -trimpath -o "dist/tyrs-hand-worker-$${target%/*}-$${target#*/}" ./cmd/tyrs-hand-worker; \
 	done
 
-ci:
+# 远端 CI 把以下四组拆成并行作业；本地 make ci 依次执行全部。
+# 集成测试随覆盖率统计执行一次（见 tools/check-go-coverage.sh），不再单独重复。
+ci-static:
 	$(MAKE) dependencies
 	$(MAKE) generate-check
 	$(MAKE) check-legacy-architecture
@@ -154,12 +156,25 @@ ci:
 	$(MAKE) web-check
 	$(MAKE) client-check
 	$(MAKE) client-e2e-contract
-	$(MAKE) test-unit
-	$(MAKE) test-race
-	$(MAKE) test-integration
+
+ci-go:
+	go test ./...
 	$(MAKE) test-coverage
+	$(MAKE) test-mobile-transport-integration
+
+ci-race: test-race
+
+ci-web:
+	node --test deploy/browser/*.test.mjs
+	$(PNPM) --dir web test:run
 	$(MAKE) build
 	$(MAKE) client-export
+
+ci:
+	$(MAKE) ci-static
+	$(MAKE) ci-go
+	$(MAKE) ci-race
+	$(MAKE) ci-web
 
 ci-local:
 	./tools/with-local-toolchain.sh ./tools/ci-local.sh
