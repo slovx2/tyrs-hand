@@ -10,7 +10,6 @@ import (
 func (c Config) ClaudeStateDir() string    { return filepath.Join(c.WorkerDataRoot, "claude-code") }
 func (c Config) ClaudeAdapterHome() string { return filepath.Join(c.ClaudeStateDir(), "config") }
 func (c Config) ClaudeConfigDir() string   { return filepath.Join(c.ClaudeAdapterHome(), "claude") }
-func (c Config) ClaudeHome() string        { return filepath.Join(c.ClaudeStateDir(), "home") }
 func (c Config) ClaudeHostKeyFile() string {
 	return filepath.Join(c.ClaudeStateDir(), "ssh", "host_key")
 }

@@ -149,7 +149,6 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		}
 		claudeConfig := cfg
 		claudeConfig.WorkerDataRoot = cfg.ClaudeStateDir()
-		claudeConfig.WorkerHome = cfg.ClaudeHome()
 		claudeConfig.WorkerCodexHome = cfg.ClaudeAdapterHome()
 		claudeClient, err := client.ForEngine(runtimeidentity.Claude)
 		if err != nil {

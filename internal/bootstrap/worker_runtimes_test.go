@@ -34,7 +34,9 @@ func TestWorkerRuntimeEntriesShareCredentialButSeparateState(t *testing.T) {
 	require.Empty(t, claude.Runtime.BrowserServiceSocket)
 	require.Equal(t, runtimeidentity.Claude, claude.Runtime.Engine)
 	require.NotEqual(t, codex.StateDir, claude.Runtime.StateDir)
-	require.NotEqual(t, codex.Home, claude.Runtime.Home)
+	// HOME 与 Codex 入口相同（git、gh、ssh 读取真实用户配置），Claude 配置另由 CLAUDE_CONFIG_DIR 隔离。
+	require.Equal(t, codex.Home, claude.Runtime.Home)
+	require.Equal(t, codex.Home, claude.SSH.Home)
 	require.NotEqual(t, codex.CodexHome, claude.Runtime.CodexHome)
 	require.NotEqual(t, ssh.HostKeyFile, claude.SSH.HostKeyFile)
 	require.Equal(t, filepath.Join(claude.Runtime.CodexHome, "claude"), cfg.ClaudeConfigDir())
