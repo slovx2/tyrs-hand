@@ -147,7 +147,9 @@ func (s *SSHServer) runProcess(channel ssh.Channel, state *sshSessionState, comm
 	}
 	process := exec.Command(s.options.Shell, arguments...)
 	process.Dir = s.options.Home
-	values := map[string]string{"HOME": s.options.Home, "CODEX_HOME": s.options.CodexHome}
+	// 与 OpenSSH 一致由服务端导出登录 shell；Claude 入口的基础环境不继承宿主变量，
+	// 缺少 SHELL 时 Codex Desktop 远程启动器会直接拒绝连接。
+	values := map[string]string{"HOME": s.options.Home, "CODEX_HOME": s.options.CodexHome, "SHELL": s.options.Shell}
 	for name, value := range state.environment {
 		if allowedSSHEnvironment(name) {
 			values[name] = value
