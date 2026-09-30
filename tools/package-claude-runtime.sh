@@ -19,10 +19,12 @@ npm run build --prefix "$adapter_source"
 npm prune --omit=dev --prefix "$adapter_source"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
-mkdir -p "$stage/claude-runtime/bin" "$stage/claude-runtime/lib" "$stage/home"
+mkdir -p "$stage/claude-runtime/bin" "$stage/claude-runtime/lib/scripts" "$stage/home"
 cp "$(command -v node)" "$stage/claude-runtime/bin/node"
 cp -R "$adapter_source/dist" "$adapter_source/node_modules" "$stage/claude-runtime/lib/"
 cp "$adapter_source/package.json" "$adapter_source/LICENSE" "$stage/claude-runtime/lib/"
+# PTY 终端依赖 scripts/pty-bridge.py，适配器按 lib/dist/src/../../scripts 查找。
+cp "$adapter_source/scripts/pty-bridge.py" "$stage/claude-runtime/lib/scripts/"
 cp "$project_root/protocol/adapter-lock.json" "$stage/claude-runtime/adapter-lock.json"
 cat > "$stage/claude-runtime/bin/claude-codex" <<'WRAPPER'
 #!/bin/sh
@@ -33,6 +35,7 @@ WRAPPER
 chmod 0755 "$stage/claude-runtime/bin/claude-codex" "$stage/claude-runtime/bin/node"
 env -i PATH=/usr/bin:/bin HOME="$stage/home" "$stage/claude-runtime/bin/claude-codex" --runtime-info > "$stage/claude-runtime/build.json"
 node -e 'const fs=require("node:fs"); const build=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(build.nodeVersion!=="24.14.0" || build.sdkVersion!=="0.3.282" || build.protocolVersion!=="0.157.1" || !build.cliSha256) process.exit(1)' "$stage/claude-runtime/build.json"
+env -i PATH=/usr/bin:/bin HOME="$stage/home" "$stage/claude-runtime/bin/claude-codex" --pty-self-check
 asset="claude-codex_${actual_commit}_linux_amd64.tar.gz"
 tar -C "$stage" -czf "$artifact_dir/$asset" claude-runtime
 (cd "$artifact_dir" && sha256sum "$asset" > "$asset.sha256")
