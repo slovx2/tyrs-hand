@@ -27,7 +27,7 @@ const scenarios = [
   { marker: 'DESKTOP_CLAUDE_ASK', ...claude, permission: 'full', answer: 'Grape' },
   { marker: 'DESKTOP_CLAUDE_STOP', ...claude, permission: 'full', stop: true },
   { marker: 'DESKTOP_CLAUDE_STEER', ...claude, permission: 'full', steer: true },
-  { marker: 'DESKTOP_CLAUDE_MODEL', ...claude, permission: 'full', models: ['Claude Sonnet', 'Claude Haiku'] },
+  { marker: 'DESKTOP_CLAUDE_MODEL', ...claude, permission: 'full', models: ['Sonnet', 'Haiku'] },
   { marker: 'MOBILE_CODEX_CHAT', ...codex },
 ]
 const only = argumentsMap.get('--only')?.split(',')
@@ -88,9 +88,10 @@ async function waitForAll(label, texts, timeoutMs = 30_000) {
 }
 
 // 模型菜单为弹层且不进入辅助功能树（其小号灰字 OCR 也不可靠）；弹层与模型按钮右对齐，按右缘相对位置点击。
-// 模型顺序即适配器 model/list 的固定顺序；每次选择后都以按钮标签确认结果。
-const claudeModels = ['Claude configured default', 'Claude Sonnet', 'Claude Opus', 'Claude Fable', 'Claude Haiku',
-  'Claude Sonnet 1M', 'Claude Opus Plan / Sonnet Execute']
+// 模型顺序即固定 Claude CLI 原生 /model 目录（适配器 model/list 原样透出）；每次选择后都以按钮标签确认结果。
+// 旧的 7 行目录首行在 -213；按弹层底部对齐推算，CLI 目录行数变化后需重新校准。
+const claudeModels = ['Default (recommended)', 'Opus (1M context)', 'Fable', 'Sonnet', 'Sonnet 5 (1M context)', 'Haiku']
+const lastModelRowY = -213 + 6 * 28.7
 
 function clickFromRight(element, dx, dy) {
   clickNear(element, element.bounds.width / 2 + dx, dy)
@@ -99,13 +100,14 @@ function clickFromRight(element, dx, dy) {
 async function selectModel(name) {
   const index = claudeModels.indexOf(name)
   if (index < 0) throw new Error(`未登记的模型：${name}`)
-  const chip = await waitFor('model-chip', (value, element) => element.role === 'button' && /^Claude .+ \S+$/.test(value))
+  const chip = await waitFor('model-chip', (value, element) => element.role === 'button' &&
+    claudeModels.some((model) => value.startsWith(`${model} `)))
   clickNear(chip.element, 0, 0)
   await sleep(900)
   // 弹层首行是强度，次行是当前模型入口；进入后自上而下列出全部模型。
   clickFromRight(chip.element, -109, -80)
   await sleep(900)
-  clickFromRight(chip.element, -184, -213 + index * 28.7)
+  clickFromRight(chip.element, -184, lastModelRowY - (claudeModels.length - 1 - index) * 28.7)
   await sleep(700)
   press('escape')
   await waitFor('model-selected', (value, element) => element.role === 'button' && value.startsWith(`${name} `), 10_000)
@@ -230,6 +232,6 @@ for (const scenario of scenarios.filter((item) => !only || only.includes(item.ma
 if (!only || only.includes('DESKTOP_CLAUDE_MODEL')) {
   window = mainWindow()
   await newChat(claude)
-  await selectModel('Claude configured default')
+  await selectModel('Default (recommended)')
 }
 console.log('[desktop-gui] 全部场景已在 GUI 执行；以 serve.mjs 退出结果为准')

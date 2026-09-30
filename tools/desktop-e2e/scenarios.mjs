@@ -58,7 +58,7 @@ export const desktopScenarios = {
     assert.ok(JSON.stringify(user).includes(steerPayload), 'steer 消息必须进入同一回合的下一次模型请求')
     return finish('DESKTOP_CLAUDE_STEER_OK')
   },
-  // 更换模型：界面选择 Claude Haiku 后，真实 CLI 发往模型接口的 model 必须随之改变。
+  // 更换模型：界面选择 Haiku 后，真实 CLI 发往模型接口的 model 必须随之改变。
   DESKTOP_CLAUDE_MODEL({ request, finish }) {
     assert.match(String(request.model), /haiku/i, `界面换模未生效：${request.model}`)
     return finish('DESKTOP_CLAUDE_MODEL_OK')
