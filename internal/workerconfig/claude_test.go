@@ -172,6 +172,29 @@ func TestShareClaudeInstructionsLinksAndMigrates(t *testing.T) {
 	require.Equal(t, agents, target)
 }
 
+func TestApplyClaudeDefaultSettingsOverridesOnlyDefaultEnv(t *testing.T) {
+	home := filepath.Join(t.TempDir(), ".claude")
+	path := filepath.Join(home, "settings.json")
+	require.NoError(t, ApplyClaudeDefaultSettings(home), "缺失目录与文件时创建")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}`, string(data))
+	require.NoError(t, os.WriteFile(path, []byte(`{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://example.test","CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"0"}}`), 0o600))
+	require.NoError(t, ApplyClaudeDefaultSettings(home))
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://example.test","CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}`, string(data))
+	require.FileExists(t, path+".bak.1")
+	require.NoError(t, os.Remove(path+".bak.1"))
+	require.NoError(t, ApplyClaudeDefaultSettings(home))
+	require.NoFileExists(t, path+".bak.1", "已一致时不重写")
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	require.Error(t, ApplyClaudeDefaultSettings(home))
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "{", string(data), "无效 JSON 不得覆盖")
+}
+
 func TestSharedClaudeServiceEditsCodexAgents(t *testing.T) {
 	codexHome, claudeHome := t.TempDir(), t.TempDir()
 	agents := filepath.Join(codexHome, "AGENTS.md")

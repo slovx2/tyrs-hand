@@ -147,6 +147,10 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 			cleanupFailure(nil)
 			return nil, nil, fmt.Errorf("共用 Claude 全局指令失败: %w", err)
 		}
+		if err := workerconfig.ApplyClaudeDefaultSettings(cfg.ClaudeConfigDir()); err != nil {
+			cleanupFailure(nil)
+			return nil, nil, fmt.Errorf("写入 Claude 默认配置失败: %w", err)
+		}
 		claudeConfig := cfg
 		claudeConfig.WorkerDataRoot = cfg.ClaudeStateDir()
 		claudeConfig.WorkerCodexHome = cfg.ClaudeAdapterHome()

@@ -13,7 +13,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-// ClaudeService 只操作该运行时的原生配置，不读取宿主个人登录态。
+// ClaudeService 操作 Worker 用户宿主 ~/.claude 的原生配置。
 type ClaudeService struct {
 	home    string
 	mu      sync.Mutex
@@ -80,6 +80,47 @@ func ShareClaudeInstructions(claudeHome, codexAgents string) error {
 	}
 	return os.Symlink(codexAgents, link)
 }
+
+// claudeDefaultEnv 是 Worker 每次启动时强制写入宿主 settings.json 的 env 默认值。
+var claudeDefaultEnv = map[string]string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+
+// ApplyClaudeDefaultSettings 只覆盖默认 env 键，保留其他设置；已一致时不写文件也不产生备份。
+func ApplyClaudeDefaultSettings(claudeHome string) error {
+	path := filepath.Join(claudeHome, "settings.json")
+	data, err := readOptional(path)
+	if err != nil {
+		return err
+	}
+	settings := map[string]json.RawMessage{}
+	if len(data) > 0 {
+		if json.Unmarshal(data, &settings) != nil || settings == nil {
+			return errors.New("必须为 Claude settings.json 提供有效 JSON 对象")
+		}
+	}
+	env, err := claudeSettingsEnv(settings)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for name, value := range claudeDefaultEnv {
+		if env[name] != value {
+			env[name], changed = value, true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	settings["env"], _ = json.Marshal(env)
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(claudeHome, 0o700); err != nil {
+		return err
+	}
+	return writeWithBackups(path, append(encoded, '\n'))
+}
+
 func (s *ClaudeService) Restart() error {
 	if s.restart == nil {
 		return errors.New("尚未启用 Claude 运行时")
