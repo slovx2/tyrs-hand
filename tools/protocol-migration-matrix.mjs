@@ -17,7 +17,7 @@ export function migrationOutcome(result, report, schema, { runId, caseId }) {
   if (report?.passed !== true) errors.push('迁移报告未通过')
   if (caseId === 'MIGRATION-005') {
     const mobile = report?.mobileMigration
-    if (mobile?.passed !== true || mobile.fromVersion !== 12 || mobile.toVersion !== 13 ||
+    if (mobile?.passed !== true || mobile.fromVersion !== 12 || mobile.toVersion !== 14 ||
       mobile.reopened !== true || mobile.realSSHReadback !== true || mobile.noModelReplay !== true ||
       !Array.isArray(mobile.retainedTables) || mobile.retainedTables.length !== 11 ||
       !['connection_profiles', 'control_machine_links', 'ssh_projects', 'projects', 'threads',

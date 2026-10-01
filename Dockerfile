@@ -16,6 +16,7 @@ RUN go mod download && go mod verify
 COPY cmd ./cmd
 COPY ent ./ent
 COPY internal ./internal
+COPY protocol/adapter_lock.go protocol/adapter-lock.json ./protocol/
 ARG TARGETOS=linux
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \

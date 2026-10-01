@@ -45,6 +45,8 @@ func runWorkerBootstrapSharedBudget(t *testing.T, queuedCodex bool) {
 	bin, adapter := os.Getenv("TYRS_HAND_TEST_CODEX_BIN"), os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN")
 	require.NotEmpty(t, bin, "缺少固定 Codex CLI，不能 skip")
 	require.NotEmpty(t, adapter, "缺少固定 Claude 适配器，不能 skip")
+	claudeCLI := os.Getenv("TYRS_HAND_TEST_CLAUDE_CLI")
+	require.NotEmpty(t, claudeCLI, "缺少独立安装的固定宿主 Claude CLI，不能 skip")
 	root, err := os.MkdirTemp("/tmp", "worker-boot-")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
@@ -155,7 +157,8 @@ func runWorkerBootstrapSharedBudget(t *testing.T, queuedCodex bool) {
 		WorkerCredentialFile: filepath.Join(root, "credential"), WorkerAuthorizedKeysFile: filepath.Join(root, "authorized_keys"),
 		WorkerSSHHostKeyFile: filepath.Join(root, "host_key"), WorkerSSHListenAddr: "127.0.0.1:0",
 		WorkerClaudeSSHListenAddr: "127.0.0.1:0", WorkerClaudeEnabled: true, WorkerClaudeBin: adapter,
-		CodexBin: bin, WorkerShell: "/bin/sh", ControlTimeout: 3 * time.Second,
+		WorkerClaudeCLI: claudeCLI,
+		CodexBin:        bin, WorkerShell: "/bin/sh", ControlTimeout: 3 * time.Second,
 		TurnIdleTimeout: time.Minute, TurnMaxDuration: time.Minute, HeartbeatInterval: time.Hour,
 		SSHAgentDir: filepath.Join(root, "agent"), WorkerGlobalEnvFile: filepath.Join(root, "codex.env")}
 	for _, path := range []string{cfg.WorkerCodexHome, cfg.WorkerWorkspaceRoot, cfg.ClaudeConfigDir()} {

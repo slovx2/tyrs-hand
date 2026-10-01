@@ -55,6 +55,7 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 	bin, adapter := os.Getenv("TYRS_HAND_TEST_CODEX_BIN"), os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN")
 	require.NotEmpty(t, bin, "必须使用固定 Codex CLI")
 	require.NotEmpty(t, adapter, "必须使用固定适配器及 SDK")
+	require.NotEmpty(t, os.Getenv("TYRS_HAND_TEST_CLAUDE_CLI"), "必须指定固定宿主 Claude CLI")
 	dsn, redisSocket := os.Getenv("TYRS_HAND_TEST_DATABASE_URL"), os.Getenv("TYRS_HAND_TEST_REDIS_SOCKET")
 	require.NotEmpty(t, dsn, "缺少临时 PostgreSQL，不能 skip")
 	require.NotEmpty(t, redisSocket, "缺少临时 Redis，不能 skip")
@@ -120,7 +121,8 @@ func newControlRuntimeFixture(t *testing.T, ctx context.Context, modelURL string
 		WorkerCredentialFile: filepath.Join(root, "credential"), WorkerAuthorizedKeysFile: filepath.Join(root, "authorized_keys"),
 		WorkerSSHHostKeyFile: filepath.Join(root, "host_key"), WorkerSSHListenAddr: "127.0.0.1:0",
 		WorkerClaudeSSHListenAddr: "127.0.0.1:0", WorkerClaudeEnabled: true, WorkerClaudeBin: adapter,
-		CodexBin: bin, WorkerShell: "/bin/sh", ControlTimeout: 5 * time.Second,
+		WorkerClaudeCLI: os.Getenv("TYRS_HAND_TEST_CLAUDE_CLI"),
+		CodexBin:        bin, WorkerShell: "/bin/sh", ControlTimeout: 5 * time.Second,
 		TurnIdleTimeout: time.Minute, TurnMaxDuration: time.Minute, HeartbeatInterval: time.Second,
 		NodeHeartbeatInterval: time.Second, WorkerClaimFallbackInterval: 200 * time.Millisecond,
 		WorkerSyncFallbackInterval: time.Second, WorkerControlURL: server.URL, WorkerProtocolVersion: workerprotocol.Version,

@@ -43,7 +43,7 @@ test('真实wire转换按连接保留报文、ID类型和方向，不填造关�
 test('主迁移必须同时具备客户端旧数据、重开和真实SSH回读证据', () => {
   const expected = { runId: 'current', caseId: 'MIGRATION-005' }
   const process = { code: 0, signal: null }, schema = { passed: true, errors: [] }
-  const mobileMigration = { passed: true, fromVersion: 12, toVersion: 13, reopened: true,
+  const mobileMigration = { passed: true, fromVersion: 12, toVersion: 14, reopened: true,
     realSSHReadback: true, noModelReplay: true, retainedTables: ['connection_profiles', 'control_machine_links',
       'ssh_projects', 'projects', 'threads', 'thread_reads', 'drafts', 'pending_submissions', 'outbox',
       'pending_message_previews', 'app_settings'] }
@@ -52,6 +52,7 @@ test('主迁移必须同时具备客户端旧数据、重开和真实SSH回读�
   for (const value of [undefined, { ...mobileMigration, realSSHReadback: false },
     { ...mobileMigration, reopened: false }, { ...mobileMigration, passed: false },
     { ...mobileMigration, noModelReplay: undefined },
+    { ...mobileMigration, toVersion: 13 }, { ...mobileMigration, toVersion: 15 },
     { ...mobileMigration, retainedTables: ['repeated', 'repeated'] },
     { ...mobileMigration, fromVersion: 13 }])
     assert.ok(migrationOutcome(process, { ...report, mobileMigration: value }, schema, expected).length)

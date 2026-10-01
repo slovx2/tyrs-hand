@@ -78,7 +78,7 @@ func (f *runtimeClaudeCrashFixture) waitBlocked(t *testing.T, ctx context.Contex
 	}
 }
 
-// 以进程表查找适配器的后代进程；真实 SDK 的 CLI 是名为 claude 的原生可执行文件。
+// 仅检查适配器后代；宿主 npm 安装的固定 CLI 将原生程序命名为 claude.exe。
 func runtimeClaudeCLIDescendants(t *testing.T, root int) []int {
 	t.Helper()
 	output, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,args=").Output()
@@ -106,7 +106,7 @@ func runtimeClaudeCLIDescendants(t *testing.T, root int) []int {
 		for _, child := range children[pid] {
 			queue = append(queue, child)
 			executable := strings.Fields(args[child])[0]
-			if strings.HasSuffix(executable, "/claude") || executable == "claude" {
+			if strings.HasSuffix(executable, "/claude.exe") || strings.HasSuffix(executable, "/claude") || executable == "claude" {
 				found = append(found, child)
 			}
 		}
