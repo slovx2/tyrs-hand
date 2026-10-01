@@ -28,6 +28,7 @@ type RuntimeOptions struct {
 	Environment          []string
 	EntryCommand         []string
 	CodexBin             string
+	ClaudeCLI            string
 	CodexHome            string
 	Home                 string
 	WorkspaceRoot        string
@@ -168,11 +169,13 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 	if envFile == "" {
 		envFile = filepath.Join(options.StateDir, ".env")
 	}
-	if secretValues, err := loadWorkerGlobalEnv(envFile); err != nil {
-		return nil, fmt.Errorf("读取 Worker Provider 密钥: %w", err)
-	} else {
-		for name, value := range secretValues {
-			values[name] = value
+	if options.Engine != runtimeidentity.Pi {
+		if secretValues, err := loadWorkerGlobalEnv(envFile); err != nil {
+			return nil, fmt.Errorf("读取 Worker Provider 密钥: %w", err)
+		} else {
+			for name, value := range secretValues {
+				values[name] = value
+			}
 		}
 	}
 	if options.Engine == runtimeidentity.Claude {
@@ -187,6 +190,11 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		values["CLAUDE_CODEX_HOME"] = options.StateDir
 		values["CLAUDE_CODEX_IDLE_EXIT_MS"] = "0"
 		values["CLAUDE_CODEX_RUNTIME"] = "agent-sdk-sidecar"
+		delete(values, "TYRS_HAND_MODEL_API_KEY")
+		delete(values, "TYRS_HAND_MODEL_BASE_URL")
+	}
+	if options.Engine == runtimeidentity.Pi {
+		values["PI_ADAPTER_HOME"] = options.StateDir
 		delete(values, "TYRS_HAND_MODEL_API_KEY")
 		delete(values, "TYRS_HAND_MODEL_BASE_URL")
 	}
@@ -249,13 +257,13 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		return nil, err
 	}
 	generation.client = client
-	if options.Engine == runtimeidentity.Claude {
+	if options.Engine != runtimeidentity.Codex {
 		var live RuntimeInfo
 		if err := client.Call(ctx, "runtime/info", map[string]any{}, &live); err != nil ||
-			live.Engine != runtimeidentity.Claude || live.SDKVersion != info.SDKVersion ||
+			live.Engine != options.Engine || live.SDKVersion != info.SDKVersion ||
 			live.CLISHA256 != info.CLISHA256 || live.ProtocolVersion != info.ProtocolVersion {
 			stopAppServerGeneration(generation)
-			return nil, fmt.Errorf("校验 Claude 在线协议身份失败: %v", err)
+			return nil, fmt.Errorf("校验 %s 在线协议身份失败: %v", options.Engine, err)
 		}
 	}
 	return generation, nil
@@ -483,10 +491,12 @@ func (r *Runtime) recoverAfterDesktopFailure(ctx context.Context,
 	stopAppServerGeneration(failed)
 	next, err := r.start(ctx)
 	if err != nil {
+		r.options.Logger.Error("运行时恢复启动失败", zap.String("engine", string(r.options.Engine)), zap.Error(err))
 		return fmt.Errorf("按需恢复 Codex App Server: %w", err)
 	}
 	if rebinder, ok := r.options.Controller.(RuntimeRebinder); ok {
 		if err := rebinder.RebindRuntime(ctx, next.client, next.generation); err != nil {
+			r.options.Logger.Error("运行时恢复重新绑定失败", zap.String("engine", string(r.options.Engine)), zap.Error(err))
 			stopAppServerGeneration(next)
 			return fmt.Errorf("重新绑定 Worker Codex Client: %w", err)
 		}
@@ -499,7 +509,7 @@ func (r *Runtime) recoverAfterDesktopFailure(ctx context.Context,
 	}
 	r.current = next
 	r.mu.Unlock()
-	r.options.Logger.Info("Desktop 触发的 Codex App Server 按需恢复完成")
+	r.options.Logger.Info("Desktop 触发的 Codex App Server 按需恢复完成", zap.String("engine", string(r.options.Engine)))
 	return nil
 }
 

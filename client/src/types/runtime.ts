@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const engineSchema = z.enum(["codex", "claude-code"]);
+export const engineSchema = z.enum(["codex", "claude-code", "pi"]);
 export type Engine = z.infer<typeof engineSchema>;
 
 export const runtimeInfoSchema = z.object({
@@ -14,5 +14,5 @@ export const runtimeInfoSchema = z.object({
 export type RuntimeInfo = z.infer<typeof runtimeInfoSchema>;
 
 export function engineName(engine: Engine): string {
-  return engine === "codex" ? "Codex" : "Claude";
+  return { codex: "Codex", "claude-code": "Claude", pi: "Pi" }[engine];
 }

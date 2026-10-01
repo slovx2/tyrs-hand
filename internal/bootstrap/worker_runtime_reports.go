@@ -10,8 +10,8 @@ import (
 )
 
 func runtimeReports(registry *hostworker.RuntimeRegistry, processors map[runtimeidentity.Engine]*worker.Processor) []workerprotocol.RuntimeReport {
-	reports := make([]workerprotocol.RuntimeReport, 0, 2)
-	for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude} {
+	reports := make([]workerprotocol.RuntimeReport, 0, 3)
+	for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude, runtimeidentity.Pi} {
 		entry, err := registry.Entry(engine)
 		if err != nil {
 			continue
@@ -26,7 +26,7 @@ func runtimeReports(registry *hostworker.RuntimeRegistry, processors map[runtime
 			Engine: engine, Status: info.Status, SSHListenAddress: entry.SSH.Addr().String(),
 			SSHHostKeyFingerprint: entry.SSH.HostKeyFingerprint(), ProtocolVersion: info.ProtocolVersion,
 			Build: workerprotocol.RuntimeBuild{NodeVersion: info.NodeVersion, SDKVersion: info.SDKVersion,
-				CLIBuild: info.CLIBuild, CLISHA256: info.CLISHA256},
+				CLIBuild: info.CLIBuild, CLISHA256: info.CLISHA256, PluginVersions: info.PluginVersions},
 			Capabilities: capabilities, ModelCatalog: catalog, ReleaseReady: info.ReleaseReady,
 		})
 	}

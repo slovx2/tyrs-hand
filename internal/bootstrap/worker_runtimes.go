@@ -9,15 +9,34 @@ import (
 
 // 共用入站授权和出站 SSH Agent；进程、配置、Host Key 与 Controller 分开。
 func workerRuntimeEntries(cfg config.Config, codex hostworker.RuntimeOptions,
-	ssh hostworker.SSHOptions, claudeController appserverhub.Controller,
+	ssh hostworker.SSHOptions, claudeController, piController appserverhub.Controller,
 ) []hostworker.RuntimeEntryOptions {
 	entries := []hostworker.RuntimeEntryOptions{{Runtime: codex, SSH: ssh}}
+	if cfg.WorkerPiEnabled {
+		pi := codex
+		pi.Engine = runtimeidentity.Pi
+		pi.CodexBin = cfg.WorkerPiBin
+		pi.CodexHome = cfg.PiAdapterHome()
+		pi.StateDir = cfg.PiStateDir()
+		pi.EnvFile = ""
+		pi.Controller = piController
+		pi.BrowserServiceSocket = ""
+		pi.BrowserWorkerToken = ""
+		pi.BrowserDesktopToken = ""
+		piSSH := ssh
+		piSSH.ListenAddr = cfg.WorkerPiSSHListenAddr
+		piSSH.HostKeyFile = cfg.PiHostKeyFile()
+		piSSH.CodexHome = pi.CodexHome
+		piSSH.BrowserProxy = nil
+		entries = append(entries, hostworker.RuntimeEntryOptions{Runtime: pi, SSH: piSSH})
+	}
 	if !cfg.WorkerClaudeEnabled {
 		return entries
 	}
 	claude := codex
 	claude.Engine = runtimeidentity.Claude
 	claude.CodexBin = cfg.WorkerClaudeBin
+	claude.ClaudeCLI = cfg.WorkerClaudeCLI
 	claude.CodexHome = cfg.ClaudeAdapterHome()
 	// HOME 与 Codex 入口相同，git、gh、ssh 等工具读取 Worker 用户的真实配置；
 	// Claude 自身配置由 CLAUDE_CONFIG_DIR 隔离，不读取宿主 Claude Code 的 ~/.claude。

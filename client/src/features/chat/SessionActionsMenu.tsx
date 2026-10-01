@@ -15,11 +15,13 @@ export function SessionActionsMenu({ sessionId, onArchiveAccepted, archiveView =
   onArchiveViewChange?: (value: boolean) => void;
 }) {
   const theme = useTheme();
+  const supportsArchive = useAppStore((state) => state.activeConnection?.engine !== "pi");
   const insets = useSafeAreaInsets();
   const record = useAppStore((state) => state.threads.find((item) => item.thread.id === sessionId));
   const interrupt = useAppStore((state) => state.interruptThread);
   const setArchived = useAppStore((state) => state.setThreadArchived);
   const rename = useAppStore((state) => state.renameThread);
+  const deleteThread = useAppStore((state) => state.deleteThread);
   const [visible, setVisible] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
@@ -55,7 +57,16 @@ export function SessionActionsMenu({ sessionId, onArchiveAccepted, archiveView =
             <Text style={[styles.menuText, { color: theme.colors.text }]}>改名</Text>
           </Pressable>}
           {record && <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />}
-          {record && <Pressable testID={record.archived ? "session:restore" : "session:archive"}
+          {record && !supportsArchive && <Pressable testID="session:delete" disabled={loading || running}
+            onPress={() => Alert.alert("删除会话", "将删除 Pi 原始会话文件，此操作无法撤销。", [
+              { text: "取消", style: "cancel" },
+              { text: "删除", style: "destructive", onPress: () => void run(async () => {
+                await deleteThread(sessionId!); onArchiveAccepted?.();
+              }, "删除失败") },
+            ])} style={styles.menuItem}>
+            <Text style={[styles.menuText, { color: theme.colors.danger }]}>删除</Text>
+          </Pressable>}
+          {record && supportsArchive && <Pressable testID={record.archived ? "session:restore" : "session:archive"}
             disabled={loading} onPress={() => void run(async () => {
               await setArchived(sessionId!, !record.archived);
               if (!record.archived) onArchiveAccepted?.();
@@ -65,7 +76,7 @@ export function SessionActionsMenu({ sessionId, onArchiveAccepted, archiveView =
               {record.archived ? "恢复" : "归档"}
             </Text>
           </Pressable>}
-          {onArchiveViewChange && <>
+          {onArchiveViewChange && supportsArchive && <>
             {record && <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />}
             <Pressable testID={archiveView ? "sessions:exit-archived" : "sessions:view-archived"}
               disabled={loading} onPress={() => {

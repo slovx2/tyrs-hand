@@ -23,7 +23,7 @@ function renderPage() {
 }
 
 describe('DevicesPage', () => {
-  it.each(['codex', 'claude-code'])(
+  it.each(['codex', 'claude-code', 'pi'])(
     '选择 Worker 的 %s 入口生成二维码并确认',
     async (engine) => {
       const create = vi.fn()
@@ -48,7 +48,7 @@ describe('DevicesPage', () => {
         ),
         http.get('/api/v1/workers/:id/runtimes', () =>
           HttpResponse.json(
-            ['codex', 'claude-code'].map((engine) => ({
+            ['codex', 'claude-code', 'pi'].map((engine) => ({
               engine,
               enabled: true,
               status: 'running',

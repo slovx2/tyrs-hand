@@ -347,6 +347,11 @@ describe('WorkerWorkspacePage', () => {
     await user.click(
       screen.getByRole('button', { name: 'atlas 管理 Forum 配对' }),
     )
+    expect(
+      within(screen.getByLabelText('新会话默认引擎')).queryByRole('option', {
+        name: 'Pi',
+      }),
+    ).not.toBeInTheDocument()
     await user.selectOptions(
       screen.getByLabelText('新会话默认引擎'),
       'claude-code',

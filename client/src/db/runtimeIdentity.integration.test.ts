@@ -70,7 +70,7 @@ describe("MIGRATION / ISOLATION：真实 SQLite 运行时身份", () => {
     `);
     const { getDatabase } = await import("./database");
     await getDatabase();
-    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 13 });
+    expect(database.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 14 });
     expect(database.prepare("SELECT engine,worker_id FROM connection_profiles").get())
       .toMatchObject({ engine: "codex", worker_id: "worker-1" });
     expect(database.prepare("SELECT text FROM drafts").get()).toMatchObject({ text: "原草稿" });
@@ -111,4 +111,15 @@ async function assertSeparateClaude() {
     "claude-profile", "message-same", "thread-same", null, "{}", "unknown", null, "now", "now");
   expect(database.prepare("SELECT text FROM drafts WHERE profile_id='claude-profile'").get())
     .toMatchObject({ text: "Claude 草稿" });
+  await saveSSHConnection({ ...sshInput, profileId: "pi-profile", engine: "pi",
+    name: "Pi", port: 3334, keyRef: "pi-key" });
+  await saveControlMachineLink({ engine: "pi", profileId: "pi-profile",
+    machineFingerprint: sshInput.hostFingerprint, name: "Pi", workerId: "worker-1",
+    workerName: "Worker", serverId: "server-1", baseUrl: "https://control.test", deviceId: "device-1" });
+  expect(await listConnections()).toHaveLength(3);
+  expect(() => database.exec("UPDATE connection_profiles SET engine='codex' WHERE profile_id='pi-profile'"))
+    .toThrow("运行时引擎不可变");
+  expect(() => database.exec("UPDATE control_machine_links SET engine='codex' WHERE profile_id='pi-profile'"))
+    .toThrow();
+  expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
 }

@@ -64,6 +64,16 @@ const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: n
   collaborationMode: "default" as const, permissions: ":danger-full-access" as const };
 
 describe("OfficialAppServerClient", () => {
+  it("Pi 跳过模型标题、拒绝归档并发送原生删除", async () => {
+    const rpc = new FakeRpc(() => ({}));
+    const client = new OfficialAppServerClient("pi-profile", "pi", rpc, new MemoryJournal());
+    await expect(client.generateThreadTitle({ cwd: "/workspace", prompt: "title", serviceTier: null })).resolves.toBeNull();
+    await expect(client.archive("pi-thread")).rejects.toThrow("Pi 不支持归档");
+    await expect(client.unarchive("pi-thread")).rejects.toThrow("Pi 不支持归档");
+    expect(rpc.calls).toEqual([]);
+    await client.deleteThread("pi-thread");
+    expect(rpc.calls).toEqual([{ method: "thread/delete", params: { threadId: "pi-thread" } }]);
+  });
   it.each(["codex", "claude-code"] as const)("%s 模型分页按固定协议补齐服务等级默认值", async (engine) => {
     const base = { id: "fixture", model: "fixture", displayName: "测试模型",
       description: "模型目录", hidden: false, isDefault: true,

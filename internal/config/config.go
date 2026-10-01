@@ -49,7 +49,11 @@ type Config struct {
 	WorkerProtocolVersion          int
 	WorkerSSHListenAddr            string
 	WorkerClaudeEnabled            bool
+	WorkerPiEnabled                bool
+	WorkerPiBin                    string
+	WorkerPiSSHListenAddr          string
 	WorkerClaudeBin                string
+	WorkerClaudeCLI                string
 	WorkerClaudeSSHListenAddr      string
 	WorkerSSHHostKeyFile           string
 	WorkerAuthorizedKeysFile       string
@@ -131,7 +135,11 @@ func load(workerProcess bool) (Config, error) {
 		WorkerProtocolVersion:          v.GetInt("worker_protocol_version"),
 		WorkerSSHListenAddr:            strings.TrimSpace(v.GetString("worker_ssh_listen_addr")),
 		WorkerClaudeEnabled:            v.GetBool("worker_claude_enabled"),
+		WorkerPiEnabled:                v.GetBool("worker_pi_enabled"),
+		WorkerPiBin:                    strings.TrimSpace(v.GetString("worker_pi_bin")),
+		WorkerPiSSHListenAddr:          strings.TrimSpace(v.GetString("worker_pi_ssh_listen_addr")),
 		WorkerClaudeBin:                strings.TrimSpace(v.GetString("worker_claude_bin")),
+		WorkerClaudeCLI:                strings.TrimSpace(v.GetString("worker_claude_cli")),
 		WorkerClaudeSSHListenAddr:      strings.TrimSpace(v.GetString("worker_claude_ssh_listen_addr")),
 		WorkerSSHHostKeyFile:           filepath.Clean(v.GetString("worker_ssh_host_key_file")),
 		WorkerAuthorizedKeysFile:       filepath.Clean(v.GetString("worker_authorized_keys_file")),
@@ -239,7 +247,10 @@ func (c Config) ValidateWorker() error {
 	if err := c.validateWorkerCapabilities(); err != nil {
 		return err
 	}
-	return c.validateClaudeRuntime()
+	if err := c.validateClaudeRuntime(); err != nil {
+		return err
+	}
+	return c.validatePiRuntime()
 }
 
 func (c Config) validateWorkerCapabilities() error {
@@ -334,7 +345,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_protocol_version", workerprotocol.Version)
 	v.SetDefault("worker_ssh_listen_addr", ":2222")
 	v.SetDefault("worker_claude_enabled", false)
+	v.SetDefault("worker_pi_enabled", false)
+	v.SetDefault("worker_pi_bin", "/usr/local/libexec/tyrs-hand-pi")
+	v.SetDefault("worker_pi_ssh_listen_addr", ":3334")
 	v.SetDefault("worker_claude_bin", "/usr/local/libexec/tyrs-hand-claude")
+	v.SetDefault("worker_claude_cli", "claude")
 	v.SetDefault("worker_claude_ssh_listen_addr", ":3333")
 	v.SetDefault("worker_ssh_host_key_file", filepath.Join(stateRoot, "ssh", "host_key"))
 	v.SetDefault("worker_authorized_keys_file", filepath.Join(stateRoot, "ssh", "authorized_keys"))

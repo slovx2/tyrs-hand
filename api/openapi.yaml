@@ -535,7 +535,7 @@ paths:
               type: object
               required: [engine]
               properties:
-                engine: { type: string, enum: [codex, claude-code] }
+                engine: { type: string, enum: [codex, claude-code, pi] }
       responses:
         "204": { description: 默认引擎已更新，仅影响之后新建的帖子 }
         default: { $ref: "#/components/responses/Problem" }
@@ -1576,7 +1576,7 @@ components:
       name: X-Tyrs-Runtime-Engine
       in: header
       required: true
-      schema: { type: string, enum: [codex, claude-code] }
+      schema: { type: string, enum: [codex, claude-code, pi] }
     WorkerProtocolVersion:
       name: X-Tyrs-Worker-Protocol
       in: header
@@ -1586,7 +1586,7 @@ components:
       name: engine
       in: path
       required: true
-      schema: { type: string, enum: [codex, claude-code] }
+      schema: { type: string, enum: [codex, claude-code, pi] }
     CSRFToken:
       name: X-CSRF-Token
       in: header
@@ -1773,7 +1773,7 @@ components:
       required: [workerId, engine, enabled, status, sshListenAddress, sshHostKeyFingerprint, protocolVersion, build, capabilities, modelCatalog, releaseReady, heartbeatAt]
       properties:
         workerId: { type: string, format: uuid }
-        engine: { type: string, enum: [codex, claude-code] }
+        engine: { type: string, enum: [codex, claude-code, pi] }
         enabled: { type: boolean }
         status: { type: string, enum: [running, unavailable, stopped, disabled, offline, incompatible] }
         sshListenAddress: { type: string }
@@ -1785,6 +1785,7 @@ components:
           properties:
             nodeVersion: { type: string }
             sdkVersion: { type: string }
+            pluginVersions: { type: object, additionalProperties: { type: string } }
             cliBuild: { type: string }
             cliSha256: { type: string }
         capabilities: { type: array, items: { type: string } }
@@ -1888,7 +1889,7 @@ components:
       type: object
       required: [engine, workerId, name, sshHostKeyFingerprint, status, approvedAt]
       properties:
-        engine: { type: string, enum: [codex, claude-code] }
+        engine: { type: string, enum: [codex, claude-code, pi] }
         workerId: { type: string, format: uuid }
         name: { type: string }
         sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
@@ -1918,7 +1919,7 @@ components:
     ClientPairingCreateInput:
       type: object
       required: [workerId, engine]
-      properties: { workerId: { type: string, format: uuid }, engine: { type: string, enum: [codex, claude-code] } }
+      properties: { workerId: { type: string, format: uuid }, engine: { type: string, enum: [codex, claude-code, pi] } }
     ClientPairingClaimInput:
       type: object
       required: [pairingSecret, deviceId, name, platform, credentialHash]
@@ -1932,7 +1933,7 @@ components:
       type: object
       required: [engine, id, status, workerId, workerName, sshHostKeyFingerprint, expiresAt, createdAt]
       properties:
-        engine: { type: string, enum: [codex, claude-code] }
+        engine: { type: string, enum: [codex, claude-code, pi] }
         id: { type: string, format: uuid }
         status: { type: string, enum: [waiting_scan, waiting_confirmation, approved, rejected, expired] }
         deviceId: { type: string, format: uuid }
@@ -1957,7 +1958,7 @@ components:
       required: [engine, id, workspaceId, kind, name, prompt, status, schedule, timezone,
         scheduleKind, scheduleRevision, project, createdAt, updatedAt]
       properties:
-        engine: { type: string, enum: [codex, claude-code] }
+        engine: { type: string, enum: [codex, claude-code, pi] }
         id: { type: string, format: uuid }
         workspaceId: { type: string, format: uuid }
         kind: { type: string, enum: [standalone, heartbeat] }
@@ -2152,12 +2153,12 @@ components:
         runtimes:
           type: array
           minItems: 1
-          maxItems: 2
+          maxItems: 3
           items:
             type: object
             required: [engine, status, sshListenAddress, sshHostKeyFingerprint, protocolVersion, build, capabilities, modelCatalog, releaseReady]
             properties:
-              engine: { type: string, enum: [codex, claude-code] }
+              engine: { type: string, enum: [codex, claude-code, pi] }
               status: { type: string, enum: [running, unavailable, stopped] }
               sshListenAddress: { type: string }
               sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
@@ -2168,6 +2169,7 @@ components:
                 properties:
                   nodeVersion: { type: string }
                   sdkVersion: { type: string }
+                  pluginVersions: { type: object, additionalProperties: { type: string } }
                   cliBuild: { type: string }
                   cliSha256: { type: string }
               capabilities: { type: array, items: { type: string } }
@@ -2487,7 +2489,7 @@ components:
       type: object
       required: [defaultEngine, id, name, discordId, bindingStatus, collaborators]
       properties:
-        defaultEngine: { type: string, enum: [codex, claude-code] }
+        defaultEngine: { type: string, enum: [codex, claude-code, pi] }
         id: { type: string, format: uuid }
         name: { type: string }
         discordId: { type: string }

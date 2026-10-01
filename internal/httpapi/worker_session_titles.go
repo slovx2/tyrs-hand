@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
@@ -19,6 +20,10 @@ import (
 const sessionTitleMaxRunes = 36
 
 func (s *Server) workerClaimSessionTitle(c *gin.Context) {
+	if currentWorkerEngine(c) == runtimeidentity.Pi {
+		c.JSON(http.StatusOK, workerprotocol.SessionTitleClaimResponse{})
+		return
+	}
 	worker := currentWorker(c)
 	if worker.Status == "incompatible" {
 		problem(c, http.StatusConflict, "Worker 协议版本不兼容，禁止领取标题任务", nil)

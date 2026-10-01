@@ -70,6 +70,33 @@ func TestSessionTitleTaskLifecycleAndManualRenameFence(t *testing.T) {
 	require.Equal(t, "manual", source)
 }
 
+func TestPiSessionNeverEnqueuesGeneratedTitle(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := t.Context()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, _ := workerTestServer(t, db)
+	worker, _, err := server.workers.Create(ctx, "pi-title-worker", []string{"discord"}, 2)
+	require.NoError(t, err)
+	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 8891)
+	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	projectID := workspaceProjectIDForForum(t, db, forumID)
+	var sessionID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_sessions
+		(workspace_id,workspace_project_id,agent_profile_id,title,title_source,engine)
+		VALUES ($1,$2,$3,'Pi native','fallback','pi') RETURNING id`, workspaceID, projectID, profileID).Scan(&sessionID))
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	require.NoError(t, codexcontrol.EnqueueSessionTitleTx(ctx, tx, sessionID, uuid.New(), "first message"))
+	require.NoError(t, tx.Commit())
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM workspace_session_title_tasks WHERE session_id=$1`, sessionID).Scan(&count))
+	require.Zero(t, count)
+	var source string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT title_source FROM workspace_sessions WHERE id=$1`, sessionID).Scan(&source))
+	require.Equal(t, "fallback", source)
+}
+
 func TestSessionTitleTaskLeaseRecoveryAndTerminalFallback(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

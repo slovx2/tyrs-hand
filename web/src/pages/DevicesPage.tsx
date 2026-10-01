@@ -9,9 +9,9 @@ import {
 import { useState } from 'react'
 import { api } from '../api/client'
 import type { components } from '../api/schema'
-type Engine = 'codex' | 'claude-code'
+type Engine = 'codex' | 'claude-code' | 'pi'
 const engineLabel = (engine: Engine) =>
-  engine === 'codex' ? 'Codex' : 'Claude'
+  ({ codex: 'Codex', 'claude-code': 'Claude', pi: 'Pi' })[engine]
 import { useUI } from '../state'
 import type { Worker } from './WorkersPage'
 

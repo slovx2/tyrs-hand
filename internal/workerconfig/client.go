@@ -27,6 +27,7 @@ type ChannelOptions struct {
 	Credential      string
 	Service         *Service
 	Claude          *ClaudeService
+	PiRestart       func() error
 	ProtocolVersion int
 	// Notify 在收到 Control 唤醒通知时回调，必须立即返回，不能阻塞读取循环。
 	Notify func(kinds []string)

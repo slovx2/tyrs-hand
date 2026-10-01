@@ -7,6 +7,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
@@ -15,9 +16,9 @@ func TestAutomationSpecIsInjectedForWorkspaceProjects(t *testing.T) {
 	directory := workspaceGitTools(&workerprotocol.WorkspaceProjectContext{
 		WorkspaceKind: "directory",
 	})
-	require.Len(t, directory, 2)
+	require.Len(t, directory, 1)
 	require.True(t, hasDynamicTool(directory, "tyrs_hand", "automation_update"))
-	require.True(t, hasDynamicTool(directory, "", "generate_image"))
+	require.False(t, hasDynamicTool(directory, "", "generate_image"))
 	require.False(t, hasDynamicTool(directory, "git", "status"))
 
 	git := workspaceGitTools(&workerprotocol.WorkspaceProjectContext{
@@ -25,7 +26,33 @@ func TestAutomationSpecIsInjectedForWorkspaceProjects(t *testing.T) {
 	})
 	require.True(t, hasDynamicTool(git, "tyrs_hand", "automation_update"))
 	require.True(t, hasDynamicTool(git, "git", "status"))
-	require.True(t, hasDynamicTool(git, "", "generate_image"))
+	require.False(t, hasDynamicTool(git, "", "generate_image"))
+}
+
+func TestPiToolInjectionPreservesBusinessToolsOnly(t *testing.T) {
+	cfg := config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp"}
+	for _, engine := range []runtimeidentity.Engine{runtimeidentity.Codex, runtimeidentity.Claude, runtimeidentity.Pi} {
+		t.Run(string(engine), func(t *testing.T) {
+			controller := &desktopController{processor: &Processor{cfg: cfg, runtimeIdentity: runtimeidentity.Identity{Engine: engine}}, workspace: &workspaceCodex{}}
+			params := controller.injectDesktopRuntime(json.RawMessage(`{"cwd":"/tmp/project"}`), desktopRuntimeInjection{includeDynamicTools: true, includeBrowserMCP: true})
+			var result struct {
+				DynamicTools []ports.DynamicToolSpec `json:"dynamicTools"`
+				Config       map[string]any          `json:"config"`
+			}
+			require.NoError(t, json.Unmarshal(params, &result))
+			for _, specs := range [][]ports.DynamicToolSpec{result.DynamicTools, workspaceRuntimeTools(cfg, &workerprotocol.WorkspaceProjectContext{WorkspaceKind: "git"}, engine)} {
+				require.True(t, hasDynamicTool(specs, "git", "status"))
+				require.True(t, hasDynamicTool(specs, "tyrs_hand", "automation_update"))
+				require.Equal(t, engine != runtimeidentity.Pi, hasDynamicTool(specs, "", "generate_image"))
+				if engine == runtimeidentity.Pi {
+					require.Len(t, specs, 2)
+				}
+			}
+			if engine == runtimeidentity.Pi {
+				require.NotContains(t, result.Config, "mcp_servers")
+			}
+		})
+	}
 }
 
 func TestDesktopNewThreadReceivesAutomationSpec(t *testing.T) {

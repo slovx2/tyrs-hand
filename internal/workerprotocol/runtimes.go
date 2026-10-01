@@ -20,8 +20,9 @@ type RuntimeReport struct {
 }
 
 type RuntimeBuild struct {
-	NodeVersion string `json:"nodeVersion,omitempty"`
-	SDKVersion  string `json:"sdkVersion,omitempty"`
-	CLIBuild    string `json:"cliBuild"`
-	CLISHA256   string `json:"cliSha256,omitempty"`
+	PluginVersions map[string]string `json:"pluginVersions,omitempty"`
+	NodeVersion    string            `json:"nodeVersion,omitempty"`
+	SDKVersion     string            `json:"sdkVersion,omitempty"`
+	CLIBuild       string            `json:"cliBuild"`
+	CLISHA256      string            `json:"cliSha256,omitempty"`
 }

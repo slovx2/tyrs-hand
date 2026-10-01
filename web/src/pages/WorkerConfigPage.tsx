@@ -7,7 +7,7 @@ import type { Worker } from './workerTypes'
 import { useWorkerDetail } from './workerDetailContext'
 import { confirmAction } from './workerHelpers'
 
-type Engine = 'codex' | 'claude-code'
+type Engine = 'codex' | 'claude-code' | 'pi'
 
 type WorkerConfig = components['schemas']['WorkerRuntimeConfig']
 
@@ -20,7 +20,7 @@ export function WorkerConfigPage({ worker }: { worker: Worker }) {
   const [engine, setEngine] = useState<Engine>('codex')
   return (
     <div className="worker-detail-stack">
-      <SharedInstructions worker={worker} />
+      {engine !== 'pi' && <SharedInstructions worker={worker} />}
       <label>
         <span className="label">运行时</span>
         <select
@@ -30,9 +30,17 @@ export function WorkerConfigPage({ worker }: { worker: Worker }) {
         >
           <option value="codex">Codex</option>
           <option value="claude-code">Claude Code</option>
+          <option value="pi">Pi</option>
         </select>
       </label>
-      <RuntimeConfig key={engine} worker={worker} engine={engine} />
+      {engine === 'pi' ? (
+        <p className="muted">
+          Pi 使用 Worker 宿主用户的原生配置、凭据、技能和项目指令。请通过 Pi CLI
+          管理；会话内的模型和推理档位可直接在客户端修改。
+        </p>
+      ) : (
+        <RuntimeConfig key={engine} worker={worker} engine={engine} />
+      )}
     </div>
   )
 }

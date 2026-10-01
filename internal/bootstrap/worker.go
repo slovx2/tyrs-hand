@@ -159,6 +159,21 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		claudeProcessor.ShareTurnBudget(processor)
 		claudeController = worker.NewHostDesktopController(claudeProcessor, manifest)
 	}
+	var piProcessor *worker.Processor
+	var piController *worker.HostDesktopController
+	if cfg.WorkerPiEnabled {
+		piConfig := cfg
+		piConfig.WorkerDataRoot = cfg.PiStateDir()
+		piConfig.WorkerCodexHome = cfg.PiAdapterHome()
+		piClient, err := client.ForEngine(runtimeidentity.Pi)
+		if err != nil {
+			cleanupFailure(nil)
+			return nil, nil, err
+		}
+		piProcessor = worker.NewProcessor(ctx, piConfig, piClient, provideWorkspace(cfg), catalog, logger)
+		piProcessor.ShareTurnBudget(processor)
+		piController = worker.NewHostDesktopController(piProcessor, manifest)
+	}
 	runtimeOptions := hostworker.RuntimeOptions{Engine: runtimeidentity.Codex,
 		WorkerID: runner.WorkerID(),
 		CodexBin: cfg.CodexBin, CodexHome: cfg.WorkerCodexHome, Home: cfg.WorkerHome,
@@ -199,7 +214,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	if cfg.BrowserAgentAddress != "" && browserTokens.Desktop != "" {
 		sshOptions.BrowserProxy = hostworker.BrowserAgentProxy(cfg.BrowserAgentAddress, browserTokens.Desktop)
 	}
-	registry, err := hostworker.StartRuntimeRegistry(ctx, workerRuntimeEntries(cfg, runtimeOptions, sshOptions, claudeController))
+	registry, err := hostworker.StartRuntimeRegistry(ctx, workerRuntimeEntries(cfg, runtimeOptions, sshOptions, claudeController, piController))
 	if err != nil {
 		cleanupFailure(nil)
 		return nil, nil, err
@@ -242,10 +257,26 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 			return nil, nil, err
 		}
 	}
+	if piController != nil {
+		piEntry, _ := registry.Entry(runtimeidentity.Pi)
+		piProcessor.UseHostRuntime(piEntry.Runtime, scopeID, nil)
+		if cfg.ControlSyncEnabled() {
+			if err := runner.AddRuntimeProcessor(piProcessor); err != nil {
+				_ = registry.Close()
+				cleanupFailure(nil)
+				return nil, nil, err
+			}
+		}
+		if err := piController.AttachRuntime(ctx, piEntry.Runtime); err != nil {
+			_ = registry.Close()
+			cleanupFailure(nil)
+			return nil, nil, err
+		}
+	}
 	runner.SetSSHHostKeyFingerprint(entry.SSH.HostKeyFingerprint())
 	runner.SetRuntimeReports(func() []workerprotocol.RuntimeReport {
 		return runtimeReports(registry, map[runtimeidentity.Engine]*worker.Processor{
-			runtimeidentity.Codex: processor, runtimeidentity.Claude: claudeProcessor,
+			runtimeidentity.Codex: processor, runtimeidentity.Claude: claudeProcessor, runtimeidentity.Pi: piProcessor,
 		})
 	})
 	if configService != nil && cfg.ControlSyncEnabled() {
@@ -253,7 +284,8 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		configService.SetRestart(func() error { return registry.Restart(runtimeidentity.Codex) })
 		claudeConfig := workerconfig.NewSharedClaudeService(cfg.ClaudeConfigDir(), filepath.Join(cfg.WorkerCodexHome, "AGENTS.md"))
 		claudeConfig.SetRestart(func() error { return registry.Restart(runtimeidentity.Claude) })
-		go runControlChannel(ctx, cfg, credential, configService, claudeConfig, runner, logger)
+		go runControlChannel(ctx, cfg, credential, configService, claudeConfig,
+			func() error { return registry.Restart(runtimeidentity.Pi) }, runner, logger)
 	}
 	registry.WatchAuthorizedClients(cfg.WorkerAuthorizedKeysFile, logger)
 	app := &WorkerApp{Runner: runner, Runtimes: registry, Logger: logger}
@@ -275,7 +307,8 @@ const (
 // 通道承载 hello 能力协商、配置 RPC 与唤醒推送；断开后指数退避重连，
 // 并在每次连接建立后触发一次全量同步，覆盖断连期间漏掉的唤醒。
 func runControlChannel(ctx context.Context, cfg config.Config, credential string,
-	service *workerconfig.Service, claude *workerconfig.ClaudeService, runner *worker.Runner, logger *zap.Logger,
+	service *workerconfig.Service, claude *workerconfig.ClaudeService, piRestart func() error,
+	runner *worker.Runner, logger *zap.Logger,
 ) {
 	backoff := controlChannelMinBackoff
 	for ctx.Err() == nil {
@@ -283,6 +316,7 @@ func runControlChannel(ctx context.Context, cfg config.Config, credential string
 		started := time.Now()
 		err := workerconfig.RunChannel(ctx, workerconfig.ChannelOptions{
 			ControlURL: cfg.WorkerControlURL, Credential: credential, Service: service, Claude: claude,
+			PiRestart:       piRestart,
 			ProtocolVersion: cfg.WorkerProtocolVersion,
 			Notify:          runner.NotifyControlWake,
 			Ready: func(wake bool) {

@@ -23,6 +23,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -463,7 +464,7 @@ func (c *desktopController) injectDesktopRuntime(params json.RawMessage,
 	}
 	delete(value, "effort")
 	delete(value, "serviceTier")
-	if options.includeBrowserMCP {
+	if options.includeBrowserMCP && c.processor.runtimeIdentity.Engine != runtimeidentity.Pi {
 		applyBrowserMCPConfig(config, c.processor.cfg,
 			codex.BrowserMCPDesktopTokenEnvironment)
 	}
@@ -472,8 +473,10 @@ func (c *desktopController) injectDesktopRuntime(params json.RawMessage,
 	if options.includeDynamicTools {
 		cwd, _ := value["cwd"].(string)
 		allowPublish := c.desktopWorkspaceAllowsPublish(cwd)
-		specs := withBrowserTools(c.processor.cfg,
-			withImageGenerationTool(localGitSpec(allowPublish), automationSpec())...)
+		specs := []ports.DynamicToolSpec{localGitSpec(allowPublish), automationSpec()}
+		if c.processor.runtimeIdentity.Engine != runtimeidentity.Pi {
+			specs = withBrowserTools(c.processor.cfg, withImageGenerationTool(specs...)...)
+		}
 		current, _ := value["dynamicTools"].([]any)
 		for _, spec := range specs {
 			encoded, _ := json.Marshal(spec)

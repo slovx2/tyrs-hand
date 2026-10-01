@@ -46,4 +46,11 @@ func TestRuntimeReportsRejectAmbiguousIdentity(t *testing.T) {
 	require.NoError(t, validateRuntimeReports([]workerprotocol.RuntimeReport{valid, claude}, key), "制品缺失不能阻止健康引擎心跳")
 	claude.SSHListenAddress = ":2222"
 	require.ErrorIs(t, validateRuntimeReports([]workerprotocol.RuntimeReport{valid, claude}, key), ErrInvalidRuntimeReport)
+	claude.SSHListenAddress = ":3333"
+	pi := valid
+	pi.Engine = runtimeidentity.Pi
+	pi.SSHListenAddress = ":3334"
+	pi.SSHHostKeyFingerprint = "SHA256:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+	require.NoError(t, validateRuntimeReports([]workerprotocol.RuntimeReport{valid, claude, pi}, key))
+	require.ErrorIs(t, validateRuntimeReports([]workerprotocol.RuntimeReport{valid, claude, pi, pi}, key), ErrInvalidRuntimeReport)
 }

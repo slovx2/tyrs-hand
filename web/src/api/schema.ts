@@ -2102,7 +2102,7 @@ export interface components {
             /** Format: uuid */
             workerId: string;
             /** @enum {string} */
-            engine: "codex" | "claude-code";
+            engine: "codex" | "claude-code" | "pi";
             enabled: boolean;
             /** @enum {string} */
             status: "running" | "unavailable" | "stopped" | "disabled" | "offline" | "incompatible";
@@ -2112,6 +2112,9 @@ export interface components {
             build: {
                 nodeVersion?: string;
                 sdkVersion?: string;
+                pluginVersions?: {
+                    [key: string]: string;
+                };
                 cliBuild: string;
                 cliSha256?: string;
             };
@@ -2206,7 +2209,7 @@ export interface components {
         };
         ClientMachine: {
             /** @enum {string} */
-            engine: "codex" | "claude-code";
+            engine: "codex" | "claude-code" | "pi";
             /** Format: uuid */
             workerId: string;
             name: string;
@@ -2242,7 +2245,7 @@ export interface components {
             /** Format: uuid */
             workerId: string;
             /** @enum {string} */
-            engine: "codex" | "claude-code";
+            engine: "codex" | "claude-code" | "pi";
         };
         ClientPairingClaimInput: {
             pairingSecret: string;
@@ -2254,7 +2257,7 @@ export interface components {
         };
         ClientPairing: {
             /** @enum {string} */
-            engine: "codex" | "claude-code";
+            engine: "codex" | "claude-code" | "pi";
             /** Format: uuid */
             id: string;
             /** @enum {string} */
@@ -2282,7 +2285,7 @@ export interface components {
         };
         ClientScheduledTask: {
             /** @enum {string} */
-            engine: "codex" | "claude-code";
+            engine: "codex" | "claude-code" | "pi";
             /** Format: uuid */
             id: string;
             /** Format: uuid */
@@ -2473,7 +2476,7 @@ export interface components {
             sshHostKeyFingerprint: string;
             runtimes: {
                 /** @enum {string} */
-                engine: "codex" | "claude-code";
+                engine: "codex" | "claude-code" | "pi";
                 /** @enum {string} */
                 status: "running" | "unavailable" | "stopped";
                 sshListenAddress: string;
@@ -2482,6 +2485,9 @@ export interface components {
                 build: {
                     nodeVersion?: string;
                     sdkVersion?: string;
+                    pluginVersions?: {
+                        [key: string]: string;
+                    };
                     cliBuild: string;
                     cliSha256?: string;
                 };
@@ -2785,7 +2791,7 @@ export interface components {
         };
         WorkspaceForum: {
             /** @enum {string} */
-            defaultEngine: "codex" | "claude-code";
+            defaultEngine: "codex" | "claude-code" | "pi";
             /** Format: uuid */
             id: string;
             name: string;
@@ -3018,9 +3024,9 @@ export interface components {
         };
     };
     parameters: {
-        WorkerRuntimeEngine: "codex" | "claude-code";
+        WorkerRuntimeEngine: "codex" | "claude-code" | "pi";
         WorkerProtocolVersion: "33";
-        RuntimeEngine: "codex" | "claude-code";
+        RuntimeEngine: "codex" | "claude-code" | "pi";
         CSRFToken: string;
         Cursor: string;
         Limit: number;
@@ -4248,7 +4254,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    engine: "codex" | "claude-code";
+                    engine: "codex" | "claude-code" | "pi";
                 };
             };
         };

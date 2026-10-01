@@ -175,8 +175,13 @@ existing_model_api_key=
 existing_model_base_url=
 existing_disable_control_sync=
 existing_claude_enabled=
+existing_claude_cli=
 existing_claude_bin=
 existing_claude_listen=
+existing_pi_enabled=
+existing_pi_bin=
+existing_pi_listen=
+existing_pi_cli=
 if [ -r "${worker_env_file}" ]; then
   existing_browser_mcp_url=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_URL" {
     value = substr($0, index($0, "=") + 1)
@@ -201,7 +206,12 @@ if [ -r "${worker_env_file}" ]; then
   existing_disable_control_sync=$(awk -F= '$1 == "TYRS_HAND_WORKER_DISABLE_CONTROL_SYNC" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
   existing_claude_enabled=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_ENABLED" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
   existing_claude_bin=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_BIN" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_claude_cli=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_CLI" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
   existing_claude_listen=$(awk -F= '$1 == "TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_pi_enabled=$(awk -F= '$1 == "TYRS_HAND_WORKER_PI_ENABLED" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_pi_bin=$(awk -F= '$1 == "TYRS_HAND_WORKER_PI_BIN" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_pi_listen=$(awk -F= '$1 == "TYRS_HAND_WORKER_PI_SSH_LISTEN_ADDR" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_pi_cli=$(awk -F= '$1 == "PI_CLI" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
 fi
 if [ "${TYRS_HAND_BROWSER_MCP_URL+x}" = x ]; then
   worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL}
@@ -228,7 +238,12 @@ fi
 worker_browser_agent=${TYRS_HAND_BROWSER_AGENT_ADDRESS:-127.0.0.1:8934}
 worker_claude_enabled=${TYRS_HAND_WORKER_CLAUDE_ENABLED:-${existing_claude_enabled:-false}}
 worker_claude_bin=${TYRS_HAND_WORKER_CLAUDE_BIN:-${existing_claude_bin:-/usr/local/libexec/tyrs-hand-claude}}
+worker_claude_cli=${TYRS_HAND_WORKER_CLAUDE_CLI:-${existing_claude_cli:-claude}}
 worker_claude_listen=${TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR:-${existing_claude_listen:-:3333}}
+worker_pi_enabled=${TYRS_HAND_WORKER_PI_ENABLED:-${existing_pi_enabled:-false}}
+worker_pi_bin=${TYRS_HAND_WORKER_PI_BIN:-${existing_pi_bin:-/usr/local/libexec/tyrs-hand-pi}}
+worker_pi_listen=${TYRS_HAND_WORKER_PI_SSH_LISTEN_ADDR:-${existing_pi_listen:-:3334}}
+worker_pi_cli=${PI_CLI:-${existing_pi_cli:-pi}}
 worker_browser_files=${TYRS_HAND_BROWSER_FILES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-files}
 for pair in \
   "Control URL:${TYRS_HAND_WORKER_CONTROL_URL}" "Worker ID:${worker_id}" \
@@ -284,7 +299,12 @@ fi
   printf "TYRS_HAND_WORKER_SSH_LISTEN_ADDR='%s'\n" "${worker_listen}"
   printf "TYRS_HAND_WORKER_CLAUDE_ENABLED='%s'\n" "${worker_claude_enabled}"
   printf "TYRS_HAND_WORKER_CLAUDE_BIN='%s'\n" "${worker_claude_bin}"
+  printf "TYRS_HAND_WORKER_CLAUDE_CLI='%s'\n" "${worker_claude_cli}"
   printf "TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR='%s'\n" "${worker_claude_listen}"
+  printf "TYRS_HAND_WORKER_PI_ENABLED='%s'\n" "${worker_pi_enabled}"
+  printf "TYRS_HAND_WORKER_PI_BIN='%s'\n" "${worker_pi_bin}"
+  printf "TYRS_HAND_WORKER_PI_SSH_LISTEN_ADDR='%s'\n" "${worker_pi_listen}"
+  printf "PI_CLI='%s'\n" "${worker_pi_cli}"
   printf "TYRS_HAND_BROWSER_AGENT_ADDRESS='%s'\n" "${worker_browser_agent}"
   printf "TYRS_HAND_BROWSER_FILES_ROOT='%s'\n" "${worker_browser_files}"
   printf "TYRS_HAND_BROWSER_SERVICES_ROOT='%s'\n" "${worker_browser_services_root}"

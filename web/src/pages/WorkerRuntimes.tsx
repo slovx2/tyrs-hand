@@ -4,6 +4,7 @@ import type { components } from '../api/schema'
 import { StatusBadge } from './workerUI'
 
 type WorkerRuntime = components['schemas']['WorkerRuntime']
+const engineNames = { codex: 'Codex', 'claude-code': 'Claude Code', pi: 'Pi' }
 
 const runtimeLabels: Record<WorkerRuntime['status'], string> = {
   running: '运行中',
@@ -42,14 +43,10 @@ export function WorkerRuntimes({ workerId }: { workerId: string }) {
         <div
           key={runtime.engine}
           className="mt-5"
-          aria-label={
-            runtime.engine === 'codex' ? 'Codex 入口' : 'Claude Code 入口'
-          }
+          aria-label={`${engineNames[runtime.engine]} 入口`}
         >
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">
-              {runtime.engine === 'codex' ? 'Codex' : 'Claude Code'}
-            </h3>
+            <h3 className="font-semibold">{engineNames[runtime.engine]}</h3>
             <StatusBadge
               tone={runtime.status === 'running' ? 'success' : 'muted'}
             >

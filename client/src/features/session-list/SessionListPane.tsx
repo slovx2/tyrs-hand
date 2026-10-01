@@ -23,15 +23,16 @@ export function SessionListPane({ sessions, selectedId, onSelect, emptyDetail,
   archivedOnly?: boolean;
 }) {
   const theme = useTheme();
+  const supportsArchive = useAppStore((state) => state.activeConnection?.engine !== "pi");
   const unreadThreadIds = useAppStore((state) => state.unreadThreadIds);
   const [filter, setFilter] = useState<Filter>("active");
-  const effectiveFilter = hideFilter ? (archivedOnly ? "archived" : "active") : filter;
+  const effectiveFilter = !supportsArchive ? "active" : hideFilter ? (archivedOnly ? "archived" : "active") : filter;
   const list = useRef<FlatList<ThreadRecord>>(null);
   const filtered = useMemo(() => sessions.filter((record) =>
     effectiveFilter === "archived" ? record.archived : !record.archived), [effectiveFilter, sessions]);
 
   return <View style={styles.container}>
-    {!hideFilter && <View style={styles.filter}><SegmentedControl testIDPrefix={`${testIDPrefix}s:filter`}
+    {!hideFilter && supportsArchive && <View style={styles.filter}><SegmentedControl testIDPrefix={`${testIDPrefix}s:filter`}
       value={filter} options={[{ value: "active", label: "进行中" },
         { value: "archived", label: "已归档" }] as const} onChange={setFilter} /></View>}
     <FlatList ref={list} testID={`${testIDPrefix}s:list`} data={filtered}

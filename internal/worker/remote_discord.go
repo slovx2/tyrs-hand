@@ -12,9 +12,11 @@ import (
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -55,17 +57,21 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	settings := task.Snapshot.Runtime
 	developerInstructions := workspaceDeveloperInstructions(task,
 		strings.TrimSpace(discordintegration.MultiplayerDeveloperInstructions))
-	tools := withBrowserTools(p.cfg, workspaceGitTools(snapshot.Project)...)
+	tools := workspaceRuntimeTools(p.cfg, snapshot.Project, p.runtimeIdentity.Engine)
+	if p.runtimeIdentity.Engine == runtimeidentity.Pi {
+		runtimeConfig = nil
+	} else {
+		developerInstructions = browserDeveloperInstructions(p.cfg, developerInstructions)
+	}
 	developerInstructions, tools = applyLiveVoiceSessionSupport(snapshot, developerInstructions, tools)
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,
-		ReasoningEffort: settings.ReasoningEffort,
-		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
-		NetworkEnabled:  settings.NetworkEnabled,
-		RuntimeConfig:   runtimeConfig,
-		DeveloperInstructions: browserDeveloperInstructions(p.cfg,
-			developerInstructions),
-		DynamicTools: tools,
+		ReasoningEffort:       settings.ReasoningEffort,
+		ServiceTier:           codexsettings.RuntimeServiceTier(settings.ServiceTier),
+		NetworkEnabled:        settings.NetworkEnabled,
+		RuntimeConfig:         runtimeConfig,
+		DeveloperInstructions: developerInstructions,
+		DynamicTools:          tools,
 	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
@@ -198,9 +204,17 @@ func resolveHostWorkspaceRuntime(workspaceRoot, codexHome string,
 
 func workspaceGitTools(spec *workerprotocol.WorkspaceProjectContext) []ports.DynamicToolSpec {
 	if spec.WorkspaceKind != "git" {
-		return withImageGenerationTool(automationSpec())
+		return []ports.DynamicToolSpec{automationSpec()}
 	}
-	return withImageGenerationTool(localGitSpec(spec.CloneURL != ""), automationSpec())
+	return []ports.DynamicToolSpec{localGitSpec(spec.CloneURL != ""), automationSpec()}
+}
+
+func workspaceRuntimeTools(cfg config.Config, spec *workerprotocol.WorkspaceProjectContext, engine runtimeidentity.Engine) []ports.DynamicToolSpec {
+	tools := workspaceGitTools(spec)
+	if engine != runtimeidentity.Pi {
+		return withBrowserTools(cfg, withImageGenerationTool(tools...)...)
+	}
+	return tools
 }
 
 func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(string, json.RawMessage) {

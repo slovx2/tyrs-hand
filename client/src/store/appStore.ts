@@ -74,6 +74,7 @@ type AppState = {
   interruptThread: (threadId: string) => Promise<void>;
   answerRequest: (threadId: string, request: ServerRequest, result: unknown) => boolean;
   setThreadArchived: (threadId: string, archived: boolean) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, name: string) => Promise<void>;
   confirmPendingMessage: (clientMessageId: string) => Promise<void>;
 };
@@ -330,6 +331,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     unreadThreadIds: archived ? withoutUnread(state.unreadThreadIds, threadId)
       : state.unreadThreadIds }));
     void get().refresh();
+  },
+
+  deleteThread: async (threadId) => {
+    const connection = requireConnection(get());
+    const record = requireThread(get(), threadId);
+    const client = bindClient(connection, record.workspaceId, set, get);
+    await client.connect();
+    await client.deleteThread(threadId);
+    await removeThreadRead(connection.profileId, threadId);
+    if (get().activeConnection?.profileId !== connection.profileId) return;
+    set((state) => ({ threads: state.threads.filter((item) => item.thread.id !== threadId),
+      unreadThreadIds: withoutUnread(state.unreadThreadIds, threadId) }));
+    await get().refresh();
   },
 
   renameThread: async (threadId, name) => {

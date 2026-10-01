@@ -19,6 +19,12 @@ type titleCaller struct {
 	methods      []string
 }
 
+func TestPiTitleLoopNeverClaimsTasks(t *testing.T) {
+	controller := &HostDesktopController{processor: &Processor{runtimeIdentity: runtimeidentity.Identity{Engine: runtimeidentity.Pi}}}
+	// 不配置 Control client；若误入领取流程会失败，而不是后台无限重试。
+	controller.runSessionTitleLoop(t.Context())
+}
+
 func (c *titleCaller) Call(_ context.Context, method string, params, result any) error {
 	c.method = method
 	c.params = params.(map[string]any)

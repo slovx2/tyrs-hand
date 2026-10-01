@@ -11,10 +11,11 @@ type Engine string
 const (
 	Codex  Engine = "codex"
 	Claude Engine = "claude-code"
+	Pi     Engine = "pi"
 )
 
 func (e Engine) Validate() error {
-	if e != Codex && e != Claude {
+	if e != Codex && e != Claude && e != Pi {
 		return fmt.Errorf("未知运行时引擎 %q", e)
 	}
 	return nil

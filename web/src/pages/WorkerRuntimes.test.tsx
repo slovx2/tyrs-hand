@@ -39,6 +39,18 @@ it('单引擎故障保留另一个入口的独立地址与指纹', async () => {
           releaseReady: false,
           heartbeatAt: null,
         },
+        {
+          workerId: 'worker',
+          engine: 'pi',
+          enabled: true,
+          status: 'running',
+          sshListenAddress: ':3334',
+          sshHostKeyFingerprint: 'pi-key',
+          protocolVersion: '0.157.1',
+          build: { cliBuild: '0.99.1' },
+          capabilities: [],
+          releaseReady: false,
+        },
       ]),
     ),
   )
@@ -62,4 +74,7 @@ it('单引擎故障保留另一个入口的独立地址与指纹', async () => {
   expect(claude.getByText(':3333')).toBeInTheDocument()
   expect(claude.getByText('claude-key')).toBeInTheDocument()
   expect(claude.getByText('暂不可用')).toBeInTheDocument()
+  const pi = within(screen.getByLabelText('Pi 入口'))
+  expect(pi.getByText(':3334')).toBeInTheDocument()
+  expect(pi.getByText('pi-key')).toBeInTheDocument()
 })

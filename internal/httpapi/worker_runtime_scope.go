@@ -12,7 +12,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-// 只有完成数据库、查询及写入隔离的接口才能向 Claude 开放。
+// 只有完成数据库、查询及写入隔离的接口才能向非 Codex 引擎开放。
 // 新接口默认关闭；全局 Worker 操作由单一调度器使用 Codex 客户端执行。
 func workerRuntimeScopedPath(path string) bool {
 	switch path {
@@ -53,8 +53,8 @@ func validateWorkerRuntimeScope(c *gin.Context) bool {
 			return false
 		}
 	}
-	if engine == runtimeidentity.Claude && !scoped {
-		problem(c, http.StatusNotImplemented, "此 Control 接口尚未支持 Claude 运行时", nil)
+	if engine != "" && engine != runtimeidentity.Codex && !scoped {
+		problem(c, http.StatusNotImplemented, "此 Control 接口尚未支持非 Codex 运行时", nil)
 		c.Abort()
 		return false
 	}

@@ -24,6 +24,9 @@ const (
 )
 
 func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
+	if c.processor.runtimeIdentity.Engine == runtimeidentity.Pi {
+		return
+	}
 	for ctx.Err() == nil {
 		if integration, _ := c.snapshot(); integration == nil {
 			if !c.processor.wake.Wait(ctx, c.processor.cfg.WorkerSyncFallbackInterval,
@@ -79,6 +82,9 @@ func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 	task workerprotocol.SessionTitleTask,
 ) (string, error) {
+	if task.Engine == runtimeidentity.Pi {
+		return "", errors.New("pi 使用原生会话名称，不生成标题")
+	}
 	if err := task.Engine.Validate(); err != nil {
 		return "", err
 	}

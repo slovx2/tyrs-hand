@@ -8,6 +8,8 @@ let path, sequence = 0
 export const connections = []
 
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === './piMigration' && context.parentURL?.startsWith(databaseURL))
+    return { url: new URL('../../../client/src/db/piMigration.ts', import.meta.url).href, shortCircuit: true }
   if (specifier === 'expo-sqlite' && context.parentURL?.startsWith(databaseURL))
     return { url: import.meta.url, shortCircuit: true }
   return nextResolve(specifier, context)

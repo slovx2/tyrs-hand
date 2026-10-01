@@ -26,8 +26,8 @@ type Runtime struct {
 }
 
 func validateRuntimeReports(reports []workerprotocol.RuntimeReport, codexFingerprint string) error {
-	if len(reports) < 1 || len(reports) > 2 {
-		return fmt.Errorf("%w: 必须上报一个或两个引擎", ErrInvalidRuntimeReport)
+	if len(reports) < 1 || len(reports) > 3 {
+		return fmt.Errorf("%w: 必须上报一至三个引擎", ErrInvalidRuntimeReport)
 	}
 	seen := map[runtimeidentity.Engine]bool{}
 	keys := map[string]bool{}
@@ -44,7 +44,7 @@ func validateRuntimeReports(reports []workerprotocol.RuntimeReport, codexFingerp
 			return ErrInvalidHostKeyFingerprint
 		}
 		if keys[report.SSHHostKeyFingerprint] {
-			return fmt.Errorf("%w: 两引擎必须使用独立 Host Key", ErrInvalidRuntimeReport)
+			return fmt.Errorf("%w: 各引擎必须使用独立 Host Key", ErrInvalidRuntimeReport)
 		}
 		keys[report.SSHHostKeyFingerprint] = true
 		if report.Engine == runtimeidentity.Codex && report.SSHHostKeyFingerprint != codexFingerprint {
@@ -140,7 +140,7 @@ func (s *Service) Runtimes(ctx context.Context, workerID uuid.UUID) ([]Runtime, 
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	result := make([]Runtime, 0, 2)
+	result := make([]Runtime, 0, 3)
 	for rows.Next() {
 		runtime := Runtime{WorkerID: workerID}
 		var build, capabilities []byte

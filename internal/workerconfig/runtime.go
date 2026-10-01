@@ -22,6 +22,16 @@ func handleRuntimeRequest(options ChannelOptions, method string, params json.Raw
 	if err := request.Engine.Validate(); err != nil {
 		return nil, err
 	}
+	// Pi 的原生配置不经过 Codex 配置服务，重启也必须路由到独立运行时。
+	if request.Engine == runtimeidentity.Pi {
+		if method == "runtime.restart" {
+			if options.PiRestart == nil {
+				return nil, errors.New("尚未启用 Pi 运行时重启")
+			}
+			return nil, options.PiRestart()
+		}
+		return nil, errors.New("请通过 Pi CLI 管理原生配置")
+	}
 	var input ClaudeProviderInput
 	if len(request.Input) > 0 && string(request.Input) != "null" {
 		if err := json.Unmarshal(request.Input, &input); err != nil {

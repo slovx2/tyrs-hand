@@ -457,6 +457,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		}
 		options = append(options, RuntimeEntryOptions{
 			Runtime: RuntimeOptions{Engine: engine, WorkerID: "one-worker", CodexBin: command, CodexHome: configHome,
+				ClaudeCLI:    os.Getenv("TYRS_HAND_TEST_CLAUDE_CLI"),
 				EntryCommand: []string{os.Args[0], "-test.run=^TestRuntimeEntryHelperProcess$", "--"},
 				Home:         home, WorkspaceRoot: filepath.Join(root, "project"), StateDir: filepath.Join(home, "state"), EnvFile: envFile,
 				Environment: []string{"PATH=" + os.Getenv("PATH"), "LANG=C.UTF-8"}, CodexStdout: io.Discard, CodexStderr: io.Discard},

@@ -25,7 +25,7 @@ func EnqueueSessionTitleTx(ctx context.Context, tx *sql.Tx, sessionID, messageID
 			session_id,workspace_id,first_message_id,first_message_text,title_revision)
 		SELECT session.id,session.workspace_id,$2,$3,session.title_revision
 		FROM workspace_sessions session
-		WHERE session.id=$1
+		WHERE session.id=$1 AND session.engine<>'pi'
 		  AND NOT EXISTS (
 			SELECT 1 FROM session_messages previous
 			WHERE previous.session_id=session.id AND previous.message_role='user'

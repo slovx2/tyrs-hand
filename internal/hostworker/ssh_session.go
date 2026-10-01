@@ -163,6 +163,10 @@ func (s *SSHServer) runProcess(channel ssh.Channel, state *sshSessionState, comm
 		// 两个入口的会话都继承宿主环境，只剔除 Worker 密钥与宿主模型凭据；不按客户端
 		// 需要逐个放行变量。Claude 运行时进程自身的环境隔离不受影响。
 		environment = appServerEnvironment(runtime.options.Environment)
+		if runtime.options.Engine == runtimeidentity.Pi {
+			environment = piEnvironment(runtime.options.Environment)
+			values["PI_ADAPTER_HOME"] = runtime.StateDir()
+		}
 		values["PATH"] = runtime.EntryBin() + string(os.PathListSeparator) + os.Getenv("PATH")
 		// 登录 shell 可能重置 PATH；Desktop 远程负载会在其后把 CODEX_INSTALL_DIR 前置，
 		// 指向入口包装器后，未被识别的启动命令也只会接入本入口的 Hub。

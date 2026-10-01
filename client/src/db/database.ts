@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
+import { migratePiRuntime } from "./piMigration";
 
-export const DATABASE_VERSION = 13;
+export const DATABASE_VERSION = 14;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < 7;
@@ -210,6 +211,7 @@ async function migrateDatabase(database: SQLite.SQLiteDatabase): Promise<void> {
     if (current < 12) await migratePendingMessagePreviews(database);
     await database.execAsync(machineSchema);
     if (current < 13) await migrateRuntimeIdentity(database);
+    if (current < 14) await migratePiRuntime(database);
     if (current < DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
@@ -295,6 +297,7 @@ async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promi
   await database.execAsync(schema);
   await database.execAsync(machineSchema);
   await migrateRuntimeIdentity(database);
+  await migratePiRuntime(database);
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 

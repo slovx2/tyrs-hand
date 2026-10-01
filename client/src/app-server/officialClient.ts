@@ -374,10 +374,16 @@ export class OfficialAppServerClient {
   }
 
   async archive(threadId: string): Promise<void> {
+    if (this.engine === "pi") throw new Error("Pi 不支持归档");
     await this.rpc.request("thread/archive", { threadId });
   }
 
+  async deleteThread(threadId: string): Promise<void> {
+    await this.rpc.request("thread/delete", { threadId });
+  }
+
   async unarchive(threadId: string): Promise<Thread> {
+    if (this.engine === "pi") throw new Error("Pi 不支持归档");
     return (await this.rpc.request<{ thread: Thread }>("thread/unarchive", { threadId })).thread;
   }
 
@@ -387,6 +393,7 @@ export class OfficialAppServerClient {
 
   async generateThreadTitle(input: { cwd: string; prompt: string;
     serviceTier: string | null }): Promise<GeneratedThreadTitle | null> {
+    if (this.engine === "pi") return null;
     const prompt = input.prompt.trim();
     if (!prompt) return null;
     const params: ThreadStartParams = {

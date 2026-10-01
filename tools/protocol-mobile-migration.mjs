@@ -64,7 +64,7 @@ export async function verifyMobileMigration(state, { thread: claudeThread, port,
   const mobile = await loadMobileDatabase(state.file)
   try {
     const database = await mobile.getDatabase()
-    assert.equal((await database.getFirstAsync('PRAGMA user_version')).user_version, 13)
+    assert.equal((await database.getFirstAsync('PRAGMA user_version')).user_version, 14)
     for (const [table, before] of Object.entries(state.snapshot)) {
       const rows = await database.getAllAsync(`SELECT ${before.columns.join(',')} FROM ${table} ORDER BY rowid`)
       assert.deepEqual(rows, before.rows, `${table} 的旧 ID、内容或状态发生变化`)
@@ -93,14 +93,14 @@ export async function verifyMobileMigration(state, { thread: claudeThread, port,
     assert.deepEqual(await database.getAllAsync('PRAGMA foreign_key_check'), [])
     await database.closeAsync()
     const reopened = await (await loadMobileDatabase(state.file)).getDatabase()
-    assert.equal((await reopened.getFirstAsync('PRAGMA user_version')).user_version, 13)
+    assert.equal((await reopened.getFirstAsync('PRAGMA user_version')).user_version, 14)
     assert.equal((await reopened.getFirstAsync('SELECT count(*) AS n FROM connection_profiles')).n, 2)
     assert.equal((await reopened.getFirstAsync('SELECT count(*) AS n FROM control_machine_links')).n, 2)
     for (const [table, before] of Object.entries(state.snapshot)) {
       const where = before.columns.includes('profile_id') ? " WHERE profile_id='old-profile'" : ''
       assert.deepEqual(await reopened.getAllAsync(`SELECT ${before.columns.join(',')} FROM ${table}${where} ORDER BY rowid`), before.rows)
     }
-    return { passed: true, fromVersion: 12, toVersion: 13, retainedTables: tables,
+    return { passed: true, fromVersion: 12, toVersion: 14, retainedTables: tables,
       oldThreadId: state.threadId, newClaudeThreadId: claudeThread.id, reopened: true,
       profiles: await reopened.getAllAsync(`SELECT profile_id,engine,worker_id,ssh_host,ssh_port,ssh_user,
         ssh_key_ref,ssh_host_fingerprint FROM connection_profiles ORDER BY profile_id`),
