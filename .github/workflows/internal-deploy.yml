@@ -117,6 +117,46 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  pi-runtime:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '24.14.0' }
+      - id: adapter
+        name: Read pinned adapter commit
+        run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: slovx2/claude-codex
+          ref: ${{ steps.adapter.outputs.commit }}
+          path: adapter-source
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with: { cosign-release: v2.5.3 }
+      - name: Build, self-check and sign Pi runtime
+        shell: bash
+        run: |
+          sh tools/package-pi-runtime.sh adapter-source .artifacts/pi-runtime
+          for asset in .artifacts/pi-runtime/*.tar.gz; do
+            (cd "$(dirname "$asset")" && sha256sum -c "$(basename "$asset").sha256")
+            cosign sign-blob --yes --bundle "${asset}.sigstore.json" "${asset}"
+            cosign verify-blob --bundle "${asset}.sigstore.json" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/internal-deploy.yml@${GITHUB_REF}" \
+              "${asset}"
+            echo "### pi-runtime: deploy-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_STEP_SUMMARY}"
+            cat "${asset}.sha256" >> "${GITHUB_STEP_SUMMARY}"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pi-runtime-linux-amd64
+          path: .artifacts/pi-runtime/*
+          retention-days: 7
+          if-no-files-found: error
+
   claude-runtime:
     runs-on: ubuntu-24.04
     permissions:
