@@ -822,11 +822,12 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 		}
 		if err == nil {
 			state.reporter.journal.clearControlRetry()
-			if len(images) > 0 {
-				c.syncDesktopImages(state.task, append([]workerprotocol.DesktopImage(nil), images...))
-			}
 			state.reporter.confirmRegistration()
 			state.reporter.Flush()
+			// 图片投影目标可能要等 Discord 消息落地；后台同步，不能阻塞回合事件与终态上报。
+			if len(images) > 0 {
+				go c.syncDesktopImages(state.task, append([]workerprotocol.DesktopImage(nil), images...))
+			}
 			return
 		}
 		c.processor.logger.Warn("补报 Desktop 本地 Run 失败，本地 Turn 继续运行",

@@ -79,6 +79,54 @@ func TestDesktopTurnRegistrationWaitsForDurableJournal(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 }
 
+// 图片投影目标可能长时间未就绪；登记与事件上报不能等它，否则 Control 一直认为回合仍在运行。
+func TestDesktopTurnRegistrationDoesNotWaitForImageTarget(t *testing.T) {
+	var targetPolls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		unwrapWorkerTestRequest(t, r)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/images/target"):
+			targetPolls.Add(1)
+			require.NoError(t, json.NewEncoder(w).Encode(workerprotocol.DesktopImageTarget{Status: "waiting"}))
+		case r.URL.Path == "/worker/v1/desktop-turns":
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second}, logger: zap.NewNop(), journals: store,
+		client: workerprotocol.NewClient(server.URL, "test", time.Second)}
+	processor.workspaces = newWorkspaceCodexRegistry(ctx, processor)
+	controller := &desktopController{processor: processor, workspace: &workspaceCodex{runtime: workspaceRuntime{WorkspaceID: uuid.New()}}}
+	task := workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{Runtime: workerprotocol.RuntimeSnapshot{Engine: "codex"}}}
+	task.Claimed.RunID, task.Claimed.ID = uuid.New(), uuid.New()
+	reporter, err := newDesktopEventReporter(ctx, processor, &task)
+	require.NoError(t, err)
+	defer reporter.stopFlushLoop()
+	reporter.holdRegistration()
+	images := []workerprotocol.DesktopImage{{Filename: "a.png", MediaType: "image/png", Size: 1, SourcePath: "/nonexistent.png"}}
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		controller.registerDesktopTurn(ctx, json.RawMessage(`{"threadId":"thread"}`), strings.Repeat("a", 64), "turn", images, "", &desktopCallState{task: &task, reporter: reporter})
+	}()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("登记被图片投影目标阻塞")
+	}
+	reporter.journal.mu.Lock()
+	confirmed := reporter.registrationConfirmed
+	reporter.journal.mu.Unlock()
+	require.True(t, confirmed)
+	require.Eventually(t, func() bool { return targetPolls.Load() > 1 }, 2*time.Second, 20*time.Millisecond, "图片仍在后台等待目标就绪")
+}
+
 func TestDesktopReporterWaitsForDurableEventsAndTerminal(t *testing.T) {
 	var events, completed atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
