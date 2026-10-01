@@ -12,14 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestClaudeHostCLIEnvironmentPreservesIsolation(t *testing.T) {
+func TestClaudeHostCLIEnvironmentUsesWorkerHome(t *testing.T) {
 	options := RuntimeOptions{Engine: runtimeidentity.Claude, Home: "/worker", CodexHome: "/worker/config",
 		ClaudeCLI: "/opt/host-claude", Environment: []string{"PATH=/bin", "HOME=/personal", "CLAUDE_CONFIG_DIR=/personal/.claude", "ANTHROPIC_API_KEY=personal", "CLAUDE_CODEX_CLI=/wrong"}}
 	env := runtimeBaseEnvironment(options)
-	for _, want := range []string{"HOME=/worker", "CLAUDE_CONFIG_DIR=/worker/config/claude", "CLAUDE_CODEX_CLI=/opt/host-claude", "DISABLE_AUTOUPDATER=1"} {
+	for _, want := range []string{"HOME=/worker", "CLAUDE_CODEX_CLI=/opt/host-claude", "DISABLE_AUTOUPDATER=1"} {
 		require.Contains(t, env, want)
 	}
 	require.NotContains(t, strings.Join(env, "\n"), "personal")
+	require.NotContains(t, strings.Join(env, "\n"), "CLAUDE_CONFIG_DIR")
 	options.ClaudeCLI = ""
 	require.Contains(t, runtimeBaseEnvironment(options), "CLAUDE_CODEX_CLI=claude")
 }

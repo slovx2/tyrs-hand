@@ -159,7 +159,7 @@ func runtimeAccountFile(t *testing.T, path string) {
 func runtimeAccountClaudeConfig(t *testing.T, home string) map[string][32]byte {
 	t.Helper()
 	result := map[string][32]byte{}
-	for _, name := range []string{"runtime.env", "config/claude/settings.json", "config/claude/CLAUDE.md"} {
+	for _, name := range []string{"runtime.env", ".claude/settings.json", ".claude/CLAUDE.md"} {
 		data, err := os.ReadFile(filepath.Join(home, name))
 		require.NoError(t, err)
 		result[name] = sha256.Sum256(data)

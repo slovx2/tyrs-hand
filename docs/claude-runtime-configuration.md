@@ -3,17 +3,18 @@
 控制台的 Worker「运行时配置」页分别管理 Codex 和 Claude Code。Claude 使用原生
 `CLAUDE.md` 与 `settings.json`，格式遵循 [Claude 配置目录文档](https://code.claude.com/docs/en/claude-directory)。
 
-Worker 的 Claude 配置目录为：
+Worker 的 Claude 配置目录就是 Worker 服务用户真实 HOME 下的原生目录：
 
 ```text
-<WorkerDataRoot>/claude-code/config/claude/
+<Worker HOME>/.claude/
   CLAUDE.md -> <Codex Home>/AGENTS.md
   settings.json
   settings.json.bak.1 … settings.json.bak.4
 ```
 
-该目录作为 Claude runtime 的 `CLAUDE_CONFIG_DIR`，对应原生默认的 `~/.claude`。
-不会改写运行 Worker 的用户个人配置目录，也不复制 Codex 的登录态。
+Worker 不设置 `CLAUDE_CONFIG_DIR`，Claude runtime 与 SSH 会话都按原生默认读取
+`~/.claude` 和 `~/.claude.json`，与在该宿主直接运行 `claude` 一致；不复制 Codex 的登录态。
+适配器自身状态仍在 `<WorkerDataRoot>/claude-code/`。
 
 Claude CLI 使用宿主独立安装的 Claude Code，SDK 通过官方
 `pathToClaudeCodeExecutable` 指定它。`TYRS_HAND_WORKER_CLAUDE_CLI` 可配置可执行文件绝对路径，
@@ -25,8 +26,7 @@ Claude CLI 使用宿主独立安装的 Claude Code，SDK 通过官方
 
 运行时制品只保留固定 Node 24.14.0、Agent SDK 与适配器，不包含任何 SDK 原生平台 CLI 包
 （包括 musl）。Node 用于执行适配器和 SQLite，不能因 CLI 外置而删除。
-CLI 来源的改变不改变配置策略：诊断与执行均使用上面的独立 `CLAUDE_CONFIG_DIR`，
-不读取宿主 `~/.claude`。宿主安装由管理员管理；Worker 默认禁用 Claude 自动更新。
+诊断与执行均使用上面的宿主 `~/.claude`。宿主安装由管理员管理；Worker 默认禁用 Claude 自动更新。
 
 全局指令两引擎共用一份：Worker 启动时把 `CLAUDE.md` 建成指向 Codex Home
 `AGENTS.md` 的软链，控制台 Worker「运行时配置」页顶部的“全局指令”只编辑这一个文件，

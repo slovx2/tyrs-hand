@@ -45,7 +45,7 @@ export class WorkerHarness {
     this.home = resolve(this.root, 'home')
     this.state = resolve(this.root, 'state')
     const codexHome = resolve(this.root, 'codex')
-    const claudeConfig = resolve(this.state, 'claude-code/config/claude')
+    const claudeConfig = resolve(this.home, '.claude')
     for (const path of [this.workspace, this.home, codexHome, claudeConfig,
       resolve(this.root, 'tmp'), resolve(this.state, 'claude-code/ssh')]) {
       await mkdir(path, { recursive: true, mode: 0o700 })
@@ -56,7 +56,7 @@ export class WorkerHarness {
     const nativeCLI = process.env.TYRS_HAND_TEST_CLAUDE_CLI
     assert.ok(nativeCLI, '请用 TYRS_HAND_TEST_CLAUDE_CLI 指定独立安装的固定版本 Claude CLI')
     const nativeVersion = (await exec(nativeCLI, ['--version'], { env: {
-      HOME: this.home, PATH: process.env.PATH, CLAUDE_CONFIG_DIR: claudeConfig,
+      HOME: this.home, PATH: process.env.PATH,
       DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     }, timeout: 10_000 })).stdout.trim()
     assert.equal(nativeVersion, this.pin.claudeCli + ' (Claude Code)')

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -118,7 +117,6 @@ func runtimeBaseEnvironment(options RuntimeOptions) []string {
 	}
 	return replaceEnvironment(result, map[string]string{
 		"HOME":                options.Home,
-		"CLAUDE_CONFIG_DIR":   filepath.Join(options.CodexHome, "claude"),
 		"CLAUDE_CODEX_CLI":    cli,
 		"DISABLE_AUTOUPDATER": "1",
 	})

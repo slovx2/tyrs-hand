@@ -417,7 +417,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 				delete(modelEnv, "ANTHROPIC_API_KEY")
 			}
 			require.NoError(t, os.WriteFile(envFile, []byte(runtimeEnv), 0o600))
-			claudeConfig := filepath.Join(configHome, "claude")
+			claudeConfig := filepath.Join(home, ".claude")
 			require.NoError(t, os.MkdirAll(claudeConfig, 0o700))
 			settings, err := json.Marshal(map[string]any{"model": model, "env": modelEnv})
 			require.NoError(t, err)
@@ -875,7 +875,7 @@ func testRuntimeRegistryRealSSH(t *testing.T, mode string) {
 		"ANTHROPIC_BASE_URL": upstream.URL, "ANTHROPIC_AUTH_TOKEN": "test-token",
 	}})
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(options[1].Runtime.CodexHome, "claude", "settings.json"), updatedSettings, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(options[1].Runtime.Home, ".claude", "settings.json"), updatedSettings, 0o600))
 	privateBlock, err := ssh.MarshalPrivateKey(private, "protocol-test")
 	require.NoError(t, err)
 	entry := registry.entries[runtimeidentity.Claude]

@@ -74,8 +74,7 @@ export class MigrationWorker {
     const nativeCLI = process.env.TYRS_HAND_TEST_CLAUDE_CLI
     assert.ok(nativeCLI, '请用 TYRS_HAND_TEST_CLAUDE_CLI 指定固定版本 Claude CLI')
     const nativeVersion = (await exec(nativeCLI, ['--version'], { env: { HOME: this.home,
-      PATH: process.env.PATH, CLAUDE_CONFIG_DIR: resolve(this.state, 'claude-code/config/claude'),
-      DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })).stdout.trim()
+      PATH: process.env.PATH, DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })).stdout.trim()
     assert.equal(nativeVersion, '2.1.282 (Claude Code)')
     this.nativeBuild = { version: nativeVersion, sha256: sha256(await readFile(nativeCLI)) }
     output('git', ['init', '--quiet', this.workspace])
@@ -143,7 +142,7 @@ stream_max_retries=0
     const env = { ...this.env, TYRS_HAND_WORKER_PROTOCOL_VERSION: generation === 'old' ? '32' : '33' }
     if (generation === 'old') env.TYRS_HAND_WORKER_ENROLLMENT_TOKEN = this.control.registration.enrollmentToken
     else {
-      const config = resolve(this.state, 'claude-code/config/claude')
+      const config = resolve(this.home, '.claude')
       await mkdir(config, { recursive: true, mode: 0o700 })
       await writeFile(resolve(config, 'settings.json'), JSON.stringify({ model: 'mock-claude', env: {
         ANTHROPIC_API_KEY: 'mock-only', ANTHROPIC_BASE_URL: this.models.urls['claude-code'],

@@ -38,8 +38,7 @@ func workerRuntimeEntries(cfg config.Config, codex hostworker.RuntimeOptions,
 	claude.CodexBin = cfg.WorkerClaudeBin
 	claude.ClaudeCLI = cfg.WorkerClaudeCLI
 	claude.CodexHome = cfg.ClaudeAdapterHome()
-	// HOME 与 Codex 入口相同，git、gh、ssh 等工具读取 Worker 用户的真实配置；
-	// Claude 自身配置由 CLAUDE_CONFIG_DIR 隔离，不读取宿主 Claude Code 的 ~/.claude。
+	// HOME 与 Codex 入口相同，git、gh、ssh 与 Claude 自身配置都读取 Worker 用户的真实 HOME。
 	claude.StateDir = cfg.ClaudeStateDir()
 	claude.EnvFile = cfg.ClaudeEnvFile()
 	claude.Controller = claudeController

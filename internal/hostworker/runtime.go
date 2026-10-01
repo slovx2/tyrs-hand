@@ -186,7 +186,6 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		for name, value := range claudeValues {
 			values[name] = value
 		}
-		values["CLAUDE_CONFIG_DIR"] = filepath.Join(options.CodexHome, "claude")
 		values["CLAUDE_CODEX_HOME"] = options.StateDir
 		values["CLAUDE_CODEX_IDLE_EXIT_MS"] = "0"
 		values["CLAUDE_CODEX_RUNTIME"] = "agent-sdk-sidecar"

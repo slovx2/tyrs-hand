@@ -172,7 +172,6 @@ func (s *SSHServer) runProcess(channel ssh.Channel, state *sshSessionState, comm
 		// 指向入口包装器后，未被识别的启动命令也只会接入本入口的 Hub。
 		values["CODEX_INSTALL_DIR"] = runtime.EntryBin()
 		if runtime.options.Engine == runtimeidentity.Claude {
-			values["CLAUDE_CONFIG_DIR"] = filepath.Join(runtime.CodexHome(), "claude")
 			values["CLAUDE_CODEX_HOME"] = runtime.StateDir()
 		}
 	}

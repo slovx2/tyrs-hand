@@ -18,7 +18,7 @@
 
 先执行 `sh tools/install-test-claude.sh`，再把 `TYRS_HAND_TEST_CLAUDE_CLI` 和
 `CLAUDE_CODEX_CLI` 指向输出的固定 CLI 路径（CI 自动导出）。测试使用独立 npm 安装的
-Claude Code 2.1.282，不再查找 SDK 内置平台包；临时 `CLAUDE_CONFIG_DIR` 隔离个人配置。
+Claude Code 2.1.282，不再查找 SDK 内置平台包；临时 HOME 下的 `~/.claude` 隔离个人配置。
 
 本地默认用固定 digest 的 PostgreSQL 和 Redis 容器。macOS CI 使用
 `bash tools/mobile-e2e/install-native-services.sh` 安装到仓库的 `.local/mobile-services`，
