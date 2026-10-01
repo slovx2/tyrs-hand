@@ -7,6 +7,7 @@
 ```sh
 export PATH="$PWD/.local/toolchains/node-v24.14.0-darwin-arm64/bin:$(go env GOROOT)/bin:$PATH"
 export TYRS_HAND_TEST_CODEX_BIN="$PWD/.local/toolchains/codex-0.157.1/bin/codex"
+export TYRS_HAND_TEST_CLAUDE_CLI=<独立安装的固定版本 Claude Code（adapter-lock 的 claudeCli）可执行文件>  # Claude 入口使用宿主 CLI
 node tools/desktop-e2e/serve.mjs   # 就绪后输出 [desktop-e2e] ready {...}
 ```
 
@@ -58,3 +59,40 @@ node tools/desktop-e2e/gui.mjs --screenshots <证据目录>/gui   # 可加 --onl
 
 操作要点：Electron 按钮需前台真实点击；中文输入法会改写逐字键入，文本一律粘贴；权限菜单不在辅助功能树中，按“更改权限”按钮的相对位置点击；
 用户可能同时使用 ChatGPT.app，冲突时应退避。
+
+## Pi 入口（独立于 Claude）
+
+Pi 验收与上面的 Claude/Codex 场景分开运行：`pi/serve.mjs` 只启用 Pi 入口（Codex 基础入口常驻、Claude 关闭），
+Mock 模型为 openai-completions 形态，Pi 读取临时 agentDir 中指向 Mock 的 `models.json`（`Pi Main`、`Pi Alt` 两个模型）。
+适配器直接使用工作区源码构建，不要求固定提交，便于验收未提交的改动。
+
+```sh
+node tools/desktop-e2e/pi/serve.mjs --suite smoke        # 就绪后输出 [desktop-pi] ready {...}
+node tools/desktop-e2e/pi/gui.mjs --suite smoke --screenshots <证据目录>/gui
+```
+
+- 日常改动只跑冒烟 `smoke`（CHAT、TOOLS、STOP，约 2 分钟）；里程碑验收跑 `full`；定位问题用 `--only <标记,...>`。
+  `serve.mjs` 与 `gui.mjs` 须使用相同的 `--suite`/`--only`，`serve.mjs` 按 Ctrl+C 退出时据此判定。
+- 根目录固定为 `/tmp/000-tyrs-desktop-pi`，项目路径 `/private/tmp/000-tyrs-desktop-pi/project`。
+- SSH 片段写入 `~/.ssh/config.d/tyrs-desktop-e2e-pi`（别名 `tyrs-e2e-pi`），需在 `~/.ssh/config` 顶部一次性加入
+  `Include ~/.ssh/config.d/tyrs-desktop-e2e-pi`。
+- ChatGPT.app 首次配置：设置 → 连接 → SSH → 添加，从发现列表勾选 `tyrs-e2e-pi`（列表不响应滚动时，先点首行复选框两次取得焦点，
+  再按 Tab 逐项下移、空格勾选）；再添加项目文件夹上述路径，项目名为 `desktop-e2e-pi`。不要用“手动添加”：手动条目是
+  codex-managed 类型，Desktop 会自行引导远端 app-server，不经 Worker 入口，连接即以 1006 断开。
+- 禁止在测试主机上点“重启”（“需要重新启动以更新你的 CLI 版本”）：Desktop 会经 SSH 以当前用户执行
+  `pkill -9 -U <uid> -f 'codex.* app-server.* -…'`，测试 Worker 与本机同一用户，会杀掉测试 Worker 的全部运行时（含录制器），
+  也可能波及本机同名进程。出现该提示说明入口 initialize 的 userAgent 版本与 `codex --version` 不一致，应修适配器。
+
+| 标记 | 套件 | 操作与断言 |
+| --- | --- | --- |
+| `DESKTOP_PI_CHAT` | smoke | 回复 `_OK` |
+| `DESKTOP_PI_TOOLS` | smoke | 原生 bash 运行中同时显示过程说明与“正在运行”的命令；结束后可展开查看真实输出 |
+| `DESKTOP_PI_STOP` | smoke | 模型请求挂起时点“停止”；须有真实 `turn/interrupt`、回合 interrupted、迟到回复不下发 |
+| `DESKTOP_PI_THINK` | full | 推理内容持续 6 秒期间界面显示思考内容 |
+| `DESKTOP_PI_WRITE` | full | “请求批准”档位下原生 write 直接落盘，界面不出现审批（Pi 不因权限档位增加审批） |
+| `DESKTOP_PI_PLAN` | full | `/plan` 进入计划模式；插件问答选 Blue，计划正文显示后执行计划，实施阶段写入 Blue |
+| `DESKTOP_PI_STEER` | full | 命令运行期间发送 `PI_STEER_PAYLOAD_3K`；须为真实 `turn/steer` 且进入同一回合的下一次模型请求 |
+| `DESKTOP_PI_MODEL` | full | 切换到 Pi Alt，模型请求的 model 须为 `pi-alt`；结束后恢复 Pi Main |
+| `DESKTOP_PI_SUBAGENT` | full | gotgenes 内置 general-purpose 子代理真实调用模型，结果回到主代理，界面可见委派 |
+
+Pi 原生没有计划模式以外的提问工具，问答只在 Plan 场景覆盖；场景按 Pi 原生能力设计，不向 Codex 补齐。

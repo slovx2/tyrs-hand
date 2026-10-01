@@ -4,12 +4,13 @@ import { resolve } from 'node:path'
 import { schemaIndex, payloadValidator } from '../../protocol-inventory/schema.mjs'
 import { mobileWireSemantics } from './semantics.mjs'
 
-export async function validateRuntimeWire(repoRoot, runDir, { requireMobileScenarios = false } = {}) {
+// engines：本轮实际录制的引擎；桌面 Pi 验收只启用 Pi 入口。
+export async function validateRuntimeWire(repoRoot, runDir, { requireMobileScenarios = false, engines = ['codex', 'claude-code'] } = {}) {
   const index = schemaIndex(resolve(repoRoot, 'protocol/codex-app-server/0.157.1/json-schema'),
     resolve(repoRoot, 'protocol/extensions'))
   const validate = payloadValidator(index)
   const report = { passed: false, engines: {}, errors: [] }
-  for (const engine of ['codex', 'claude-code']) {
+  for (const engine of engines) {
     try {
       const failures = await readFile(resolve(runDir, 'wire-' + engine + '.jsonl.errors'), 'utf8')
       report.errors.push({ engine, error: '协议录制曾失败，重启不能抹去证据缺口：' + failures })

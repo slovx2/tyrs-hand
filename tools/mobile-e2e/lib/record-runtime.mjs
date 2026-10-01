@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
-import { appendFileSync, readFileSync } from 'node:fs'
-import { access, rm } from 'node:fs/promises'
+import { appendFileSync, readFileSync, rmSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { createConnection, createServer } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -13,6 +13,8 @@ const socketPath = listenIndex >= 0 && args[listenIndex + 1]?.startsWith('unix:/
   ? args[listenIndex + 1].slice(7) : null
 const nativePath = socketPath ? socketPath + '.native' : null
 if (socketPath) args[listenIndex + 1] = 'unix://' + nativePath
+// 上一代原生进程被强杀会残留 Socket 文件；先清理，避免新进程监听前就被判定为就绪。
+if (nativePath) rmSync(nativePath, { force: true })
 const child = spawn(config.binary, args, { env: process.env, stdio: 'inherit' })
 const stopped = new Promise((resolve) => {
   child.once('error', (error) => { process.stderr.write(String(error)); resolve(1) })
@@ -99,7 +101,12 @@ try {
     }
     const deadline = Date.now() + 15000
     while (true) {
-      try { await access(nativePath); break } catch { /* 等待真实 CLI 创建 Unix Socket */ }
+      // 以实际连接判定就绪：文件存在不代表新的原生进程已在监听。
+      if (await new Promise((done) => {
+        const probe = createConnection(nativePath)
+        probe.once('connect', () => { probe.destroy(); done(true) })
+        probe.once('error', () => done(false))
+      })) break
       if (child.exitCode !== null || child.signalCode !== null || Date.now() > deadline) {
         throw new Error('原生 CLI 未能创建 Unix Socket')
       }

@@ -54,10 +54,10 @@ export async function startProcess(name, command, args, { cwd, env, logDir, inhe
     child,
     exit,
     get startupError() { return startupError },
-    async stop() {
+    async stop({ timeoutMs = 5000 } = {}) {
       let timer
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
-      await Promise.race([exit, new Promise((resolve) => { timer = setTimeout(resolve, 5000) })])
+      await Promise.race([exit, new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs) })])
       clearTimeout(timer)
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGKILL')
