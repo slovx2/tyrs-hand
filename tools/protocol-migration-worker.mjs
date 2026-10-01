@@ -71,10 +71,11 @@ export class MigrationWorker {
     for (const path of [this.home, this.workspace, this.codexHome, resolve(this.root, 'tmp')]) {
       await mkdir(path, { recursive: true, mode: 0o700 })
     }
-    const nativeCLI = resolve(this.adapter, 'node_modules',
-      `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`, 'claude')
+    const nativeCLI = process.env.TYRS_HAND_TEST_CLAUDE_CLI
+    assert.ok(nativeCLI, '请用 TYRS_HAND_TEST_CLAUDE_CLI 指定固定版本 Claude CLI')
     const nativeVersion = (await exec(nativeCLI, ['--version'], { env: { HOME: this.home,
-      PATH: process.env.PATH, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })).stdout.trim()
+      PATH: process.env.PATH, CLAUDE_CONFIG_DIR: resolve(this.state, 'claude-code/config/claude'),
+      DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })).stdout.trim()
     assert.equal(nativeVersion, '2.1.282 (Claude Code)')
     this.nativeBuild = { version: nativeVersion, sha256: sha256(await readFile(nativeCLI)) }
     output('git', ['init', '--quiet', this.workspace])
@@ -149,6 +150,7 @@ stream_max_retries=0
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       } }), { mode: 0o600 })
       Object.assign(env, { TYRS_HAND_WORKER_CLAUDE_ENABLED: 'true',
+        TYRS_HAND_WORKER_CLAUDE_CLI: process.env.TYRS_HAND_TEST_CLAUDE_CLI,
         TYRS_HAND_WORKER_CLAUDE_BIN: this.runtimeBins['claude-code'],
         TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR: `127.0.0.1:${this.ports['claude-code']}` })
     }

@@ -77,6 +77,7 @@ jobs:
           mkdir -p .artifacts/mobile-runtime
           exec > >(tee .artifacts/mobile-runtime/preflight.log) 2>&1
           npm ci --prefix .local/mobile-adapter
+          sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update
@@ -243,8 +244,10 @@ jobs:
         run: |
           mkdir -p .artifacts/mobile-runtime
           npm ci --prefix .local/mobile-adapter
+          sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
-          make test-mobile-runtime-e2e > .artifacts/mobile-runtime/runtime-junit.xml
+      - name: 验证固定宿主 CLI 的双入口
+        run: make test-mobile-runtime-e2e > .artifacts/mobile-runtime/runtime-junit.xml
       - name: 启动 iPhone 模拟器
         run: |
           runtime="$(xcrun simctl list runtimes available -j | \

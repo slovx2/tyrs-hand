@@ -53,10 +53,11 @@ export class WorkerHarness {
     const sdkRoot = resolve(this.adapter, 'node_modules/@anthropic-ai/claude-agent-sdk')
     const sdkVersion = JSON.parse(await readFile(resolve(sdkRoot, 'package.json'))).version
     assert.equal(sdkVersion, this.pin.claudeAgentSdk)
-    const nativeCLI = resolve(this.adapter, 'node_modules',
-      `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`, 'claude')
+    const nativeCLI = process.env.TYRS_HAND_TEST_CLAUDE_CLI
+    assert.ok(nativeCLI, '请用 TYRS_HAND_TEST_CLAUDE_CLI 指定独立安装的固定版本 Claude CLI')
     const nativeVersion = (await exec(nativeCLI, ['--version'], { env: {
-      HOME: this.home, PATH: process.env.PATH, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      HOME: this.home, PATH: process.env.PATH, CLAUDE_CONFIG_DIR: claudeConfig,
+      DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     }, timeout: 10_000 })).stdout.trim()
     assert.equal(nativeVersion, this.pin.claudeCli + ' (Claude Code)')
     const hash = createHash('sha256')
@@ -133,6 +134,7 @@ stream_max_retries=0
       TYRS_HAND_WORKER_CLAUDE_SSH_LISTEN_ADDR: `127.0.0.1:${this.ports['claude-code']}`,
       TYRS_HAND_WORKER_CLAUDE_ENABLED: 'true',
       TYRS_HAND_WORKER_CLAUDE_BIN: binaries['claude-code'],
+      TYRS_HAND_WORKER_CLAUDE_CLI: nativeCLI,
       TYRS_HAND_CODEX_BIN: binaries.codex, TYRS_HAND_WORKER_CONTROL_URL: this.control.baseURL,
       TYRS_HAND_WORKER_GLOBAL_ENV_FILE: resolve(this.root, 'codex.env'),
       TYRS_HAND_WORKER_ENV_FILE: resolve(this.root, 'worker.env'),

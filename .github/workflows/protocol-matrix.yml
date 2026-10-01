@@ -79,6 +79,7 @@ jobs:
         run: |
           npm install --global @openai/codex@0.157.1
           npm ci --prefix .local/protocol-adapter
+          sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
       - name: Verify Control evidence gates
         run: |
@@ -152,6 +153,7 @@ jobs:
         run: |
           npm install --global @openai/codex@0.157.1
           npm ci --prefix ../claude-codex
+          sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
           go mod download
       - name: Verify coverage gate itself
@@ -286,6 +288,7 @@ jobs:
         run: |
           npm install --global @openai/codex@0.157.1
           npm ci --prefix ../claude-codex
+          sh tools/install-test-claude.sh
           go mod download
       - name: Diagnose macOS loopback sandbox behavior
         run: node tools/protocol-macos-loopback.mjs

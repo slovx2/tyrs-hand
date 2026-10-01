@@ -15,6 +15,19 @@ Worker 的 Claude 配置目录为：
 该目录作为 Claude runtime 的 `CLAUDE_CONFIG_DIR`，对应原生默认的 `~/.claude`。
 不会改写运行 Worker 的用户个人配置目录，也不复制 Codex 的登录态。
 
+Claude CLI 使用宿主独立安装的 Claude Code，SDK 通过官方
+`pathToClaudeCodeExecutable` 指定它。`TYRS_HAND_WORKER_CLAUDE_CLI` 可配置可执行文件绝对路径，
+默认 `claude` 按 Worker 服务用户的 PATH 解析；不要把它与适配器入口
+`TYRS_HAND_WORKER_CLAUDE_BIN` 混淆。服务用户的 PATH 可能与交互终端不同，建议显式配置路径。
+宿主 CLI 必须恰好符合 `protocol/adapter-lock.json` 的 `claudeCli`（当前 `2.1.282`）；
+缺失、不可执行或版本不符时，Claude 入口报告 unavailable 和具体原因，其他引擎继续运行。
+`--runtime-info` 读取实际宿主 CLI 版本和 SHA256。安装器升级保留已有 CLI 路径。
+
+运行时制品只保留固定 Node 24.14.0、Agent SDK 与适配器，不包含任何 SDK 原生平台 CLI 包
+（包括 musl）。Node 用于执行适配器和 SQLite，不能因 CLI 外置而删除。
+CLI 来源的改变不改变配置策略：诊断与执行均使用上面的独立 `CLAUDE_CONFIG_DIR`，
+不读取宿主 `~/.claude`。宿主安装由管理员管理；Worker 默认禁用 Claude 自动更新。
+
 全局指令两引擎共用一份：Worker 启动时把 `CLAUDE.md` 建成指向 Codex Home
 `AGENTS.md` 的软链，控制台 Worker「运行时配置」页顶部的“全局指令”只编辑这一个文件，
 Codex 与 Claude 的新会话都会读取它。经 Claude 配置接口写入指令同样落到该 `AGENTS.md`，
