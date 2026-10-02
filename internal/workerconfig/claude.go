@@ -82,12 +82,18 @@ func ShareClaudeInstructions(claudeHome, codexAgents string) error {
 }
 
 // claudeDefaultEnv 是 Worker 每次启动时强制写入宿主 settings.json 的 env 默认值。
-var claudeDefaultEnv = map[string]string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+var claudeDefaultEnv = map[string]string{
+	"DISABLE_TELEMETRY":       "1",
+	"DO_NOT_TRACK":            "1",
+	"DISABLE_ERROR_REPORTING": "1",
+	"DISABLE_AUTOUPDATER":     "1",
+}
 
 // 与 Provider 原子保存，避免开关与凭据清理只成功一半；原生 settings.env 允许自定义变量。
 const claudeProviderSyncEnv = "TYRS_HAND_CLAUDE_PROVIDER_SYNC"
 
-// ApplyClaudeDefaultSettings 只覆盖默认 env 键，保留其他设置；已一致时不写文件也不产生备份。
+// ApplyClaudeDefaultSettings 移除非必要流量总开关，分别关闭遥测、错误上报和自动更新。
+// 保留其他设置；已一致时不写文件也不产生备份。
 func ApplyClaudeDefaultSettings(claudeHome string) error {
 	path := filepath.Join(claudeHome, "settings.json")
 	data, err := readOptional(path)
@@ -105,6 +111,10 @@ func ApplyClaudeDefaultSettings(claudeHome string) error {
 		return err
 	}
 	changed := false
+	if _, exists := env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"]; exists {
+		delete(env, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+		changed = true
+	}
 	for name, value := range claudeDefaultEnv {
 		if env[name] != value {
 			env[name], changed = value, true

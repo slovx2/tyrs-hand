@@ -15,8 +15,13 @@ Worker 的 Claude 配置目录就是 Worker 服务用户真实 HOME 下的原生
 Worker 不设置 `CLAUDE_CONFIG_DIR`，Claude runtime 与 SSH 会话都按原生默认读取
 `~/.claude` 和 `~/.claude.json`，与在该宿主直接运行 `claude` 一致；不复制 Codex 的登录态。
 适配器自身状态仍在 `<WorkerDataRoot>/claude-code/`。
-Worker 每次启动时把默认 env `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` 写入
-`~/.claude/settings.json`，只覆盖该键，其他设置保留；值已一致时不改写文件。
+Worker 每次启动时从 `~/.claude/settings.json` 移除
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 总开关，分别把 `DISABLE_TELEMETRY`、
+`DO_NOT_TRACK`、`DISABLE_ERROR_REPORTING`、`DISABLE_AUTOUPDATER` 设为 `1`。
+这样关闭遥测、错误上报和自动更新，同时允许 Design 自身需要的网络请求。
+其他设置保留；修改前备份，已一致时不改写文件。无需额外的 Claude 启动包装命令。
+Design 是否可用仍取决于原生 Claude 版本、登录账号、组织策略及功能开关，
+关闭遥测时不会主动刷新远端功能开关，不能保证新账号立即获得 Design。
 
 Claude CLI 使用宿主独立安装的 Claude Code，SDK 通过官方
 `pathToClaudeCodeExecutable` 指定它。`TYRS_HAND_WORKER_CLAUDE_CLI` 可配置可执行文件绝对路径，
