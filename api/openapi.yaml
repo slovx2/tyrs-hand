@@ -1796,6 +1796,7 @@ components:
       type: object
       required: [revision, agents, baseUrl, envKey, apiKeyConfigured, authMethod, model]
       properties:
+        providerSyncEnabled: { type: boolean, description: Claude Provider 同步开关；关闭后由宿主原生配置管理凭证 }
         revision: { type: string }
         agents: { type: string }
         baseUrl: { type: string }
@@ -1805,13 +1806,14 @@ components:
         model: { type: string }
     WorkerRuntimeProviderInput:
       type: object
-      required: [revision, baseUrl]
+      required: [revision]
       properties:
+        providerSyncEnabled: { type: boolean, description: Claude 专用；关闭时一次性清除 settings.json 的 Provider 覆盖，保留 OAuth 凭证；关闭期间必须显式启用才可写入 Provider }
         revision: { type: string, minLength: 1 }
         baseUrl: { type: string, maxLength: 2048 }
         apiKey: { type: string, maxLength: 4096, writeOnly: true }
         clearApiKey: { type: boolean }
-        authMethod: { type: string, enum: [api-key, auth-token], description: Claude 必填 }
+        authMethod: { type: string, enum: [api-key, auth-token], description: Claude 启用 Provider 同步时必填 }
         model: { type: string, maxLength: 256 }
     ClientModel:
       type: object

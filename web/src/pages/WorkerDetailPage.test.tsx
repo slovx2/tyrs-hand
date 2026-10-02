@@ -114,6 +114,7 @@ describe('WorkerDetailPage', () => {
         apiKey: '',
         authMethod: 'auth-token',
         model: 'claude-config-model',
+        providerSyncEnabled: true,
       }),
     )
     // Claude 不再单独维护 CLAUDE.md：页面只有一份来自 Codex AGENTS.md 的全局指令。
@@ -126,6 +127,47 @@ describe('WorkerDetailPage', () => {
       screen.queryByRole('button', { name: '保存 CLAUDE.md' }),
     ).not.toBeInTheDocument()
     expect(agents).not.toHaveBeenCalled()
+  })
+
+  it('关闭 Claude Provider 同步无需 Key，且不发送表单中的凭据', async () => {
+    commonHandlers()
+    const provider = vi.fn()
+    server.use(
+      http.get(`/api/v1/workers/${workerId}/runtimes/:engine/config`, () =>
+        HttpResponse.json({
+          revision: 'native-1',
+          agents: '',
+          baseUrl: '',
+          envKey: '',
+          apiKeyConfigured: false,
+          authMethod: 'api-key',
+          model: '',
+          providerSyncEnabled: true,
+        }),
+      ),
+      http.put(
+        `/api/v1/workers/${workerId}/runtimes/claude-code/config/provider`,
+        async ({ request }) => {
+          provider(await request.json())
+          return HttpResponse.json({ revision: 'native-2' })
+        },
+      ),
+    )
+    renderRoute(`/workers/${workerId}/codex`)
+    const user = userEvent.setup()
+    await screen.findByRole('heading', { name: '全局指令' })
+    await user.selectOptions(screen.getByLabelText('运行时'), 'claude-code')
+    await screen.findByRole('checkbox', { name: '同步 Provider' })
+    expect(screen.getByRole('button', { name: '保存 Provider' })).toBeDisabled()
+    await user.click(screen.getByRole('checkbox', { name: '同步 Provider' }))
+    expect(screen.getByLabelText('认证方式')).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: '保存 Provider' }))
+    await vi.waitFor(() =>
+      expect(provider).toHaveBeenCalledWith({
+        revision: 'native-1',
+        providerSyncEnabled: false,
+      }),
+    )
   })
 
   it('直接访问详情路由并在进入 Codex 页后才读取配置', async () => {

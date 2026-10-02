@@ -2127,6 +2127,8 @@ export interface components {
             heartbeatAt: string | null;
         };
         WorkerRuntimeConfig: {
+            /** @description Claude Provider 同步开关；关闭后由宿主原生配置管理凭证 */
+            providerSyncEnabled?: boolean;
             revision: string;
             agents: string;
             baseUrl: string;
@@ -2137,12 +2139,14 @@ export interface components {
             model: string;
         };
         WorkerRuntimeProviderInput: {
+            /** @description Claude 专用；关闭时一次性清除 settings.json 的 Provider 覆盖，保留 OAuth 凭证；关闭期间必须显式启用才可写入 Provider */
+            providerSyncEnabled?: boolean;
             revision: string;
-            baseUrl: string;
+            baseUrl?: string;
             apiKey?: string;
             clearApiKey?: boolean;
             /**
-             * @description Claude 必填
+             * @description Claude 启用 Provider 同步时必填
              * @enum {string}
              */
             authMethod?: "api-key" | "auth-token";

@@ -311,12 +311,13 @@ func (s *Server) updateWorkerAgents(c *gin.Context) {
 
 func (s *Server) updateWorkerProvider(c *gin.Context) {
 	var request struct {
-		Revision    string `json:"revision"`
-		BaseURL     string `json:"baseUrl"`
-		APIKey      string `json:"apiKey"`
-		ClearAPIKey bool   `json:"clearApiKey"`
-		AuthMethod  string `json:"authMethod"`
-		Model       string `json:"model"`
+		ProviderSyncEnabled *bool  `json:"providerSyncEnabled,omitempty"`
+		Revision            string `json:"revision"`
+		BaseURL             string `json:"baseUrl"`
+		APIKey              string `json:"apiKey"`
+		ClearAPIKey         bool   `json:"clearApiKey"`
+		AuthMethod          string `json:"authMethod"`
+		Model               string `json:"model"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)

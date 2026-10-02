@@ -84,6 +84,9 @@ func ShareClaudeInstructions(claudeHome, codexAgents string) error {
 // claudeDefaultEnv 是 Worker 每次启动时强制写入宿主 settings.json 的 env 默认值。
 var claudeDefaultEnv = map[string]string{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
 
+// 与 Provider 原子保存，避免开关与凭据清理只成功一半；原生 settings.env 允许自定义变量。
+const claudeProviderSyncEnv = "TYRS_HAND_CLAUDE_PROVIDER_SYNC"
+
 // ApplyClaudeDefaultSettings 只覆盖默认 env 键，保留其他设置；已一致时不写文件也不产生备份。
 func ApplyClaudeDefaultSettings(claudeHome string) error {
 	path := filepath.Join(claudeHome, "settings.json")
@@ -129,12 +132,13 @@ func (s *ClaudeService) Restart() error {
 }
 
 type ClaudeProviderInput struct {
-	Revision    string `json:"revision"`
-	BaseURL     string `json:"baseUrl"`
-	APIKey      string `json:"apiKey"`
-	ClearAPIKey bool   `json:"clearApiKey"`
-	AuthMethod  string `json:"authMethod"`
-	Model       string `json:"model"`
+	ProviderSyncEnabled *bool  `json:"providerSyncEnabled,omitempty"`
+	Revision            string `json:"revision"`
+	BaseURL             string `json:"baseUrl"`
+	APIKey              string `json:"apiKey"`
+	ClearAPIKey         bool   `json:"clearApiKey"`
+	AuthMethod          string `json:"authMethod"`
+	Model               string `json:"model"`
 }
 
 func (s *ClaudeService) Read() (workerprotocol.WorkerConfig, error) {
@@ -171,6 +175,8 @@ func (s *ClaudeService) read() (workerprotocol.WorkerConfig, map[string]json.Raw
 		result.AuthMethod, result.EnvKey = "auth-token", "ANTHROPIC_AUTH_TOKEN"
 	}
 	result.APIKeyConfigured = env[result.EnvKey] != ""
+	enabled := env[claudeProviderSyncEnv] != "0"
+	result.ProviderSyncEnabled = &enabled
 	if raw, ok := settings["model"]; ok {
 		if json.Unmarshal(raw, &result.Model) != nil {
 			return result, nil, errors.New("必须为 Claude model 提供字符串")
@@ -227,6 +233,22 @@ func (s *ClaudeService) UpdateProvider(input ClaudeProviderInput) (workerprotoco
 	if input.Revision == "" || input.Revision != current.Revision {
 		return current, errors.New("配置版本冲突")
 	}
+	if input.ProviderSyncEnabled != nil && !*input.ProviderSyncEnabled {
+		if !*current.ProviderSyncEnabled {
+			return current, nil // 已关闭时不再改写用户后来设置的原生 Provider。
+		}
+		env, _ := claudeSettingsEnv(settings)
+		for _, name := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"} {
+			delete(env, name)
+		}
+		delete(settings, "model")
+		env[claudeProviderSyncEnv] = "0"
+		settings["env"], _ = json.Marshal(env)
+		return s.writeSettings(settings)
+	}
+	if !*current.ProviderSyncEnabled && input.ProviderSyncEnabled == nil {
+		return current, errors.New("Model Provider 同步已关闭，请先显式启用")
+	}
 	input.BaseURL = strings.TrimSpace(input.BaseURL)
 	u, err := url.Parse(input.BaseURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -250,6 +272,7 @@ func (s *ClaudeService) UpdateProvider(input ClaudeProviderInput) (workerprotoco
 		return current, errors.New("API Key 不能同时设置与清除")
 	}
 	env, _ := claudeSettingsEnv(settings)
+	delete(env, claudeProviderSyncEnv)
 	secret := env[key]
 	if input.APIKey != "" {
 		secret = input.APIKey
@@ -270,6 +293,11 @@ func (s *ClaudeService) UpdateProvider(input ClaudeProviderInput) (workerprotoco
 		settings["model"], _ = json.Marshal(input.Model)
 	}
 	settings["env"], _ = json.Marshal(env)
+	return s.writeSettings(settings)
+}
+
+func (s *ClaudeService) writeSettings(settings map[string]json.RawMessage) (workerprotocol.WorkerConfig, error) {
+	var current workerprotocol.WorkerConfig
 	encoded, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return current, err

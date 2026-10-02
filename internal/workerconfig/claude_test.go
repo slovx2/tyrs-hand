@@ -87,6 +87,72 @@ func TestClaudeConfigConflictAndInvalidInputDoNotOverwrite(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(service.home, "settings.json"))
 }
 
+func TestClaudeProviderSyncUsesNativeCredentials(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "settings.json")
+	original := []byte(`{"model":"managed-model","hooks":{"Stop":[]},"env":{"CUSTOM":"keep","ANTHROPIC_API_KEY":"managed-key","ANTHROPIC_AUTH_TOKEN":"managed-token","ANTHROPIC_BASE_URL":"http://localhost","ANTHROPIC_MODEL":"managed-env-model"}}`)
+	require.NoError(t, os.WriteFile(path, original, 0o600))
+	credentialPath := filepath.Join(home, ".credentials.json")
+	credential := []byte(`{"claudeAiOauth":{"accessToken":"native-test-token"}}`)
+	require.NoError(t, os.WriteFile(credentialPath, credential, 0o600))
+	service := NewClaudeService(home)
+	current, err := service.Read()
+	require.NoError(t, err)
+	require.True(t, *current.ProviderSyncEnabled)
+	oldRevision := current.Revision
+	disabled := false
+	current, err = service.UpdateProvider(ClaudeProviderInput{Revision: current.Revision, ProviderSyncEnabled: &disabled})
+	require.NoError(t, err, "关闭无需 URL 或 Key")
+	require.False(t, *current.ProviderSyncEnabled)
+	require.Empty(t, current.BaseURL)
+	require.Empty(t, current.Model)
+	require.False(t, current.APIKeyConfigured)
+	backup, err := os.ReadFile(path + ".bak.1")
+	require.NoError(t, err)
+	require.Equal(t, original, backup)
+	_, err = service.UpdateProvider(ClaudeProviderInput{Revision: oldRevision, BaseURL: "http://localhost", AuthMethod: "api-key", APIKey: "stale-key"})
+	require.ErrorContains(t, err, "冲突")
+	_, err = service.UpdateProvider(ClaudeProviderInput{Revision: current.Revision, BaseURL: "http://localhost", AuthMethod: "api-key", APIKey: "stale-key"})
+	require.ErrorContains(t, err, "同步已关闭")
+	// 模拟用户在关闭同步后自行配置原生凭据，重复保存不能再清理它。
+	var settings map[string]json.RawMessage
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &settings))
+	require.Contains(t, settings, "hooks")
+	env, err := claudeSettingsEnv(settings)
+	require.NoError(t, err)
+	require.Equal(t, "keep", env["CUSTOM"])
+	require.NotContains(t, env, "ANTHROPIC_AUTH_TOKEN")
+	env["ANTHROPIC_API_KEY"] = "user-managed-key"
+	settings["env"], _ = json.Marshal(env)
+	data, err = json.Marshal(settings)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o600))
+	require.NoError(t, ApplyClaudeDefaultSettings(home))
+	service = NewClaudeService(home)
+	current, err = service.Read()
+	require.NoError(t, err)
+	require.False(t, *current.ProviderSyncEnabled, "Worker 重启后保持关闭")
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	current, err = service.UpdateProvider(ClaudeProviderInput{Revision: current.Revision, ProviderSyncEnabled: &disabled})
+	require.NoError(t, err)
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	enabled := true
+	_, err = service.UpdateProvider(ClaudeProviderInput{Revision: current.Revision, ProviderSyncEnabled: &enabled})
+	require.ErrorContains(t, err, "Base URL")
+	current, err = service.UpdateProvider(ClaudeProviderInput{Revision: current.Revision, ProviderSyncEnabled: &enabled,
+		BaseURL: "https://example.com", AuthMethod: "api-key", APIKey: "new-key"})
+	require.NoError(t, err)
+	require.True(t, *current.ProviderSyncEnabled)
+	after, err = os.ReadFile(credentialPath)
+	require.NoError(t, err)
+	require.Equal(t, credential, after)
+}
+
 func TestRuntimeConfigDispatchRequiresEngineAndIsolatesFiles(t *testing.T) {
 	codexHome, claudeHome := t.TempDir(), t.TempDir()
 	options := ChannelOptions{Service: NewService(codexHome, "codex"), Claude: NewClaudeService(claudeHome)}

@@ -54,6 +54,16 @@ Provider 示例（虚拟凭据）：
 现有 hooks、权限和其他 settings 字段会保留。保存模型时清理旧的 `ANTHROPIC_MODEL`，
 避免它继续覆盖 `model`；默认模型留空则使用 Claude 原生默认值。
 
+使用宿主 OAuth 登录时，在 Claude Code 配置页关闭“同步 Provider”并保存。
+关闭操作一次性清除 settings.json 的 `ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、
+`ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL` 和顶层 `model`，保留 OAuth 凭证与其他设置。
+请以 Worker 服务用户执行 `claude auth login`，登录状态由原生 CLI 管理。
+开关以 `settings.env.TYRS_HAND_CLAUDE_PROVIDER_SYNC=0` 与清理结果一并原子保存；
+关闭后重复保存或重启 Worker 都不会再次清理用户自行配置的 Provider。
+API 使用 `providerSyncEnabled: false` 关闭，无需 Base URL 或密钥；重新启用需显式传
+`providerSyncEnabled: true` 并提供有效 Provider 配置。此开关不代表 OAuth 已登录，
+也不覆盖 Claude 自身的项目级或受管理设置。Control 没有周期性的 Provider 下发任务。
+
 Claude 专用环境文件只允许运行开关，不接受 Provider 字段；宿主模型环境变量不继承。
 这一隔离只针对 Claude 运行时进程。两个入口的 SSH 会话与 `:2222` 相同，继承宿主环境，
 只剔除 Worker 密钥与宿主模型凭据；服务端导出 `SHELL`，并把 `CODEX_INSTALL_DIR`

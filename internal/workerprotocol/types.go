@@ -73,15 +73,16 @@ type WorkerNotification struct {
 }
 
 type WorkerConfig struct {
-	AuthMethod       string         `json:"authMethod"`
-	Model            string         `json:"model"`
-	Revision         string         `json:"revision"`
-	ModelProvider    string         `json:"-"`
-	ModelProviders   map[string]any `json:"-"`
-	BaseURL          string         `json:"baseUrl"`
-	EnvKey           string         `json:"envKey"`
-	APIKeyConfigured bool           `json:"apiKeyConfigured"`
-	Agents           string         `json:"agents"`
+	ProviderSyncEnabled *bool          `json:"providerSyncEnabled,omitempty"`
+	AuthMethod          string         `json:"authMethod"`
+	Model               string         `json:"model"`
+	Revision            string         `json:"revision"`
+	ModelProvider       string         `json:"-"`
+	ModelProviders      map[string]any `json:"-"`
+	BaseURL             string         `json:"baseUrl"`
+	EnvKey              string         `json:"envKey"`
+	APIKeyConfigured    bool           `json:"apiKeyConfigured"`
+	Agents              string         `json:"agents"`
 }
 
 type OAuthDevice struct {

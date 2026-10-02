@@ -180,6 +180,10 @@ function WorkerConfigEditor({
   const claude = engine === 'claude-code'
   const engineLabel = claude ? 'Claude Code' : 'Codex'
   const configURL = `/workers/${worker.id}/runtimes/${engine}/config`
+  const [providerSyncEnabled, setProviderSyncEnabled] = useState(
+    initialConfig.providerSyncEnabled ?? true,
+  )
+  const nativeCredentials = claude && !providerSyncEnabled
   const [authMethod, setAuthMethod] = useState<string>(
     initialConfig.authMethod || 'api-key',
   )
@@ -205,9 +209,15 @@ function WorkerConfigEditor({
         method: 'PUT',
         body: JSON.stringify({
           revision,
-          baseUrl,
-          ...(claude ? { authMethod, model } : {}),
-          ...(clearApiKey ? { clearApiKey: true } : { apiKey }),
+          ...(nativeCredentials
+            ? { providerSyncEnabled: false }
+            : {
+                baseUrl,
+                ...(claude
+                  ? { authMethod, model, providerSyncEnabled: true }
+                  : {}),
+                ...(clearApiKey ? { clearApiKey: true } : { apiKey }),
+              }),
         }),
       }),
     onSuccess: (result) => {
@@ -239,92 +249,114 @@ function WorkerConfigEditor({
           <h2 className="text-xl font-semibold">Model Provider</h2>
           <p className="muted mt-1 text-sm">
             {claude
-              ? '写入 Claude 独立配置目录的 settings.json，与原生 Claude Code 格式一致。保存后可重启以应用于后续会话。'
+              ? '配置保存在 Worker 用户的 ~/.claude/settings.json。保存后可重启以应用于后续会话。'
               : '模型请求只使用此处配置的非 ChatGPT Provider。配置只保存到 Worker。'}
           </p>
         </div>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="label">
-              Base URL <span className="required-mark">*</span>
-            </span>
-            <input
-              className="field mt-1"
-              type="url"
-              required
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="https://api.example.com/v1"
-            />
-          </label>
-          <label>
-            <span className="label">
-              API Key <span className="required-mark">*</span>
-            </span>
-            <div className="input-with-action mt-1">
+        {claude && (
+          <div className="mt-4">
+            <label className="flex items-center gap-2">
               <input
-                className="field"
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={
-                  initialConfig.apiKeyConfigured
-                    ? '留空保持原值'
-                    : '首次配置必填'
+                type="checkbox"
+                checked={providerSyncEnabled}
+                onChange={(event) =>
+                  setProviderSyncEnabled(event.target.checked)
                 }
               />
-              <button
-                type="button"
-                className="button-ghost"
-                onClick={() => setShowKey((value) => !value)}
-              >
-                {showKey ? '隐藏' : '显示'}
-              </button>
-            </div>
-            {initialConfig.apiKeyConfigured && (
-              <span className="muted mt-1 block text-xs">
-                当前状态：********（{initialConfig.envKey}）
-              </span>
-            )}
-          </label>
-        </div>
-        {claude && (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label>
-              <span className="label">认证方式</span>
-              <select
-                className="field"
-                value={authMethod}
-                onChange={(event) => setAuthMethod(event.target.value)}
-              >
-                <option value="api-key">API Key（x-api-key）</option>
-                <option value="auth-token">Auth Token（Bearer）</option>
-              </select>
+              同步 Provider
             </label>
-            <label>
-              <span className="label">默认模型</span>
-              <input
-                className="field"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="留空使用 Claude 默认值"
-              />
-            </label>
+            <p className="muted mt-2 text-sm">
+              关闭并保存后，将清除当前 settings.json 中的 API Key、Auth
+              Token、Base URL 和默认模型覆盖。 保留 OAuth
+              登录态及其他设置，此后由机器上的 Claude Code 管理凭证。 请以
+              Worker 运行用户执行 claude auth login；这里不会检查登录是否有效。
+            </p>
           </div>
         )}
+        <fieldset disabled={nativeCredentials}>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="label">
+                Base URL <span className="required-mark">*</span>
+              </span>
+              <input
+                className="field mt-1"
+                type="url"
+                required
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                placeholder="https://api.example.com/v1"
+              />
+            </label>
+            <label>
+              <span className="label">
+                API Key <span className="required-mark">*</span>
+              </span>
+              <div className="input-with-action mt-1">
+                <input
+                  className="field"
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder={
+                    initialConfig.apiKeyConfigured
+                      ? '留空保持原值'
+                      : '首次配置必填'
+                  }
+                />
+                <button
+                  type="button"
+                  className="button-ghost"
+                  onClick={() => setShowKey((value) => !value)}
+                >
+                  {showKey ? '隐藏' : '显示'}
+                </button>
+              </div>
+              {initialConfig.apiKeyConfigured && (
+                <span className="muted mt-1 block text-xs">
+                  当前状态：********（{initialConfig.envKey}）
+                </span>
+              )}
+            </label>
+          </div>
+          {claude && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label>
+                <span className="label">认证方式</span>
+                <select
+                  className="field"
+                  value={authMethod}
+                  onChange={(event) => setAuthMethod(event.target.value)}
+                >
+                  <option value="api-key">API Key（x-api-key）</option>
+                  <option value="auth-token">Auth Token（Bearer）</option>
+                </select>
+              </label>
+              <label>
+                <span className="label">默认模型</span>
+                <input
+                  className="field"
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                  placeholder="留空使用 Claude 默认值"
+                />
+              </label>
+            </div>
+          )}
+        </fieldset>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             className="button"
             onClick={() => saveProvider.mutate(false)}
             disabled={
               saveProvider.isPending ||
-              !baseUrl ||
-              (!initialConfig.apiKeyConfigured && !apiKey)
+              (!nativeCredentials &&
+                (!baseUrl || (!initialConfig.apiKeyConfigured && !apiKey)))
             }
           >
             保存 Provider
           </button>
-          {initialConfig.apiKeyConfigured && (
+          {!nativeCredentials && initialConfig.apiKeyConfigured && (
             <button
               className="button-danger"
               onClick={() =>
