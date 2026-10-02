@@ -22,8 +22,8 @@ Claude CLI 使用宿主独立安装的 Claude Code，SDK 通过官方
 `pathToClaudeCodeExecutable` 指定它。`TYRS_HAND_WORKER_CLAUDE_CLI` 可配置可执行文件绝对路径，
 默认 `claude` 按 Worker 服务用户的 PATH 解析；不要把它与适配器入口
 `TYRS_HAND_WORKER_CLAUDE_BIN` 混淆。服务用户的 PATH 可能与交互终端不同，建议显式配置路径。
-宿主 CLI 必须恰好符合 `protocol/adapter-lock.json` 的 `claudeCli`（当前 `2.1.282`）；
-缺失、不可执行或版本不符时，Claude 入口报告 unavailable 和具体原因，其他引擎继续运行。
+宿主 CLI 版本不得低于 `protocol/adapter-lock.json` 的 `claudeCli`（当前 `2.1.282`），更高稳定版均可使用；
+缺失、不可执行或版本过低时，Claude 入口报告 unavailable 和具体原因，其他引擎继续运行。
 `--runtime-info` 读取实际宿主 CLI 版本和 SHA256。安装器升级保留已有 CLI 路径。
 
 运行时制品只保留固定 Node 24.14.0、Agent SDK 与适配器，不包含任何 SDK 原生平台 CLI 包

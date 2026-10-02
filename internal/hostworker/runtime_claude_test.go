@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,8 +26,9 @@ func TestClaudeHostCLIEnvironmentUsesWorkerHome(t *testing.T) {
 	require.Contains(t, runtimeBaseEnvironment(options), "CLAUDE_CODEX_CLI=claude")
 }
 
-func TestClaudeBuildRequiresLockedHostCLIVersion(t *testing.T) {
-	for _, version := range []string{protocol.AdapterLock.ClaudeCLI + " (Claude Code)", "2.1.283 (Claude Code)", ""} {
+func TestClaudeBuildRequiresHostCLIAtLeastLockedVersion(t *testing.T) {
+	accepted := []string{protocol.AdapterLock.ClaudeCLI + " (Claude Code)", "2.1.283 (Claude Code)", "2.2.0 (Claude Code)"}
+	for _, version := range append(slices.Clone(accepted), "2.1.281 (Claude Code)", "2.1.283", "2.1.283-beta (Claude Code)", "") {
 		t.Run(version, func(t *testing.T) {
 			info := map[string]any{"engine": "claude-code", "protocolVersion": "0.157.1", "nodeVersion": protocol.AdapterLock.Node,
 				"sdkVersion": protocol.AdapterLock.ClaudeAgentSDK, "cliBuild": version, "cliSha256": strings.Repeat("a", 64),
@@ -36,7 +38,7 @@ func TestClaudeBuildRequiresLockedHostCLIVersion(t *testing.T) {
 			bin := filepath.Join(t.TempDir(), "adapter")
 			require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\ncat <<'INFO'\n"+string(data)+"\nINFO\n"), 0o700))
 			_, err = validateRuntimeBuild(t.Context(), RuntimeOptions{Engine: runtimeidentity.Claude, CodexBin: bin, Environment: []string{"PATH=/usr/bin:/bin"}})
-			if version == protocol.AdapterLock.ClaudeCLI+" (Claude Code)" {
+			if slices.Contains(accepted, version) {
 				require.NoError(t, err)
 			} else {
 				require.ErrorContains(t, err, "宿主 Claude CLI 版本不符")

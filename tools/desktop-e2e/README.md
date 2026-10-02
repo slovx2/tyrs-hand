@@ -7,7 +7,7 @@
 ```sh
 export PATH="$PWD/.local/toolchains/node-v24.14.0-darwin-arm64/bin:$(go env GOROOT)/bin:$PATH"
 export TYRS_HAND_TEST_CODEX_BIN="$PWD/.local/toolchains/codex-0.157.1/bin/codex"
-export TYRS_HAND_TEST_CLAUDE_CLI=<独立安装的固定版本 Claude Code（adapter-lock 的 claudeCli）可执行文件>  # Claude 入口使用宿主 CLI
+export TYRS_HAND_TEST_CLAUDE_CLI=<不低于 adapter-lock claudeCli 的 Claude Code 可执行文件>  # Claude 入口使用宿主 CLI
 node tools/desktop-e2e/serve.mjs   # 就绪后输出 [desktop-e2e] ready {...}
 ```
 

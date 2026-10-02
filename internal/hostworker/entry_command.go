@@ -117,7 +117,7 @@ func (g *entryGateway) handle(connection net.Conn) {
 	reply := entryReply{}
 	switch {
 	case slices.Equal(args, []string{"--version"}), slices.Equal(args, []string{"-V"}):
-		reply.Data = "codex-cli " + info.ProtocolVersion + "\n"
+		reply.Data = "codex-cli " + info.CodexVersion() + "\n"
 	case slices.Equal(args, []string{"runtime", "info"}):
 		data, _ := json.Marshal(info)
 		reply.Data = string(data) + "\n"

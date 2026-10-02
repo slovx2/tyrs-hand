@@ -16,10 +16,10 @@ func TestValidateVersion(t *testing.T) {
 	require.NoError(t, ValidateVersion(context.Background(), valid))
 	newer := filepath.Join(dir, "newer-codex")
 	require.NoError(t, os.WriteFile(newer, []byte("#!/bin/sh\nprintf 'codex-cli 0.158.0\\n'\n"), 0o700))
-	require.ErrorContains(t, ValidateVersion(context.Background(), newer), "恰好为 "+RequiredVersion)
+	require.NoError(t, ValidateVersion(context.Background(), newer))
 	old := filepath.Join(dir, "old-codex")
 	require.NoError(t, os.WriteFile(old, []byte("#!/bin/sh\nprintf 'codex-cli 0.146.9\\n'\n"), 0o700))
-	require.Error(t, ValidateVersion(context.Background(), old))
+	require.ErrorContains(t, ValidateVersion(context.Background(), old), ">= "+RequiredVersion)
 	prerelease := filepath.Join(dir, "prerelease-codex")
 	require.NoError(t, os.WriteFile(prerelease,
 		[]byte("#!/bin/sh\nprintf 'codex-cli 0.157.1-beta.1\\n'\n"), 0o700))
@@ -31,10 +31,12 @@ func TestValidateVersion(t *testing.T) {
 }
 
 func TestIsSupportedVersion(t *testing.T) {
-	require.True(t, IsSupportedVersion(RequiredVersion))
+	for _, version := range []string{RequiredVersion, "0.157.2", "0.158.0", "0.200.10", "1.0.0"} {
+		require.True(t, IsSupportedVersion(version), version)
+	}
 	for _, version := range []string{
-		"0.147.0", "0.157.0", "0.157.2", "0.158.0", "1.0.0",
-		"0.157.1-beta.1", "0.158.0-alpha.1", "0.157.1+custom", "v0.157.1", "unknown", "",
+		"0.147.0", "0.157.0", "0.156.99",
+		"0.157.1-beta.1", "0.158.0-alpha.1", "0.157.1+custom", "v0.157.1", "0.158", "unknown", "",
 	} {
 		t.Run(version, func(t *testing.T) {
 			require.False(t, IsSupportedVersion(version))

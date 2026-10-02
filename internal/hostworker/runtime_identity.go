@@ -70,21 +70,27 @@ func validateRuntimeBuild(ctx context.Context, options RuntimeOptions) (RuntimeI
 	if err := json.Unmarshal(data, &info); err != nil {
 		return info, err
 	}
+	// 锁定版本只作下限，宿主升级 Node、SDK、CLI 与插件不阻断运行时。
+	lock := protocol.AdapterLock
 	if options.Engine == runtimeidentity.Pi {
 		if info.Engine != runtimeidentity.Pi || info.ProtocolVersion != codex.RequiredVersion ||
-			info.NodeVersion != protocol.AdapterLock.Node || info.SDKVersion != protocol.AdapterLock.PiCodingAgent || info.CLIBuild != protocol.AdapterLock.PiCLI ||
-			info.PluginVersions["@narumitw/pi-plan-mode"] != protocol.AdapterLock.PiPlanMode ||
-			info.PluginVersions["@narumitw/pi-tui-kit"] != protocol.AdapterLock.PiTuiKit ||
-			info.PluginVersions["@gotgenes/pi-subagents"] != protocol.AdapterLock.PiSubagents {
-			return info, fmt.Errorf("Pi 构建不符合固定版本组合")
+			!codex.VersionAtLeast(info.NodeVersion, lock.Node) || !codex.VersionAtLeast(info.SDKVersion, lock.PiCodingAgent) ||
+			!codex.VersionAtLeast(info.CLIBuild, lock.PiCLI) ||
+			!codex.VersionAtLeast(info.PluginVersions["@narumitw/pi-plan-mode"], lock.PiPlanMode) ||
+			!codex.VersionAtLeast(info.PluginVersions["@narumitw/pi-tui-kit"], lock.PiTuiKit) ||
+			!codex.VersionAtLeast(info.PluginVersions["@gotgenes/pi-subagents"], lock.PiSubagents) {
+			return info, fmt.Errorf("Pi 构建低于最低版本要求")
 		}
 	} else if info.Engine != runtimeidentity.Claude || info.ProtocolVersion != codex.RequiredVersion ||
-		info.NodeVersion != protocol.AdapterLock.Node || info.SDKVersion != protocol.AdapterLock.ClaudeAgentSDK ||
+		!codex.VersionAtLeast(info.NodeVersion, lock.Node) || !codex.VersionAtLeast(info.SDKVersion, lock.ClaudeAgentSDK) ||
 		len(info.CLISHA256) != 64 {
-		return info, fmt.Errorf("Claude 构建不符合固定版本组合")
+		return info, fmt.Errorf("Claude 构建低于最低版本要求")
 	}
-	if options.Engine == runtimeidentity.Claude && info.CLIBuild != protocol.AdapterLock.ClaudeCLI+" (Claude Code)" {
-		return info, fmt.Errorf("宿主 Claude CLI 版本不符: 需要 %s (Claude Code)，实际 %s", protocol.AdapterLock.ClaudeCLI, info.CLIBuild)
+	if options.Engine == runtimeidentity.Claude {
+		cli, ok := strings.CutSuffix(info.CLIBuild, " (Claude Code)")
+		if !ok || !codex.VersionAtLeast(cli, lock.ClaudeCLI) {
+			return info, fmt.Errorf("宿主 Claude CLI 版本不符: 需要 >= %s (Claude Code)，实际 %s", lock.ClaudeCLI, info.CLIBuild)
+		}
 	}
 	for _, capability := range []string{"history.pagination", "submission.idempotency", "dynamicTools", "nativeSession.rollback"} {
 		if !slices.Contains(info.Capabilities, capability) {

@@ -13,15 +13,15 @@
       "releaseReady": { "type": "boolean" },
       "workerId": { "type": "string", "minLength": 1 },
       "status": { "enum": ["running", "unavailable", "stopped"] },
-      "nodeVersion": { "const": "24.14.0" },
-      "sdkVersion": { "enum": ["0.3.282", "0.99.1"] },
+      "nodeVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+      "sdkVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
       "pluginVersions": {
         "type": "object",
         "required": ["@narumitw/pi-plan-mode", "@narumitw/pi-tui-kit", "@gotgenes/pi-subagents"],
         "properties": {
-          "@narumitw/pi-plan-mode": { "const": "0.58.3" },
-          "@narumitw/pi-tui-kit": { "const": "0.59.0" },
-          "@gotgenes/pi-subagents": { "const": "21.8.1" }
+          "@narumitw/pi-plan-mode": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+          "@narumitw/pi-tui-kit": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+          "@gotgenes/pi-subagents": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
         },
         "additionalProperties": false
       },
@@ -29,8 +29,8 @@
     },
     "oneOf": [
       { "properties": { "engine": { "const": "codex" } }, "required": ["workerId", "status"] },
-      { "properties": { "engine": { "const": "claude-code" }, "sdkVersion": { "const": "0.3.282" } }, "required": ["nodeVersion", "sdkVersion", "cliSha256"] },
-      { "properties": { "engine": { "const": "pi" }, "sdkVersion": { "const": "0.99.1" }, "cliBuild": { "const": "0.99.1" } }, "required": ["nodeVersion", "sdkVersion", "pluginVersions"] }
+      { "properties": { "engine": { "const": "claude-code" } }, "required": ["nodeVersion", "sdkVersion", "cliSha256"] },
+      { "properties": { "engine": { "const": "pi" }, "cliBuild": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" } }, "required": ["nodeVersion", "sdkVersion", "pluginVersions"] }
     ],
     "additionalProperties": false
   }

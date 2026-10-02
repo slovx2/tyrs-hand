@@ -2,7 +2,7 @@
   "repository": "https://github.com/slovx2/claude-codex",
   "upstream": "https://github.com/fuergaosi233/claude-codex",
   "upstreamCommit": "9fbf9137c642b2c14210cbf8b5f1eeab97f11051",
-  "commit": "f0f830988b07380c9d1db820ead0f449c6312bbf",
+  "commit": "435d5b42bcfcb4f6ba63a875d3ab450503906b17",
   "node": "24.14.0",
   "claudeAgentSdk": "0.3.282",
   "codexProtocol": "0.157.1",

@@ -17,7 +17,7 @@ func TestPiEnvironmentKeepsNativeProvidersAndRemovesWorkerCredentials(t *testing
 	require.Equal(t, input[:5], result)
 }
 
-func TestValidatePiRuntimeBuildRejectsVersionDrift(t *testing.T) {
+func TestValidatePiRuntimeBuildRejectsVersionsBelowLock(t *testing.T) {
 	for _, field := range []string{"valid", "engine", "protocolVersion", "nodeVersion", "sdkVersion", "cliBuild",
 		"@narumitw/pi-plan-mode", "@narumitw/pi-tui-kit", "@gotgenes/pi-subagents"} {
 		t.Run(field, func(t *testing.T) {
@@ -26,6 +26,8 @@ func TestValidatePiRuntimeBuildRejectsVersionDrift(t *testing.T) {
 				"pluginVersions": plugins, "capabilities": []string{"history.pagination", "submission.idempotency", "dynamicTools", "nativeSession.rollback"}}
 			if _, ok := plugins[field]; ok {
 				plugins[field] = "0.0.0"
+			} else if field == "nodeVersion" || field == "sdkVersion" || field == "cliBuild" {
+				info[field] = "0.0.1"
 			} else if field != "valid" {
 				info[field] = "wrong"
 			}
@@ -57,4 +59,25 @@ func TestRuntimeRegistryAcceptsThreeIsolatedEngines(t *testing.T) {
 	require.NoError(t, validateEntries(entries))
 	entries[2].SSH.ListenAddr = ":3333"
 	require.Error(t, validateEntries(entries))
+}
+
+func TestValidatePiRuntimeBuildAcceptsNewerVersions(t *testing.T) {
+	plugins := map[string]string{"@narumitw/pi-plan-mode": "0.60.0", "@narumitw/pi-tui-kit": "1.0.0", "@gotgenes/pi-subagents": "21.8.2"}
+	info := map[string]any{"engine": "pi", "protocolVersion": "0.157.1", "nodeVersion": "24.20.0", "sdkVersion": "0.100.0", "cliBuild": "0.100.0",
+		"pluginVersions": plugins, "capabilities": []string{"history.pagination", "submission.idempotency", "dynamicTools", "nativeSession.rollback"}}
+	data, err := json.Marshal(info)
+	require.NoError(t, err)
+	bin := filepath.Join(t.TempDir(), "pi-fixture")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\ncat <<'INFO'\n"+string(data)+"\nINFO\n"), 0o700))
+	_, err = validateRuntimeBuild(t.Context(), RuntimeOptions{Engine: runtimeidentity.Pi, CodexBin: bin, Environment: []string{"PATH=/usr/bin:/bin"}})
+	require.NoError(t, err)
+}
+
+func TestRuntimeInfoCodexVersionMatchesAppServerUserAgent(t *testing.T) {
+	native := RuntimeInfo{Identity: runtimeidentity.Identity{Engine: runtimeidentity.Codex}, ProtocolVersion: "0.157.1", CLIBuild: "0.160.0"}
+	require.Equal(t, "0.160.0", native.CodexVersion())
+	native.CLIBuild = ""
+	require.Equal(t, "0.157.1", native.CodexVersion())
+	pi := RuntimeInfo{Identity: runtimeidentity.Identity{Engine: runtimeidentity.Pi}, ProtocolVersion: "0.157.1", CLIBuild: "0.100.0"}
+	require.Equal(t, "0.157.1", pi.CodexVersion())
 }

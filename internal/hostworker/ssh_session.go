@@ -50,7 +50,7 @@ func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, comm
 			s.writeExit(channel, 0)
 			return
 		case "codex --version", "codex -V":
-			_, _ = io.WriteString(channel, "codex-cli "+info.ProtocolVersion+"\n")
+			_, _ = io.WriteString(channel, "codex-cli "+info.CodexVersion()+"\n")
 			s.writeExit(channel, 0)
 			return
 		case "codex app-server daemon start":

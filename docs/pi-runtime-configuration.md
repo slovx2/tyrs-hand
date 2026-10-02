@@ -25,7 +25,7 @@ npm install --global --prefix "$HOME/.local" @earendil-works/pi-coding-agent@0.9
 "$HOME/.local/bin/pi" --version
 ```
 
-系统安装可使用 `/usr/local` prefix。宿主 CLI 必须为 `0.99.1`；适配器仍自带 Node `24.14.0`，不要求宿主 Node 恰好等于此版本。
+系统安装可使用 `/usr/local` prefix。宿主 CLI 不得低于 `0.99.1`；适配器仍自带 Node `24.14.0`，不要求宿主 Node 等于此版本。Pi SDK、插件与 Node 同样只校验最低版本。
 
 验签后，把 tarball 解包到 `/usr/local/lib/tyrs-hand/pi-runtime/<adapter-commit>/`，创建 `/usr/local/libexec/tyrs-hand-pi` 可执行包装脚本：
 
