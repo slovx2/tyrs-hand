@@ -24,7 +24,7 @@ func TestAuthorizationWatchRevokesUnreadableAndMalformedFile(t *testing.T) {
 		Authorization: NewClientAuthorization([]AuthorizedClient{{ID: "test", PublicKey: key}})}
 	t.Cleanup(func() { require.NoError(t, registry.Close()) })
 	registry.WatchAuthorizedClients(path, nil)
-	allowed := func() bool { _, ok := registry.Authorization.lookup(string(key.Marshal())); return ok }
+	allowed := func() bool { _, ok := registry.Authorization.Lookup(string(key.Marshal())); return ok }
 	require.Eventually(t, func() bool { return !allowed() }, 3*time.Second, 10*time.Millisecond, "丢失授权文件必须撤销")
 	require.NoError(t, os.WriteFile(path, ssh.MarshalAuthorizedKey(key), 0o600))
 	require.Eventually(t, allowed, 3*time.Second, 10*time.Millisecond, "修复后自动恢复")

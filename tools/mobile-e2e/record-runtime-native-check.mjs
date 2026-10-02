@@ -10,7 +10,7 @@ import test from 'node:test'
 
 // 只验录制器生命周期：固定真实 Codex 原生程序，无 Worker/SSH，不能登记主验收链。
 const native = process.env.TYRS_HAND_TEST_CODEX_NATIVE_BIN
-const wsModule = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? '../claude-codex', 'node_modules/ws/index.js')
+const wsModule = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? 'adapter-source', 'node_modules/ws/index.js')
 const { default: WebSocket } = await import(pathToFileURL(wsModule))
 async function until(probe) {
   const deadline = Date.now() + 5000

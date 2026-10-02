@@ -1,8 +1,8 @@
 {
-  "repository": "https://github.com/slovx2/claude-codex",
+  "repository": "https://github.com/slovx2/codex-harness-adapter",
   "upstream": "https://github.com/fuergaosi233/claude-codex",
   "upstreamCommit": "9fbf9137c642b2c14210cbf8b5f1eeab97f11051",
-  "commit": "435d5b42bcfcb4f6ba63a875d3ab450503906b17",
+  "commit": "1fc7a3cc8b04f6edb12d4ebc8a027bbe2a2c9356",
   "node": "24.14.0",
   "claudeAgentSdk": "0.3.282",
   "codexProtocol": "0.157.1",
@@ -12,5 +12,17 @@
   "piPlanMode": "0.58.3",
   "piTuiKit": "0.59.0",
   "piSubagents": "21.8.1",
-  "releaseReady": false
+  "releaseReady": false,
+  "goModuleVersion": "v0.3.0",
+  "version": "0.3.0",
+  "artifacts": {
+    "claude": {
+      "url": "https://github.com/slovx2/codex-harness-adapter/releases/download/v0.3.0/codex-harness-adapter-claude_1fc7a3cc8b04f6edb12d4ebc8a027bbe2a2c9356_linux_amd64.tar.gz",
+      "sha256": "5d604e4a22f542f62a11871223557c910b9deca689904b814a177095434c5088"
+    },
+    "pi": {
+      "url": "https://github.com/slovx2/codex-harness-adapter/releases/download/v0.3.0/codex-harness-adapter-pi_1fc7a3cc8b04f6edb12d4ebc8a027bbe2a2c9356_linux_amd64.tar.gz",
+      "sha256": "9148c518b731becf61793509cb0b3acf2bccf1abfa5dae8ceb6298302844aa71"
+    }
+  }
 }

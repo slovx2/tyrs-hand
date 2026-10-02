@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 )
 
-func (c Config) PiStateDir() string    { return filepath.Join(c.WorkerDataRoot, "pi") }
+func (c Config) PiStateDir() string {
+	return filepath.Join(c.WorkerDataRoot, "codex-harness-adapter", "pi")
+}
 func (c Config) PiAdapterHome() string { return filepath.Join(c.PiStateDir(), "config") }
 func (c Config) PiHostKeyFile() string { return filepath.Join(c.PiStateDir(), "ssh", "host_key") }
 

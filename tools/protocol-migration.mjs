@@ -18,7 +18,7 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const rollbackMode = process.argv.includes('--rollback')
 const journalMode = process.argv.includes('--journal') || rollbackMode
 assert.ok(process.argv.slice(2).every(argument => ['--journal', '--rollback'].includes(argument)), '未知迁移验收参数')
-const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, '../claude-codex'))
+const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, 'adapter-source'))
 const evidence = resolve(process.env.TYRS_HAND_MIGRATION_EVIDENCE ?? resolve(repo, '.artifacts/protocol-migration', randomUUID()))
 const root = await realpath(await mkdtemp('/tmp/tyrs-mig-'))
 await mkdir(evidence, { recursive: true, mode: 0o700 })
@@ -80,7 +80,7 @@ try {
   const pin = JSON.parse(await readFile(resolve(repo, 'protocol/adapter-lock.json')))
   assert.equal(output('git', ['rev-parse', 'HEAD'], { cwd: adapter }), pin.commit)
   assert.equal(output('git', ['status', '--porcelain'], { cwd: adapter }), '', '适配器必须固定且干净')
-  assert.equal(JSON.parse(await readFile(resolve(adapter, 'node_modules/@anthropic-ai/claude-agent-sdk/package.json'))).version, pin.claudeAgentSdk)
+  assert.equal(JSON.parse(await readFile(resolve(adapter, 'packages/claude/node_modules/@anthropic-ai/claude-agent-sdk/package.json'))).version, pin.claudeAgentSdk)
   report.adapter = pin
   report.workerDirty = Boolean(output('git', ['status', '--porcelain'], { cwd: repo }))
   mark('构建固定旧源码和当前源码的真实二进制')

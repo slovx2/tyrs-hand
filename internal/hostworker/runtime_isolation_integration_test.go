@@ -91,7 +91,7 @@ func (f *runtimeIsolationFixture) model(t *testing.T, w http.ResponseWriter, req
 	}
 	name, id, arguments := "", "same-tool-call-id", "{}"
 	for _, tool := range input.Tools {
-		if strings.HasPrefix(tool.Name, "mcp__tyrs_hand__") {
+		if strings.HasPrefix(tool.Name, "mcp__codex_harness_adapter__") {
 			name = tool.Name
 			break
 		}

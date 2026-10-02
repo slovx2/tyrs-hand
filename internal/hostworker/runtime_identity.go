@@ -123,7 +123,7 @@ func runtimeBaseEnvironment(options RuntimeOptions) []string {
 	}
 	return replaceEnvironment(result, map[string]string{
 		"HOME":                options.Home,
-		"CLAUDE_CODEX_CLI":    cli,
+		"CHA_CLAUDE_CLI":      cli,
 		"DISABLE_AUTOUPDATER": "1",
 	})
 }

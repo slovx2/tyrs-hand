@@ -72,13 +72,15 @@ jobs:
         run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
           path: .local/protocol-adapter
       - name: Install native SDK and CLI
         run: |
           npm install --global @openai/codex@0.157.1
           npm ci --prefix .local/protocol-adapter
+          npm ci --prefix .local/protocol-adapter/packages/claude
+          npm ci --prefix .local/protocol-adapter/packages/pi
           sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
       - name: Verify Control evidence gates
@@ -146,13 +148,15 @@ jobs:
         run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
-          path: claude-codex
+          path: tyrs-hand/adapter-source
       - name: Install exact dependencies
         run: |
           npm install --global @openai/codex@0.157.1
-          npm ci --prefix ../claude-codex
+          npm ci --prefix adapter-source
+          npm ci --prefix adapter-source/packages/claude
+          npm ci --prefix adapter-source/packages/pi
           sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
           go mod download
@@ -281,13 +285,15 @@ jobs:
         run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
-          path: claude-codex
+          path: tyrs-hand/adapter-source
       - name: Install exact dependencies
         run: |
           npm install --global @openai/codex@0.157.1
-          npm ci --prefix ../claude-codex
+          npm ci --prefix adapter-source
+          npm ci --prefix adapter-source/packages/claude
+          npm ci --prefix adapter-source/packages/pi
           sh tools/install-test-claude.sh
           go mod download
       - name: Diagnose macOS loopback sandbox behavior
@@ -298,7 +304,7 @@ jobs:
         env:
           PROTOCOL_ARTIFACT_DIR: ${{ github.workspace }}/tyrs-hand/.artifacts/protocol/macos-sdk
           CODEX_SCHEMA_DIR: ${{ github.workspace }}/tyrs-hand/protocol/codex-app-server/0.157.1/json-schema
-        run: npm run test:protocol --prefix ../claude-codex
+        run: npm run test:protocol --prefix adapter-source
       - name: Preserve macOS evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

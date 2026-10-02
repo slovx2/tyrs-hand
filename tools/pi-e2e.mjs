@@ -9,7 +9,7 @@ import { freePort, output, run, startProcess } from './mobile-e2e/lib/process.mj
 import { SSHProtocolClient } from './mobile-e2e/lib/ssh-protocol.mjs'
 
 const repo=resolve(fileURLToPath(new URL('..',import.meta.url)))
-const adapter=resolve(repo,'../claude-codex')
+const adapter=resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo,'adapter-source'))
 const root=await mkdtemp('/tmp/tyrs-pi-e2e-')
 const control=new ControlHarness({repoRoot:repo,runDir:resolve(root,'control'),label:'pi'})
 const clients=[]
@@ -45,15 +45,15 @@ try {
   const key=resolve(root,'client-key'),known=resolve(root,'known_hosts')
   run('ssh-keygen',['-q','-t','ed25519','-N','','-f',key])
   await writeFile(resolve(root,'authorized_keys'),await readFile(key+'.pub'),{mode:0o600})
-  const bin=resolve(root,'worker'),pi=resolve(root,'pi-codex'),claude=resolve(root,'claude-codex')
+  const bin=resolve(root,'worker'),pi=resolve(root,'codex-harness-adapter-pi'),claude=resolve(root,'codex-harness-adapter-claude')
   run('go',['build','-o',bin,'./cmd/tyrs-hand-worker'],{cwd:repo})
   run('npm',['--prefix','packages/pi','run','build'],{cwd:adapter})
   run('npm',['run','build'],{cwd:adapter})
   await writeFile(pi,`#!/bin/sh\nexec ${quote(process.execPath)} ${quote(resolve(adapter,'packages/pi/dist/pi/src/adapter.mjs'))} "$@"\n`,{mode:0o700})
-  await writeFile(claude,`#!/bin/sh\nexec ${quote(process.execPath)} ${quote(resolve(adapter,'dist/src/adapter.mjs'))} "$@"\n`,{mode:0o700})
-  const codexPort=await freePort(),claudePort=await freePort(),piPort=Number(process.env.TYRS_PI_TEST_PORT??3334)
+  await writeFile(claude,`#!/bin/sh\nexec ${quote(process.execPath)} ${quote(resolve(adapter,'packages/claude/dist/claude/src/adapter.mjs'))} "$@"\n`,{mode:0o700})
+  const codexPort=await freePort(),claudePort=await freePort(),piPort=Number(process.env.TYRS_PI_TEST_PORT??await freePort())
   const env={PATH:process.env.PATH,HOME:home,TMPDIR:resolve(root,'tmp'),LANG:'en_US.UTF-8',
-    PI_CODING_AGENT_DIR:agent,PI_CLI:resolve(adapter,'packages/pi/node_modules/.bin/pi'),PI_ADAPTER_DEBUG:'1',
+    PI_CODING_AGENT_DIR:agent,PI_CLI:resolve(adapter,'packages/pi/node_modules/.bin/pi'),CHA_PI_DEBUG:'1',
     TYRS_HAND_WORKER_ID:registration.worker.id,TYRS_HAND_WORKER_ROLE:'discord',TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS:'2',
     TYRS_HAND_WORKER_HOME:home,TYRS_HAND_WORKER_CODEX_HOME:codexHome,TYRS_HAND_WORKER_DATA_ROOT:state,
     TYRS_HAND_WORKER_WORKSPACE_ROOT:workspace,TYRS_HAND_WORKER_SHELL:'/bin/sh',
@@ -118,7 +118,7 @@ try {
   const recoveryDurations=[]
   for(const connected of [true,false]) {
     if(!connected)for(const client of clients.filter(item=>item.engine==='pi'))await client.close()
-    const socket=resolve(state,'pi/app-server.sock')
+    const socket=resolve(state,'codex-harness-adapter/pi/app-server.sock')
     const processes=output('ps',['-axo','pid=,command=']).split('\n').filter(line=>
       line.includes(resolve(adapter,'packages/pi/dist/pi/src/adapter.mjs'))&&line.includes(`--listen unix://${socket}`))
     assert.equal(processes.length,1,'只能向本轮唯一 Pi 适配器发送 SIGKILL')

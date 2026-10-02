@@ -102,6 +102,7 @@ client-e2e-ios:
 test: test-unit
 
 test-unit:
+	node --test tools/adapter-build.test.mjs
 	node --test deploy/browser/*.test.mjs
 	go test ./...
 	$(PNPM) --dir web test:run
@@ -158,6 +159,7 @@ ci-static:
 	$(MAKE) client-e2e-contract
 
 ci-go:
+	node --test tools/adapter-build.test.mjs
 	go test ./...
 	$(MAKE) test-coverage
 	$(MAKE) test-mobile-transport-integration

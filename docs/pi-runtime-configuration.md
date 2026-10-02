@@ -4,15 +4,15 @@ Pi 入口默认关闭，独立 SSH 端口为 `:3334`，与 Codex、Claude 共用
 
 ## 固定版本与制品
 
-`protocol/adapter-lock.json` 固定适配器提交、Node、SDK、CLI 和插件版本。`internal-deploy.yml` 的 `pi-runtime` job 与 Control、Worker、Claude 制品同一次运行，产出 `pi-runtime-linux-amd64` artifact：
+`protocol/adapter-lock.json` 固定适配器提交、Go 模块版本、Node、SDK、CLI、插件以及发布制品 SHA-256。`internal-deploy.yml` 的 `pi-runtime` job 下载并校验独立仓库的固定制品，再签名为 `pi-runtime-linux-amd64` artifact：
 
 ```text
-pi-codex_<adapter-commit>_linux_amd64.tar.gz
-pi-codex_<adapter-commit>_linux_amd64.tar.gz.sha256
-pi-codex_<adapter-commit>_linux_amd64.tar.gz.sigstore.json
+codex-harness-adapter-pi_<adapter-commit>_linux_amd64.tar.gz
+codex-harness-adapter-pi_<adapter-commit>_linux_amd64.tar.gz.sha256
+codex-harness-adapter-pi_<adapter-commit>_linux_amd64.tar.gz.sigstore.json
 ```
 
-打包脚本默认拒绝提交不符或未提交源码；`--local-acceptance` 仅用于本地验收，文件名含 `_local_`，不能替代正式制品。制品自检覆盖解包启动、实际版本、PTY、文件操作与真实 SDK/mock provider。正式流水线再校验 SHA-256，并通过 Sigstore 签名、验签。
+消费脚本拒绝提交不符、未提交源码及校验值不符的制品；`--local-acceptance` 委托独立仓库的构建脚本，仅用于本地验收，文件名含 `_local_`。独立仓库制品自检覆盖解包启动、实际版本、PTY、文件操作与真实 SDK/mock provider。正式流水线再通过 Sigstore 签名、验签。
 
 Linux amd64 制品按依赖包的 `os`、`cpu`、`libc` 声明裁剪其他平台包（含嵌套的 esbuild 平台二进制），解包后再次断言没有非目标平台包，并运行每份 esbuild 的 TypeScript 转换自检。不使用 `--omit=optional`，以保留 codemode 所需的本机二进制；SDK 自带的嵌套 JavaScript 依赖和 WASM 保留，避免改变官方模块解析和原生功能。
 
@@ -31,7 +31,7 @@ npm install --global --prefix "$HOME/.local" @earendil-works/pi-coding-agent@0.9
 
 ```sh
 #!/bin/sh
-exec /usr/local/lib/tyrs-hand/pi-runtime/<adapter-commit>/pi-runtime/bin/pi-codex "$@"
+exec /usr/local/lib/tyrs-hand/pi-runtime/<adapter-commit>/pi-runtime/bin/codex-harness-adapter-pi "$@"
 ```
 
 使用包装脚本而不是软链，保证入口按自身路径找到制品文件。修改已有 Worker 配置前备份，并保留最近 4 份历史：

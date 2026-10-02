@@ -7,6 +7,6 @@ prefix="$root/.local/toolchains/claude-$version"
 npm install --prefix "$prefix" --save-exact "@anthropic-ai/claude-code@$version" --no-audit --no-fund
 cli="$prefix/node_modules/.bin/claude"
 if [ -n "${GITHUB_ENV:-}" ]; then
-  printf 'TYRS_HAND_TEST_CLAUDE_CLI=%s\nCLAUDE_CODEX_CLI=%s\n' "$cli" "$cli" >> "$GITHUB_ENV"
+  printf 'TYRS_HAND_TEST_CLAUDE_CLI=%s\nCHA_CLAUDE_CLI=%s\n' "$cli" "$cli" >> "$GITHUB_ENV"
 fi
 printf '测试 CLI: %s\n' "$cli"

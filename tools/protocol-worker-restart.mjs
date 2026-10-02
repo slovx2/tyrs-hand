@@ -14,7 +14,7 @@ import { completedTitleProjection } from './protocol-recovery-title.mjs'
 
 // 独立当前版本恢复验收：复用进程/数据库夹具，不构建或运行任何旧版源码。
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, '../claude-codex'))
+const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, 'adapter-source'))
 const evidence = resolve(process.env.TYRS_HAND_RESTART_EVIDENCE ??
   resolve(repo, '.artifacts/protocol-worker-restart', randomUUID()))
 const root = await realpath(await mkdtemp('/tmp/tyrs-restart-'))
@@ -57,7 +57,7 @@ function rows(turnId) {
 async function pending(engine, turnId) {
   return until(engine + ' 自然写入当前版本待补报 journal', async () => {
     if (!proxy.runId || proxy.rejected.complete === 0 || proxy.rejected.events === 0) return undefined
-    const path = resolve(worker.state, engine === 'codex' ? '' : 'claude-code',
+    const path = resolve(worker.state, engine === 'codex' ? '' : 'codex-harness-adapter/claude-code',
       'control-state/runs', proxy.runId + '.json')
     const bytes = await readFile(path)
     const journal = JSON.parse(bytes)

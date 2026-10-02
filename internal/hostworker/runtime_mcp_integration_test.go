@@ -83,7 +83,7 @@ func verifyRuntimeMcpElicitation(t *testing.T, ctx context.Context, registry *Ru
 	file := filepath.Join(root, "mcp-effect.txt")
 	node, err := exec.LookPath("node")
 	require.NoError(t, err)
-	fixture := filepath.Join(filepath.Dir(filepath.Dir(os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN"))), "test", "fixtures", "mcp-interactive-server.mjs")
+	fixture := filepath.Join(filepath.Dir(filepath.Dir(os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN"))), "packages", "claude", "test", "fixtures", "mcp-interactive-server.mjs")
 	thread := readSessionThread(t, ctx, clients[0], "thread/start", map[string]any{
 		"cwd": root, "approvalPolicy": "never", "sandbox": "danger-full-access",
 		"config": map[string]any{"mcp_servers": map[string]any{"fixture": map[string]any{

@@ -2,21 +2,22 @@ package hostworker
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"encoding/json"
 	"io"
-	"net"
 	"os"
 	"sync"
 
-	"github.com/creack/pty"
+	"github.com/slovx2/codex-harness-adapter/sshserver"
+	"github.com/slovx2/tyrs-hand/internal/runtimeidentity"
 	"go.uber.org/zap"
-	"golang.org/x/crypto/ssh"
 )
 
-type AuthorizedClient struct {
-	ID        string
-	PublicKey ssh.PublicKey
+type AuthorizedClient = sshserver.AuthorizedClient
+type ClientAuthorization = sshserver.ClientAuthorization
+type DesktopServer = sshserver.DesktopServer
+
+func NewClientAuthorization(clients []AuthorizedClient) *ClientAuthorization {
+	return sshserver.NewClientAuthorization(clients)
 }
 
 type SSHOptions struct {
@@ -33,229 +34,84 @@ type SSHOptions struct {
 	Logger            *zap.Logger
 }
 
-type DesktopServer interface {
-	ServeDesktop(net.Conn) error
+// Worker 只注入业务策略，SSH 协议与连接生命周期由独立库实现。
+type SSHServer struct {
+	*sshserver.SSHServer
+	options SSHOptions
+	wg      sync.WaitGroup
 }
 
-type SSHServer struct {
-	options            SSHOptions
-	listener           net.Listener
-	config             *ssh.ServerConfig
-	hostKeyFingerprint string
-
-	mu          sync.Mutex
-	connections map[*ssh.ServerConn]struct{}
-	closed      bool
-	wg          sync.WaitGroup
+func (s *SSHServer) Close() error {
+	err := s.SSHServer.Close()
+	// 通用服务已停止接收转发请求，再等待本体持有的 OAuth 回调结束。
+	s.wg.Wait()
+	return err
 }
 
 func StartSSHServer(ctx context.Context, options SSHOptions) (*SSHServer, error) {
-	if options.ListenAddr == "" || options.HostKeyFile == "" || options.Home == "" ||
-		options.CodexHome == "" || options.Runtime == nil {
-		return nil, errors.New("SSH Server 配置不完整")
+	s := &SSHServer{options: options}
+	shared := sshserver.SSHOptions{
+		ListenAddr: options.ListenAddr, HostKeyFile: options.HostKeyFile,
+		Home: options.Home, CodexHome: options.CodexHome, Shell: options.Shell,
+		AuthorizedClients: options.AuthorizedClients, Authorization: options.Authorization,
+		Runtime: options.Runtime, Logger: options.Logger, Command: s.command,
+		Forward: s.handleOAuthForward,
 	}
-	if options.Shell == "" {
-		options.Shell = "/bin/sh"
+	if runtime, ok := options.Runtime.(*Runtime); ok {
+		shared.EntryBin = runtime.EntryBin()
+		shared.Environment = func() []string {
+			environment := appServerEnvironment(runtime.options.Environment)
+			values := map[string]string{}
+			if runtime.options.Engine == runtimeidentity.Pi {
+				environment = piEnvironment(runtime.options.Environment)
+				values["CHA_PI_HOME"] = runtime.StateDir()
+			}
+			if runtime.options.Engine == runtimeidentity.Claude {
+				values["CHA_CLAUDE_HOME"] = runtime.StateDir()
+			}
+			return replaceEnvironment(environment, values)
+		}
+	} else {
+		shared.Environment = os.Environ
 	}
-	if options.Logger == nil {
-		options.Logger = zap.NewNop()
-	}
-	signer, err := loadOrCreateHostKey(options.HostKeyFile)
+	server, err := sshserver.StartSSHServer(ctx, shared)
 	if err != nil {
 		return nil, err
 	}
-	if options.Authorization == nil {
-		options.Authorization = NewClientAuthorization(options.AuthorizedClients)
-	}
-	configuration := &ssh.ServerConfig{
-		PublicKeyCallback: func(metadata ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			clientID, ok := options.Authorization.lookup(string(key.Marshal()))
-			if !ok {
-				options.Logger.Warn("拒绝未授权 Worker SSH 公钥",
-					zap.String("fingerprint", ssh.FingerprintSHA256(key)),
-					zap.String("remote", metadata.RemoteAddr().String()))
-				return nil, errors.New("SSH 公钥未授权")
-			}
-			return &ssh.Permissions{Extensions: map[string]string{"client-id": clientID, "client-key": string(key.Marshal())}}, nil
-		},
-		MaxAuthTries: 3,
-	}
-	configuration.AddHostKey(signer)
-	listener, err := net.Listen("tcp", options.ListenAddr)
-	if err != nil {
-		return nil, fmt.Errorf("监听 Worker SSH: %w", err)
-	}
-	server := &SSHServer{options: options, listener: listener, config: configuration,
-		hostKeyFingerprint: ssh.FingerprintSHA256(signer.PublicKey()),
-		connections:        make(map[*ssh.ServerConn]struct{})}
-	options.Authorization.mu.Lock()
-	options.Authorization.servers[server] = struct{}{}
-	options.Authorization.mu.Unlock()
-	server.wg.Add(1)
-	go server.serve(ctx)
-	return server, nil
+	s.SSHServer = server
+	return s, nil
 }
 
-func (s *SSHServer) Addr() net.Addr { return s.listener.Addr() }
-
-func (s *SSHServer) HostKeyFingerprint() string { return s.hostKeyFingerprint }
-
-func (s *SSHServer) Close() error {
-	s.options.Authorization.mu.Lock()
-	delete(s.options.Authorization.servers, s)
-	s.options.Authorization.mu.Unlock()
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		s.wg.Wait()
-		return nil
-	}
-	s.closed = true
-	_ = s.listener.Close()
-	for connection := range s.connections {
-		_ = connection.Close()
-	}
-	s.mu.Unlock()
-	s.wg.Wait()
-	return nil
-}
-
-func (s *SSHServer) serve(ctx context.Context) {
-	defer s.wg.Done()
-	go func() {
-		<-ctx.Done()
-		_ = s.Close()
-	}()
-	for {
-		raw, err := s.listener.Accept()
-		if err != nil {
-			return
-		}
-		s.wg.Add(1)
-		go s.handleConnection(raw)
-	}
-}
-
-func (s *SSHServer) handleConnection(raw net.Conn) {
-	defer s.wg.Done()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	connection, channels, requests, err := ssh.NewServerConn(raw, s.config)
-	if err != nil {
-		_ = raw.Close()
-		return
-	}
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		_ = connection.Close()
-		return
-	}
-	s.connections[connection] = struct{}{}
-	s.mu.Unlock()
-	if id, ok := s.options.Authorization.lookup(connection.Permissions.Extensions["client-key"]); !ok || id != connection.Permissions.Extensions["client-id"] {
-		_ = connection.Close()
-	}
-	defer func() {
-		s.mu.Lock()
-		delete(s.connections, connection)
-		s.mu.Unlock()
-		_ = connection.Close()
-	}()
-	go ssh.DiscardRequests(requests)
-	for request := range channels {
-		if request.ChannelType() == "direct-tcpip" {
-			s.handleOAuthForward(ctx, request)
-			continue
-		}
-		if request.ChannelType() != "session" {
-			_ = request.Reject(ssh.Prohibited, "Worker 禁止 SSH 转发")
-			continue
-		}
-		channel, channelRequests, err := request.Accept()
-		if err != nil {
-			continue
-		}
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			s.handleSession(channel, channelRequests)
-		}()
-	}
-}
-
-type sshSessionState struct {
-	environment map[string]string
-	term        string
-	columns     uint32
-	rows        uint32
-	started     bool
-	process     *os.File
-}
-
-func (s *SSHServer) handleSession(channel ssh.Channel, requests <-chan *ssh.Request) {
-	defer func() { _ = channel.Close() }()
-	state := &sshSessionState{environment: make(map[string]string), columns: 80, rows: 24}
-	for request := range requests {
-		switch request.Type {
-		case "env":
-			var input struct{ Name, Value string }
-			if ssh.Unmarshal(request.Payload, &input) == nil && !state.started {
-				state.environment[input.Name] = input.Value
-				_ = request.Reply(true, nil)
-			} else {
-				_ = request.Reply(false, nil)
+func (s *SSHServer) command(ctx context.Context, command string, channel io.ReadWriteCloser) (bool, uint32) {
+	if s.options.RuntimeInfo != nil {
+		info := s.options.RuntimeInfo()
+		switch command {
+		case "tyrs-hand-worker runtime info":
+			if err := json.NewEncoder(channel).Encode(info); err != nil {
+				return true, 1
 			}
-		case "pty-req":
-			var input struct {
-				Term                         string
-				Columns, Rows, Width, Height uint32
-				Modes                        string
+			return true, 0
+		case "codex --version", "codex -V":
+			_, err := io.WriteString(channel, "codex-cli "+info.CodexVersion()+"\n")
+			if err != nil {
+				return true, 1
 			}
-			if ssh.Unmarshal(request.Payload, &input) == nil && !state.started {
-				state.term, state.columns, state.rows = input.Term, input.Columns, input.Rows
-				_ = request.Reply(true, nil)
-			} else {
-				_ = request.Reply(false, nil)
+			return true, 0
+		case "codex app-server daemon start":
+			if info.Status != "running" {
+				return true, 1
 			}
-		case "window-change":
-			var input struct{ Columns, Rows, Width, Height uint32 }
-			if ssh.Unmarshal(request.Payload, &input) == nil {
-				state.columns, state.rows = input.Columns, input.Rows
-				if state.process != nil {
-					_ = pty.Setsize(state.process, &pty.Winsize{Cols: uint16(input.Columns), Rows: uint16(input.Rows)})
-				}
-			}
-		case "subsystem":
-			var input struct{ Name string }
-			if ssh.Unmarshal(request.Payload, &input) == nil && input.Name == "sftp" && !state.started {
-				state.started = true
-				_ = request.Reply(true, nil)
-				s.serveSFTP(channel)
-				return
-			}
-			_ = request.Reply(false, nil)
-		case "exec":
-			var input struct{ Command string }
-			if ssh.Unmarshal(request.Payload, &input) != nil || state.started {
-				_ = request.Reply(false, nil)
-				continue
-			}
-			state.started = true
-			_ = request.Reply(true, nil)
-			s.runCommand(channel, state, input.Command)
-			return
-		case "shell":
-			if state.started {
-				_ = request.Reply(false, nil)
-				continue
-			}
-			state.started = true
-			_ = request.Reply(true, nil)
-			s.runShell(channel, state)
-			return
-		default:
-			_ = request.Reply(false, nil)
+			return true, 0
 		}
 	}
+	if command == "tyrs-hand-worker browser proxy" {
+		if s.options.BrowserProxy == nil {
+			return true, 127
+		}
+		if err := s.options.BrowserProxy(ctx, channel); err != nil {
+			return true, 1
+		}
+		return true, 0
+	}
+	return false, 0
 }

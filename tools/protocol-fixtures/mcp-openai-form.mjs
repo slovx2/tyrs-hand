@@ -7,7 +7,7 @@ import { resolve } from 'node:path'
 const [adapter, mode, effect] = process.argv.slice(2)
 assert.ok(adapter && effect, '必须指定隔离夹具目录')
 assert.ok(['form', 'openai/form', 'openaiForm'].includes(mode), '只测试固定协议声明的表单模式')
-const require = createRequire(resolve(adapter, 'package.json'))
+const require = createRequire(resolve(adapter, 'packages/claude/package.json'))
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js')
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js')
 const { CallToolRequestSchema, ListToolsRequestSchema, ElicitResultSchema } = require('@modelcontextprotocol/sdk/types.js')

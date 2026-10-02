@@ -24,7 +24,7 @@ export function structuredTitleResponse(request) {
 
 // extra：可选的附加场景（如桌面端），按标记返回模型回复；未命中的标记仍按移动端场景处理。
 export async function startModels(adapter, evidenceDir, extra = {}) {
-  const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'dist/test/fixtures/mock-llm.mjs')))
+  const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'packages/claude/dist/claude/test/fixtures/mock-llm.mjs')))
   const models = {}, urls = {}, completed = new Set(), mcpResults = {}
   let workspace
   for (const engine of ['codex', 'claude-code']) {

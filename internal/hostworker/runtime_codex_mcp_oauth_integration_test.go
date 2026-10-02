@@ -151,7 +151,7 @@ if(%t){const original=f.mcp.bind(f);f.mcp=async(req,res)=>{
 const summary=()=>JSON.stringify({errors:f.errors,exchanges:f.exchanges,effects:f.effects,authorizedRequests:f.authorizedRequests,refreshes:f.refreshes});
 for(const server of [f.authServer,f.mcpServer])server.on('request',(_req,res)=>res.on('finish',()=>writeFileSync(%q,summary())));
 console.log(JSON.stringify({url:await f.start()}));
-process.on('SIGTERM',async()=>{await f.close();await writeFile(%q,summary());process.exit(0)});`, filepath.Join(adapter, "dist", "test", "fixtures", "mcp-oauth.mjs"), filepath.Join(adapter, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "server", "streamableHttp.js"), effect, requestReport, t.Name() == "TestRuntimeCodexMcpOAuthHeadersRealSSH", evidenceReport, report)
+process.on('SIGTERM',async()=>{await f.close();await writeFile(%q,summary());process.exit(0)});`, filepath.Join(adapter, "packages", "claude", "dist", "claude", "test", "fixtures", "mcp-oauth.mjs"), filepath.Join(adapter, "packages", "claude", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "server", "streamableHttp.js"), effect, requestReport, t.Name() == "TestRuntimeCodexMcpOAuthHeadersRealSSH", evidenceReport, report)
 	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", code)
 	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root}
 	stdout, err := command.StdoutPipe()

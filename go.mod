@@ -6,7 +6,6 @@ require (
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
-	github.com/creack/pty v1.1.24
 	github.com/disgoorg/disgo v0.19.6
 	github.com/disgoorg/omit v1.0.0
 	github.com/disgoorg/snowflake/v2 v2.0.3
@@ -38,6 +37,11 @@ require (
 	golang.org/x/mod v0.40.0
 	golang.org/x/oauth2 v0.35.0
 	modernc.org/sqlite v1.36.3
+)
+
+require (
+	github.com/UserExistsError/conpty v0.1.4 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 )
 
 replace github.com/spf13/viper => github.com/spf13/viper v1.18.2
@@ -140,6 +144,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/shurcooL/graphql v0.0.0-20230722043721-ed46e5a46466 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/slovx2/codex-harness-adapter v0.3.0
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/speakeasy-api/openapi-overlay v0.9.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect

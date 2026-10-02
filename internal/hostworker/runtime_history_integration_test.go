@@ -92,7 +92,7 @@ func (f *runtimeHistoryFixture) model(w http.ResponseWriter, body []byte) {
 	if step%4 == 0 {
 		name := ""
 		for _, tool := range request.Tools {
-			if strings.HasPrefix(tool.Name, "mcp__tyrs_hand__") {
+			if strings.HasPrefix(tool.Name, "mcp__codex_harness_adapter__") {
 				name = tool.Name
 				break
 			}

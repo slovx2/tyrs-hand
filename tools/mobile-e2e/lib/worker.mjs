@@ -25,7 +25,7 @@ export class WorkerHarness {
   async start() {
     this.pin = JSON.parse(await readFile(resolve(this.repoRoot, 'protocol/adapter-lock.json')))
     assert.equal(process.versions.node, this.pin.node, '必须使用固定 Node')
-    this.adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(this.repoRoot, '../claude-codex'))
+    this.adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(this.repoRoot, 'adapter-source'))
     assert.equal(output('git', ['rev-parse', 'HEAD'], { cwd: this.adapter }), this.pin.commit)
     assert.equal(output('git', ['status', '--porcelain'], { cwd: this.adapter }), '', '适配器必须使用已提交版本')
     this.codex = process.env.TYRS_HAND_TEST_CODEX_BIN ?? 'codex'
@@ -47,10 +47,10 @@ export class WorkerHarness {
     const codexHome = resolve(this.root, 'codex')
     const claudeConfig = resolve(this.home, '.claude')
     for (const path of [this.workspace, this.home, codexHome, claudeConfig,
-      resolve(this.root, 'tmp'), resolve(this.state, 'claude-code/ssh')]) {
+      resolve(this.root, 'tmp'), resolve(this.state, 'codex-harness-adapter/claude-code/ssh')]) {
       await mkdir(path, { recursive: true, mode: 0o700 })
     }
-    const sdkRoot = resolve(this.adapter, 'node_modules/@anthropic-ai/claude-agent-sdk')
+    const sdkRoot = resolve(this.adapter, 'packages/claude/node_modules/@anthropic-ai/claude-agent-sdk')
     const sdkVersion = JSON.parse(await readFile(resolve(sdkRoot, 'package.json'))).version
     assert.equal(sdkVersion, this.pin.claudeAgentSdk)
     const nativeCLI = process.env.TYRS_HAND_TEST_CLAUDE_CLI
@@ -70,7 +70,7 @@ export class WorkerHarness {
     this.privateKey = await readFile(this.clientKey, 'utf8')
     await writeFile(resolve(this.root, 'authorized_keys'), await readFile(this.clientKey + '.pub'), { mode: 0o600 })
     const hostKeys = { codex: resolve(this.root, 'host-key'),
-      'claude-code': resolve(this.state, 'claude-code/ssh/host_key') }
+      'claude-code': resolve(this.state, 'codex-harness-adapter/claude-code/ssh/host_key') }
     let knownHosts = ''
     for (const engine of engines) {
       this.ports[engine] = await freePort()
@@ -102,7 +102,7 @@ stream_max_retries=0
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     } }), { mode: 0o600 })
     // 使用真实适配器持久配置；Claude 的环境白名单仍保持不变。
-    await writeFile(resolve(this.state, 'claude-code/config.json'), JSON.stringify({ overrides: {
+    await writeFile(resolve(this.state, 'codex-harness-adapter/claude-code/config.json'), JSON.stringify({ overrides: {
       mcp_servers: { mobile_fixture: { command: process.execPath,
         args: [resolve(this.repoRoot, 'tools/mobile-e2e/fixtures/mcp-server.mjs'), this.adapter, this.workspace],
         startup_timeout_sec: 30 } },

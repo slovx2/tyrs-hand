@@ -69,7 +69,7 @@ jobs:
         run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"commit="+require("./protocol/adapter-lock.json").commit+"\n")'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
           path: .local/mobile-adapter
       - name: 安装SDK并验证网络隔离预检
@@ -77,6 +77,8 @@ jobs:
           mkdir -p .artifacts/mobile-runtime
           exec > >(tee .artifacts/mobile-runtime/preflight.log) 2>&1
           npm ci --prefix .local/mobile-adapter
+          npm ci --prefix .local/mobile-adapter/packages/claude
+          npm ci --prefix .local/mobile-adapter/packages/pi
           sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -237,13 +239,15 @@ jobs:
         run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"commit="+require("./protocol/adapter-lock.json").commit+"\n")'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
           path: .local/mobile-adapter
       - name: 安装SDK并执行真实运行时预检
         run: |
           mkdir -p .artifacts/mobile-runtime
           npm ci --prefix .local/mobile-adapter
+          npm ci --prefix .local/mobile-adapter/packages/claude
+          npm ci --prefix .local/mobile-adapter/packages/pi
           sh tools/install-test-claude.sh
           npm ci --prefix tools/protocol-inventory
       - name: 验证固定宿主 CLI 的双入口

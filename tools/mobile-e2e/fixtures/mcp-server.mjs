@@ -7,7 +7,7 @@ import { mobileMcpSchema, mobileMcpScenarios } from '../lib/mcp-scenarios.mjs'
 // 复用已锁定适配器的 MCP SDK；不另外安装依赖，也不模拟服务端回调。
 const [adapter, workspace] = process.argv.slice(2)
 assert.ok(adapter && workspace, '缺少隔离 MCP 夹具路径')
-const require = createRequire(resolve(adapter, 'package.json'))
+const require = createRequire(resolve(adapter, 'packages/claude/package.json'))
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js')
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js')
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js')

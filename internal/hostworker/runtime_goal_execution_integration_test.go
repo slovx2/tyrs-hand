@@ -70,8 +70,8 @@ func (f *runtimeGoalExecutionFixture) model(t *testing.T, w http.ResponseWriter,
 		block = tool("Read", "goal_read", map[string]any{"file_path": filepath.Join(f.root, "goal-complete.txt")})
 	case 4:
 		requireGoalToolResult(t, body, "goal_read", f.secret)
-		require.Contains(t, string(body), "mcp__tyrs_goal__update_goal")
-		block = tool("mcp__tyrs_goal__update_goal", "goal_complete", map[string]any{"status": "complete"})
+		require.Contains(t, string(body), "mcp__codex_harness_adapter_goal__update_goal")
+		block = tool("mcp__codex_harness_adapter_goal__update_goal", "goal_complete", map[string]any{"status": "complete"})
 	case 5:
 		requireGoalToolResult(t, body, "goal_complete", "complete")
 		block = map[string]any{"type": "text", "text": "GOAL_SSH_COMPLETE_DONE"}

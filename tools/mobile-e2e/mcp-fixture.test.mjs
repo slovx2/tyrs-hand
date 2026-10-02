@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { mobileMcpAnswer, mobileMcpScenarios, mobileMcpSchema } from './lib/mcp-scenarios.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const adapter = process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex')
-const require = createRequire(resolve(adapter, 'package.json'))
+const adapter = process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, 'adapter-source')
+const require = createRequire(resolve(adapter, 'packages/claude/package.json'))
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js')
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js')
 const { ElicitRequestSchema } = require('@modelcontextprotocol/sdk/types.js')

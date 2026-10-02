@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { structuredTitleResponse } from './mobile-e2e/lib/models.mjs'
 
 export async function startMigrationModels(adapter, workspace, { journal = false } = {}) {
-  const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'dist/test/fixtures/mock-llm.mjs')))
+  const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'packages/claude/dist/claude/test/fixtures/mock-llm.mjs')))
   const models = {}, urls = {}, completed = new Set(), calls = {}, auxiliaryCalls = {}
   for (const engine of ['codex', 'claude-code']) {
     const model = new MockLLM()

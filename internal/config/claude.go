@@ -7,7 +7,9 @@ import (
 )
 
 // Claude 适配器状态从 Worker 根目录派生；Claude 自身配置使用宿主用户的 ~/.claude。
-func (c Config) ClaudeStateDir() string    { return filepath.Join(c.WorkerDataRoot, "claude-code") }
+func (c Config) ClaudeStateDir() string {
+	return filepath.Join(c.WorkerDataRoot, "codex-harness-adapter", "claude-code")
+}
 func (c Config) ClaudeAdapterHome() string { return filepath.Join(c.ClaudeStateDir(), "config") }
 func (c Config) ClaudeConfigDir() string   { return filepath.Join(c.WorkerHome, ".claude") }
 func (c Config) ClaudeHostKeyFile() string {

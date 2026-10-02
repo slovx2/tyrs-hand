@@ -14,7 +14,7 @@ Worker 的 Claude 配置目录就是 Worker 服务用户真实 HOME 下的原生
 
 Worker 不设置 `CLAUDE_CONFIG_DIR`，Claude runtime 与 SSH 会话都按原生默认读取
 `~/.claude` 和 `~/.claude.json`，与在该宿主直接运行 `claude` 一致；不复制 Codex 的登录态。
-适配器自身状态仍在 `<WorkerDataRoot>/claude-code/`。
+适配器自身状态位于 `<WorkerDataRoot>/codex-harness-adapter/claude-code/`，不读取或迁移旧适配器目录。
 Worker 每次启动时从 `~/.claude/settings.json` 移除
 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 总开关，分别把 `DISABLE_TELEMETRY`、
 `DO_NOT_TRACK`、`DISABLE_ERROR_REPORTING`、`DISABLE_AUTOUPDATER` 设为 `1`。

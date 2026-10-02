@@ -186,14 +186,14 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 		for name, value := range claudeValues {
 			values[name] = value
 		}
-		values["CLAUDE_CODEX_HOME"] = options.StateDir
-		values["CLAUDE_CODEX_IDLE_EXIT_MS"] = "0"
-		values["CLAUDE_CODEX_RUNTIME"] = "agent-sdk-sidecar"
+		values["CHA_CLAUDE_HOME"] = options.StateDir
+		values["CHA_CLAUDE_IDLE_EXIT_MS"] = "0"
+		values["CHA_CLAUDE_RUNTIME"] = "agent-sdk-sidecar"
 		delete(values, "TYRS_HAND_MODEL_API_KEY")
 		delete(values, "TYRS_HAND_MODEL_BASE_URL")
 	}
 	if options.Engine == runtimeidentity.Pi {
-		values["PI_ADAPTER_HOME"] = options.StateDir
+		values["CHA_PI_HOME"] = options.StateDir
 		delete(values, "TYRS_HAND_MODEL_API_KEY")
 		delete(values, "TYRS_HAND_MODEL_BASE_URL")
 	}

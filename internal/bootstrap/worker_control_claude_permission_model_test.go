@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const controlClaudePermissionTool = "mcp__tyrs_permissions__request_permissions"
+const controlClaudePermissionTool = "mcp__codex_harness_adapter_permissions__request_permissions"
 
 type claudePermissionResult struct {
 	Type      string

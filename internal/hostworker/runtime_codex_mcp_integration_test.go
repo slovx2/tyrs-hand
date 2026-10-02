@@ -164,7 +164,7 @@ import {appendFile,writeFile} from 'node:fs/promises';
 const fixture=new LocalMcp(()=>appendFile(%q,'HTTP_MODEL_WRITE\n'));
 console.log(JSON.stringify({url:await fixture.start()}));
 process.on('SIGTERM',async()=>{await fixture.close();await writeFile(%q,JSON.stringify({calls:fixture.calls,errors:fixture.errors}));process.exit(0)});`,
-		filepath.Join(adapter, "dist", "test", "fixtures", "mcp-http.mjs"), effect, report)
+		filepath.Join(adapter, "packages", "claude", "dist", "claude", "test", "fixtures", "mcp-http.mjs"), effect, report)
 	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", code)
 	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root}
 	stdout, err := command.StdoutPipe()
@@ -218,7 +218,7 @@ func verifyRuntimeCodexMcp(t *testing.T, ctx context.Context, registry *RuntimeR
 		"httpfixture": map[string]any{"url": httpURL, "http_headers": map[string]string{"Authorization": "Bearer test-not-a-secret", "X-Runtime": "claude-fixture"}},
 	}
 	for _, mode := range []string{"form", "url"} {
-		servers[mode+"fixture"] = map[string]any{"command": node, "args": []string{filepath.Join(adapter, "test", "fixtures", "mcp-interactive-server.mjs")},
+		servers[mode+"fixture"] = map[string]any{"command": node, "args": []string{filepath.Join(adapter, "packages", "claude", "test", "fixtures", "mcp-interactive-server.mjs")},
 			"env": map[string]string{"FIXTURE_ELICITATION_MODE": mode, "FIXTURE_EFFECT_PATH": filepath.Join(project, "mcp-"+mode+"-effect.txt")}}
 	}
 	client, _ := connectRuntimeSSHWithTrace(t, ctx, connection, runtimeidentity.Codex, codex.SocketClientOptions{})
@@ -568,7 +568,7 @@ func runtimeCodexMcpTurn(t *testing.T, ctx context.Context, connection *ssh.Clie
 // mcpServerStatus/list 的 app-server 分页仍在本专项以 limit=1 独立验证。
 func runtimeCodexMcpManager(t *testing.T, root, adapter string) string {
 	t.Helper()
-	sdk := filepath.Join(adapter, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm")
+	sdk := filepath.Join(adapter, "packages", "claude", "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm")
 	code := fmt.Sprintf(`import {appendFile,readFile} from 'node:fs/promises';
 import {Server} from %q;
 import {StdioServerTransport} from %q;
@@ -613,7 +613,7 @@ createInterface({input:child.stdout}).on('line',line=>{
 });
 process.stdin.on('end',()=>child.stdin.end());
 process.on('SIGTERM',()=>child.kill('SIGTERM'));
-child.on('exit',code=>process.exit(code??1));`, filepath.Join(adapter, "test", "fixtures", "mcp-management-server.mjs"), filepath.Join(root, "mcp-pagination-transcript.txt"))
+child.on('exit',code=>process.exit(code??1));`, filepath.Join(adapter, "packages", "claude", "test", "fixtures", "mcp-management-server.mjs"), filepath.Join(root, "mcp-pagination-transcript.txt"))
 	path := filepath.Join(root, "mcp-pagination-relay.mjs")
 	require.NoError(t, os.WriteFile(path, []byte(code), 0o600))
 	return path

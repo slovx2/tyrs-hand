@@ -62,7 +62,7 @@ func verifyRuntimeMcpOAuth(t *testing.T, ctx context.Context, registry *RuntimeR
 	root := registry.entries[runtimeidentity.Claude].Runtime.WorkspaceRoot()
 	effect := filepath.Join(root, "oauth-ssh-effect.txt")
 	adapter := filepath.Dir(filepath.Dir(os.Getenv("TYRS_HAND_TEST_CLAUDE_BIN")))
-	fixture := filepath.Join(adapter, "dist", "test", "fixtures", "mcp-oauth.mjs")
+	fixture := filepath.Join(adapter, "packages", "claude", "dist", "claude", "test", "fixtures", "mcp-oauth.mjs")
 	code := fmt.Sprintf("import { OAuthMcpFixture } from %q; const fixture=new OAuthMcpFixture(%q); const url=await fixture.start(); console.log(JSON.stringify({url})); process.on('SIGTERM',async()=>{await fixture.close();process.exit(0)});", fixture, effect)
 	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", code)
 	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root}

@@ -13,11 +13,11 @@
 - GitHub `Mobile E2E` 默认运行 `both`。只运行单平台可用于定位失败，但完整门禁不会通过。
 
 工具链由 `protocol/adapter-lock.json` 固定。需要对应 Node、Codex、已提交且干净的
-适配器，以及 Maestro 2.3.0。适配器通过 `TYRS_HAND_ADAPTER_ROOT` 指定，默认是并列
-目录 `../claude-codex`；测试会检查 commit，不接受浮动安装的 Claude。
+适配器，以及 Maestro 2.3.0。适配器通过 `TYRS_HAND_ADAPTER_ROOT` 指定，默认是仓库内的
+`adapter-source`；测试会检查 commit，不接受浮动安装的 Claude。
 
 先执行 `sh tools/install-test-claude.sh`，再把 `TYRS_HAND_TEST_CLAUDE_CLI` 和
-`CLAUDE_CODEX_CLI` 指向输出的固定 CLI 路径（CI 自动导出）。测试使用独立 npm 安装的
+`CHA_CLAUDE_CLI` 指向输出的固定 CLI 路径（CI 自动导出）。测试使用独立 npm 安装的
 Claude Code 2.1.282，不再查找 SDK 内置平台包；临时 HOME 下的 `~/.claude` 隔离个人配置。
 
 本地默认用固定 digest 的 PostgreSQL 和 Redis 容器。macOS CI 使用

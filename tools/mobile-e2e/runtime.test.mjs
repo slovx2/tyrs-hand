@@ -15,7 +15,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 test('正式 Worker 共用密钥双 SSH：计划、权限、审批与六个原生 MCP 场景', { timeout: 360_000 }, async () => {
   const runDir = resolve(repoRoot, '.artifacts/mobile-runtime', String(Date.now()))
-  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, '../claude-codex'))
+  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, 'adapter-source'))
   await mkdir(runDir, { recursive: true })
   const control = new ControlHarness({ repoRoot, runDir: resolve(runDir, 'control'), label: 'real-mobile' })
   const clients = [], approvals = []

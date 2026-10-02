@@ -79,7 +79,7 @@ async function startWorker({ control, registration, modelURL, adapter }) {
   const binary = resolve(root, 'tyrs-hand-worker')
   run('go', ['build', '-o', binary, './cmd/tyrs-hand-worker'], { cwd: repoRoot })
   // Pi 适配器经 wire 录制器启动，录制真实客户端与适配器之间的全部协议消息。
-  const piBin = resolve(root, 'pi-codex'), recorder = resolve(root, 'pi-recorder.json'), wrapper = resolve(root, 'pi-cli')
+  const piBin = resolve(root, 'codex-harness-adapter-pi'), recorder = resolve(root, 'pi-recorder.json'), wrapper = resolve(root, 'pi-cli')
   await writeFile(piBin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(resolve(adapter, 'packages/pi/dist/pi/src/adapter.mjs'))} "$@"\n`, { mode: 0o700 })
   await writeFile(recorder, JSON.stringify({ engine: 'pi', binary: piBin, wsModule: resolve(adapter, 'node_modules/ws/index.js'),
     trace: resolve(runDir, 'worker/wire-pi.jsonl') }), { mode: 0o600 })
@@ -117,7 +117,7 @@ async function main() {
   const expected = selectMarkers({ suite: argumentsMap.get('--suite') ?? 'smoke', only: argumentsMap.get('--only') })
   await mkdir(resolve(runDir, 'worker'), { recursive: true })
   assert.equal(process.versions.node, JSON.parse(await readFile(resolve(repoRoot, 'protocol/adapter-lock.json'))).node, '必须使用固定 Node')
-  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, '../claude-codex'))
+  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, 'adapter-source'))
   run('npm', ['--prefix', 'packages/pi', 'run', 'build'], { cwd: adapter })
   const model = await startPiModel({ scenarios: piScenarios, aliases: piAliases, evidenceDir: runDir })
   managed.models.push({ name: 'pi-model', stop: () => model.close() })

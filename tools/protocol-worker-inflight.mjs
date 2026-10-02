@@ -13,7 +13,7 @@ import { schemaIndex, payloadValidator } from './protocol-inventory/schema.mjs'
 const pendingMode = process.argv.includes('--pending')
 assert.ok(process.argv.slice(2).every(arg => arg === '--pending'))
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, '../claude-codex'))
+const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repo, 'adapter-source'))
 const evidence = resolve(process.env.TYRS_HAND_INFLIGHT_EVIDENCE ?? resolve(repo,
   '.artifacts/protocol-worker-inflight', randomUUID()))
 const root = await realpath(await mkdtemp('/tmp/tyrs-inflight-'))
@@ -49,7 +49,7 @@ async function buildCurrent() {
 }
 
 async function startModels() {
-  const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'dist/test/fixtures/mock-llm.mjs')))
+  const { MockLLM } = await import(pathToFileURL(resolve(adapter, 'packages/claude/dist/claude/test/fixtures/mock-llm.mjs')))
   const result = { models: {}, urls: {}, calls: {}, results: {} }
   for (const engine of ['codex', 'claude-code']) {
     const model = new MockLLM()
@@ -237,7 +237,7 @@ try {
   const state = await client.request('thread/read', { threadId: thread.id, includeTurns: true })
   assert.equal(state.thread.turns.find(item => item.id === turn.id)?.status, 'inProgress')
   const run = await until('真实Control已登记活动回合', () => rows(turn.id)[0])
-  const journalPath = resolve(worker.state, 'claude-code/control-state/runs', run.id + '.json')
+  const journalPath = resolve(worker.state, 'codex-harness-adapter/claude-code/control-state/runs', run.id + '.json')
   const originalJournal = JSON.parse(await readFile(journalPath))
   assert.ok(!originalJournal.result && !originalJournal.failure)
   const callsBefore = { ...models.calls }

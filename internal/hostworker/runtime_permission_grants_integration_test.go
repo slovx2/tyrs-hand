@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const runtimePermissionTool = "mcp__tyrs_permissions__request_permissions"
+const runtimePermissionTool = "mcp__codex_harness_adapter_permissions__request_permissions"
 
 func TestRuntimePermissionGrantsRealSSH(t *testing.T) {
 	testRuntimeRegistryRealSSH(t, "permission-grants")

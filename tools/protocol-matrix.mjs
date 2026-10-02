@@ -11,7 +11,7 @@ import { collectMacNetworkDiagnostics } from './protocol-macos-diagnostics.mjs'
 import { writePostgresDiagnostics } from './protocol-postgres-diagnostics.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, '../claude-codex'))
+const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(root, 'adapter-source'))
 const artifactsRoot = resolve(process.env.PROTOCOL_ARTIFACT_DIR ?? resolve(root, '.artifacts/protocol'))
 // CI 各分片共用同一 runId；汇总作业合并执行记录与通信证据后统一跑覆盖率门禁。
 const runId = process.env.PROTOCOL_RUN_ID || randomUUID()

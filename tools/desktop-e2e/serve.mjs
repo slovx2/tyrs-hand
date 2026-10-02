@@ -73,7 +73,7 @@ async function main() {
   const control = new ControlHarness({ repoRoot, runDir: resolve(runDir, 'control'), label: 'desktop' })
   managed.controls.push(control)
   await control.start()
-  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, '../claude-codex'))
+  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, 'adapter-source'))
   run('npm', ['run', 'build'], { cwd: adapter })
   const models = await startModels(adapter, runDir, desktopScenarios)
   managed.models.push({ name: 'models', stop: () => models.close() })

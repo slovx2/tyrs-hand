@@ -131,7 +131,7 @@ jobs:
         run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
           path: adapter-source
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
@@ -171,7 +171,7 @@ jobs:
         run: node -e 'const fs=require("node:fs"); const pin=require("./protocol/adapter-lock.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit="+pin.commit+"\n");'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: slovx2/claude-codex
+          repository: slovx2/codex-harness-adapter
           ref: ${{ steps.adapter.outputs.commit }}
           path: adapter-source
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2

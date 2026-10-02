@@ -61,7 +61,7 @@ export class MigrationWorker {
     this.codexHome = resolve(root, 'codex')
     this.credential = resolve(root, 'credential')
     this.keys = { codex: resolve(this.state, 'ssh/host_key'),
-      'claude-code': resolve(this.state, 'claude-code/ssh/host_key') }
+      'claude-code': resolve(this.state, 'codex-harness-adapter/claude-code/ssh/host_key') }
     this.knownHosts = resolve(root, 'known_hosts')
     this.clientKey = resolve(root, 'client-key')
   }
@@ -212,7 +212,7 @@ stream_max_retries=0
 
   async clearInstrumentationSockets(generation) {
     const sockets = [['codex', resolve(this.state, 'app-server.sock.native'), 'runtime-recorder'],
-      ['claude-code', resolve(this.state, 'claude-code/app-server.sock.native'), 'runtime-recorder']]
+      ['claude-code', resolve(this.state, 'codex-harness-adapter/claude-code/app-server.sock.native'), 'runtime-recorder']]
     for (const engine of ['codex', 'claude-code']) {
       sockets.push([engine, resolve(this.root, `ssh-${this.ports[engine]}.sock`), 'linux-ssh-relay'])
     }

@@ -198,7 +198,7 @@ async function main() {
   })
   controls.push(primary)
   await primary.start()
-  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, '../claude-codex'))
+  const adapter = resolve(process.env.TYRS_HAND_ADAPTER_ROOT ?? resolve(repoRoot, 'adapter-source'))
   run('npm', ['run', 'build'], { cwd: adapter })
   const models = await startModels(adapter, runDir)
   processes.push({ stop: () => models.close() })
