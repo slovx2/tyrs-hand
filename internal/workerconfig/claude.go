@@ -247,7 +247,7 @@ func (s *ClaudeService) UpdateProvider(input ClaudeProviderInput) (workerprotoco
 		return s.writeSettings(settings)
 	}
 	if !*current.ProviderSyncEnabled && input.ProviderSyncEnabled == nil {
-		return current, errors.New("Model Provider 同步已关闭，请先显式启用")
+		return current, errors.New("当前 Model Provider 同步已关闭，请先显式启用")
 	}
 	input.BaseURL = strings.TrimSpace(input.BaseURL)
 	u, err := url.Parse(input.BaseURL)
