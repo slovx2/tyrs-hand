@@ -14,6 +14,8 @@ pi-codex_<adapter-commit>_linux_amd64.tar.gz.sigstore.json
 
 打包脚本默认拒绝提交不符或未提交源码；`--local-acceptance` 仅用于本地验收，文件名含 `_local_`，不能替代正式制品。制品自检覆盖解包启动、实际版本、PTY、文件操作与真实 SDK/mock provider。正式流水线再校验 SHA-256，并通过 Sigstore 签名、验签。
 
+Linux amd64 制品按依赖包的 `os`、`cpu`、`libc` 声明裁剪其他平台包（含嵌套的 esbuild 平台二进制），解包后再次断言没有非目标平台包，并运行每份 esbuild 的 TypeScript 转换自检。不使用 `--omit=optional`，以保留 codemode 所需的本机二进制；SDK 自带的嵌套 JavaScript 依赖和 WASM 保留，避免改变官方模块解析和原生功能。
+
 ## 宿主安装
 
 Worker 安装器不负责安装 Pi CLI 或解包运行时。由部署人员按 Worker 用户原有 npm prefix 独立安装固定 CLI：

@@ -29,6 +29,8 @@ runtime="$stage/pi-runtime"
 mkdir -p "$runtime/bin" "$runtime/lib/scripts" "$stage/home"
 cp "$(command -v node)" "$runtime/bin/node"
 cp -R "$adapter_source/packages/pi/dist" "$adapter_source/packages/pi/node_modules" "$runtime/lib/"
+node "$project_root/tools/pi-runtime-platforms.mjs" prune "$runtime/lib/node_modules"
+node "$project_root/tools/pi-runtime-platforms.mjs" check "$runtime/lib/node_modules"
 cp "$adapter_source/packages/pi/package.json" "$adapter_source/packages/pi/package-lock.json" "$runtime/lib/"
 cp "$adapter_source/LICENSE" "$runtime/"
 cp "$project_root/protocol/adapter-lock.json" "$runtime/adapter-lock.json"
@@ -83,6 +85,7 @@ tar -C "$stage" -czf "$artifact_dir/$asset" pi-runtime
 (cd "$artifact_dir" && sha256sum "$asset" > "$asset.sha256")
 mkdir "$stage/unpacked"
 tar -C "$stage/unpacked" -xzf "$artifact_dir/$asset"
+"$stage/unpacked/pi-runtime/bin/node" "$project_root/tools/pi-runtime-platforms.mjs" check "$stage/unpacked/pi-runtime/lib/node_modules"
 env -i PATH=/usr/bin:/bin HOME="$stage/home" PI_CLI="$stage/pi-test-cli" PI_TEST_RUNTIME="$stage/unpacked/pi-runtime" \
   "$stage/unpacked/pi-runtime/bin/pi-codex" --runtime-info
 env -i PATH=/usr/bin:/bin HOME="$stage/home" "$stage/unpacked/pi-runtime/bin/pi-codex" --pty-self-check
