@@ -20,6 +20,72 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  browser-bridge:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '24.14.0' }
+      - id: browser
+        name: Read pinned browser sources
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const pin = JSON.parse(fs.readFileSync("deploy/browser/internal-build-lock.json"));
+            for (const [key, value] of Object.entries(pin))
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+          '
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: slovx2/playwright
+          ref: ${{ steps.browser.outputs.playwrightCommit }}
+          path: browser-core
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: slovx2/playwright-mcp
+          ref: ${{ steps.browser.outputs.bridgeCommit }}
+          path: browser-bridge
+      - name: Build Core and verify concurrent tab ownership
+        working-directory: browser-core
+        run: |
+          npm ci
+          npm run build-tyrs-artifacts -- out/tyrs-browser
+          npm run tsc -- --pretty false
+          npm run test-mcp -- worker-tab-isolation browser-routing --project=chrome --reporter=line
+      - name: Build Bridge bundle
+        working-directory: browser-bridge
+        run: |
+          npm ci
+          npm run bridge:test
+          npm run build-tyrs-bundle -- ../browser-core/out/tyrs-browser/playwright-core.tgz ../browser-artifacts
+      - name: Fetch pinned extension and record build inputs
+        env:
+          EXTENSION_URL: ${{ steps.browser.outputs.extensionUrl }}
+          EXTENSION_SHA: ${{ steps.browser.outputs.extensionSHA256 }}
+        run: |
+          curl --fail --location --retry 3 "$EXTENSION_URL" -o browser-artifacts/tyrs-browser-extension.crx
+          echo "$EXTENSION_SHA  browser-artifacts/tyrs-browser-extension.crx" | sha256sum -c -
+          cp deploy/browser/internal-build-lock.json browser-artifacts/
+          cp browser-core/out/tyrs-browser/playwright-artifacts.json browser-artifacts/
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with: { cosign-release: v2.5.3 }
+      - name: Sign browser artifacts
+        working-directory: browser-artifacts
+        run: |
+          sha256sum tyrs-browser-bridge-bundle.tgz tyrs-browser-extension.crx > SHA256SUMS
+          for asset in tyrs-browser-bridge-bundle.tgz tyrs-browser-extension.crx; do
+            cosign sign-blob --yes --bundle "${asset}.sigstore.json" "$asset"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-bridge-linux
+          path: browser-artifacts/*
+          retention-days: 7
+          if-no-files-found: error
+
   build:
     runs-on: ubuntu-24.04
     permissions:
