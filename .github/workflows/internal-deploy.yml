@@ -92,6 +92,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with: { go-version: "1.26.6", cache: true }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: '24.14.0' }
+      - name: Verify user browser MCP configuration
+        run: |
+          go test ./internal/workerconfig ./internal/worker ./internal/bootstrap ./internal/hostworker
+          npm install --prefix /tmp/browser-mcp-cli --save-exact @openai/codex@0.157.1 --no-audit --no-fund
+          CODEX_BIN=/tmp/browser-mcp-cli/node_modules/.bin/codex node tools/browser-mcp-config-smoke.mjs
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
         with: { cosign-release: v2.5.3 }
       - name: Build Linux amd64 host Worker
@@ -139,7 +146,7 @@ jobs:
       - name: Build, self-check and sign Pi runtime
         shell: bash
         run: |
-          sh tools/package-pi-runtime.sh adapter-source .artifacts/pi-runtime
+          sh tools/package-pi-runtime.sh adapter-source .artifacts/pi-runtime --internal-build
           for asset in .artifacts/pi-runtime/*.tar.gz; do
             (cd "$(dirname "$asset")" && sha256sum -c "$(basename "$asset").sha256")
             cosign sign-blob --yes --bundle "${asset}.sigstore.json" "${asset}"
@@ -185,7 +192,7 @@ jobs:
           command -v bwrap socat
       - name: Build and sign isolated Claude runtime
         run: |
-          sh tools/package-claude-runtime.sh adapter-source .artifacts/claude-runtime
+          sh tools/package-claude-runtime.sh adapter-source .artifacts/claude-runtime --internal-build
           for asset in .artifacts/claude-runtime/*.tar.gz; do
             cosign sign-blob --yes --bundle "${asset}.sigstore.json" "${asset}"
           done

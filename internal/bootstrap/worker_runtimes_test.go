@@ -51,5 +51,5 @@ func TestWorkerRuntimeEntriesShareCredentialButSeparateState(t *testing.T) {
 	require.Equal(t, runtimeidentity.Pi, piEntries[1].Runtime.Engine)
 	require.Equal(t, ":3334", piEntries[1].SSH.ListenAddr)
 	require.NotEqual(t, codex.StateDir, piEntries[1].Runtime.StateDir)
-	require.Empty(t, piEntries[1].Runtime.BrowserWorkerToken)
+	require.Empty(t, piEntries[1].Runtime.BrowserServiceSocket)
 }

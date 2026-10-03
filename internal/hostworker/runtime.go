@@ -35,8 +35,6 @@ type RuntimeOptions struct {
 	StateDir             string
 	EnvFile              string
 	SSHAuthSock          string
-	BrowserWorkerToken   string
-	BrowserDesktopToken  string
 	BrowserServiceSocket string
 	CodexStdout          io.Writer
 	CodexStderr          io.Writer
@@ -199,12 +197,6 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 	}
 	if options.SSHAuthSock != "" {
 		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
-	}
-	if options.BrowserWorkerToken != "" {
-		values[codex.BrowserMCPWorkerTokenEnvironment] = options.BrowserWorkerToken
-	}
-	if options.BrowserDesktopToken != "" {
-		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
 	}
 	command.Env = replaceEnvironment(environment, values)
 	command.Stdout = options.CodexStdout

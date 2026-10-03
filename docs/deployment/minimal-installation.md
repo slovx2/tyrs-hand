@@ -237,3 +237,17 @@ Codex Desktop 的浏览器操作通过 `TYRS_HAND_BROWSER_AGENT_ADDRESS` 对应�
 6. 完成 GitHub、Discord、Desktop、多客户端、出站 SSH 和 Browser 并发验收。
 
 验收完成前保留数据库备份、旧 Control Digest 和旧 Worker 二进制。回滚时停止服务，恢复三者后按原顺序启动。任何回滚都不替换用户 Codex Home。
+# 用户级浏览器 MCP
+
+配置 Browser Bridge 的 Worker 会在启动时，将 `chrome` MCP 注册到宿主用户的
+Codex `config.toml`、Claude `~/.claude.json` 和 Pi `~/.pi/agent/mcp.json`。
+Codex 使用 Worker 实际 `CODEX_HOME`，Pi 尊重 `PI_CODING_AGENT_DIR`。
+在同一用户的普通登录终端启动三个 CLI 即可使用，无需手工导出浏览器令牌；
+已有会话需要重载 MCP 或重新打开。
+
+注册使用宿主派生访问令牌，配置及最近四份备份均为 `0600`。只维护 `chrome`
+连接条目；其他 MCP、模型和审批配置保留。遇到同名其他服务或损坏配置时，
+Worker 日志报告注册失败并保留原文件，修正后重启 Worker 重试。
+
+浏览器及开发服务转发仍依赖现有 Bridge 和 Worker。Worker 专属 `browser_files`
+动态工具不会随用户级 MCP 注册到独立 CLI。

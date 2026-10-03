@@ -271,7 +271,7 @@ func voiceControlSpec() ports.DynamicToolSpec {
 }
 
 func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config,
-	tokenEnvironment string, taskIDs ...string,
+	taskIDs ...string,
 ) {
 	if cfg.BrowserMCPURL == "" {
 		return
@@ -280,10 +280,9 @@ func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config,
 	if servers == nil {
 		servers = make(map[string]any)
 	}
-	browser := map[string]any{"url": cfg.BrowserMCPURL,
-		"bearer_token_env_var": tokenEnvironment, "startup_timeout_sec": 10.0,
-		"tool_timeout_sec": 120.0, "required": false,
-		"default_tools_approval_mode": "approve"}
+	// 连接和凭据来自用户配置。恢复旧线程时移除旧的整项注入。
+	delete(servers, "chrome")
+	browser := map[string]any{}
 	if len(taskIDs) > 0 && taskIDs[0] != "" {
 		browser["http_headers"] = map[string]string{"X-Tyrs-Browser-Task-Id": taskIDs[0]}
 	}
@@ -339,8 +338,7 @@ func prepareCodexRuntime(workerDataRoot string, cfg config.Config,
 		runtimeConfig["sandbox_workspace_write"] = map[string]any{"writable_roots": []string{
 			filepath.Join(workerDataRoot, "caches"), filepath.Join(workerDataRoot, "state")}}
 	}
-	applyBrowserMCPConfig(runtimeConfig, cfg, codex.BrowserMCPWorkerTokenEnvironment,
-		taskIDs...)
+	applyBrowserMCPConfig(runtimeConfig, cfg, taskIDs...)
 	hideManagedSecrets(runtimeConfig)
 	return runtimeConfig
 }

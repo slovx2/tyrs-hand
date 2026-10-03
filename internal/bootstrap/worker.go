@@ -203,8 +203,15 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanupFailure(nil)
 		return nil, nil, err
 	}
-	runtimeOptions.BrowserWorkerToken = browserTokens.Worker
-	runtimeOptions.BrowserDesktopToken = browserTokens.Desktop
+	if cfg.BrowserMCPURL != "" {
+		if err := workerconfig.RegisterBrowserMCP(workerconfig.BrowserRegistration{
+			Home: cfg.WorkerHome, CodexHome: cfg.WorkerCodexHome,
+			PiAgentDir: os.Getenv("PI_CODING_AGENT_DIR"), StateDir: cfg.WorkerDataRoot,
+			URL: cfg.BrowserMCPURL, Token: browserTokens.Worker,
+		}); err != nil {
+			logger.Warn("注册用户级浏览器 MCP 失败", zap.Error(err))
+		}
+	}
 	clients, err := hostworker.LoadAuthorizedClients(cfg.WorkerAuthorizedKeysFile)
 	if err != nil {
 		cleanupFailure(nil)

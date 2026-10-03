@@ -21,8 +21,6 @@ func workerRuntimeEntries(cfg config.Config, codex hostworker.RuntimeOptions,
 		pi.EnvFile = ""
 		pi.Controller = piController
 		pi.BrowserServiceSocket = ""
-		pi.BrowserWorkerToken = ""
-		pi.BrowserDesktopToken = ""
 		piSSH := ssh
 		piSSH.ListenAddr = cfg.WorkerPiSSHListenAddr
 		piSSH.HostKeyFile = cfg.PiHostKeyFile()

@@ -21,7 +21,7 @@ async function main() {
   const [harness, source, output, mode] = process.argv.slice(2)
   if (!['claude', 'pi'].includes(harness) || !source || !output)
     throw new Error('需要 harness、适配器源码目录和输出目录')
-  if (mode && mode !== '--local-acceptance') throw new Error('未知构建选项')
+  if (mode && !['--local-acceptance', '--internal-build'].includes(mode)) throw new Error('未知构建选项')
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   const pin = JSON.parse(readFileSync(resolve(root, 'protocol/adapter-lock.json')))
   const adapter = resolve(source)
@@ -38,6 +38,13 @@ async function main() {
   if (commit !== pin.commit) throw new Error('适配器提交与消费锁不符')
   if (execFileSync('git', ['-C', adapter, 'status', '--porcelain'], { encoding: 'utf8' }).trim())
     throw new Error('适配器源码存在未提交修改')
+  // 内部部署按消费锁的精确提交构建，由 internal-deploy 工作流签名。
+  if (mode === '--internal-build') {
+    const result = spawnSync('sh', [resolve(adapter, `scripts/package-${harness}-runtime.sh`), adapter, resolve(output)], { stdio: 'inherit' })
+    if (result.error) throw result.error
+    process.exitCode = result.status ?? 1
+    return
+  }
   const artifact = pin.artifacts?.[harness]
   if (!artifact) throw new Error('消费锁缺少制品')
   const response = await fetch(artifact.url, { signal: AbortSignal.timeout(120_000) })

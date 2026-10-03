@@ -61,19 +61,18 @@ func TestApplyBrowserMCPConfigUsesHostBrowserServerName(t *testing.T) {
 	runtimeConfig := map[string]any{}
 	applyBrowserMCPConfig(runtimeConfig, config.Config{
 		BrowserMCPURL: "http://127.0.0.1:8931/mcp",
-	}, codex.BrowserMCPWorkerTokenEnvironment, "task-id")
+	}, "task-id")
 
 	servers := runtimeConfig["mcp_servers"].(map[string]any)
 	require.NotContains(t, servers, "browser")
 	chrome := servers["chrome"].(map[string]any)
-	require.Equal(t, "http://127.0.0.1:8931/mcp", chrome["url"])
-	require.Equal(t, codex.BrowserMCPWorkerTokenEnvironment,
-		chrome["bearer_token_env_var"])
+	require.NotContains(t, chrome, "url")
+	require.NotContains(t, chrome, "bearer_token_env_var")
 	require.Equal(t, map[string]string{"X-Tyrs-Browser-Task-Id": "task-id"},
 		chrome["http_headers"])
 }
 
-func TestDesktopBrowserMCPUsesWorkspaceTokenAndHidesBothTokens(t *testing.T) {
+func TestDesktopBrowserMCPUsesUserConfigAndHidesOldTokens(t *testing.T) {
 	controller := &desktopController{processor: &Processor{cfg: config.Config{
 		BrowserMCPURL: "http://127.0.0.1:8931/mcp",
 	}}}
@@ -84,8 +83,7 @@ func TestDesktopBrowserMCPUsesWorkspaceTokenAndHidesBothTokens(t *testing.T) {
 	runtimeConfig := value["config"].(map[string]any)
 	servers := runtimeConfig["mcp_servers"].(map[string]any)
 	chrome := servers["chrome"].(map[string]any)
-	require.Equal(t, codex.BrowserMCPDesktopTokenEnvironment,
-		chrome["bearer_token_env_var"])
+	require.Empty(t, chrome)
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Empty(t, policy["set"].(map[string]any))
 	require.ElementsMatch(t, []any{"EXISTING", codex.BrowserMCPWorkerTokenEnvironment,
