@@ -35,18 +35,19 @@ type channelsRelayStep struct {
 }
 
 type channelsRelayModel struct {
-	mu            sync.Mutex
-	path          string
-	steps         []*channelsRelayStep
-	claude        int
-	codex         int
-	titleCalls    int
-	stepCalls     map[string]int
-	sessions      []string
-	titleSessions map[string]bool
-	requests      []json.RawMessage
-	unscoped      []string
-	sessionHint   string
+	mu               sync.Mutex
+	path             string
+	steps            []*channelsRelayStep
+	claude           int
+	codex            int
+	titleCalls       int
+	nativeTitleCalls int
+	stepCalls        map[string]int
+	sessions         []string
+	titleSessions    map[string]bool
+	requests         []json.RawMessage
+	unscoped         []string
+	sessionHint      string
 }
 
 func (m *channelsRelayModel) respond(t *testing.T, w http.ResponseWriter, req *http.Request, body []byte) {
@@ -73,6 +74,10 @@ func (m *channelsRelayModel) respond(t *testing.T, w http.ResponseWriter, req *h
 	defer m.mu.Unlock()
 	m.claude++
 	m.requests = append(m.requests, body)
+	if bootstrapClaudeNativeTitleResponse(w, body) {
+		m.nativeTitleCalls++
+		return
+	}
 	if session != "" && m.sessionHint == "" {
 		m.sessionHint = source
 	}
@@ -482,8 +487,8 @@ func TestWorkerControlChannelsRelayRealSSH(t *testing.T) {
 	// Claude 原生会话连续：每个入口的模型请求使用同一会话 ID 并带着前序历史，磁盘上只有这一份接力会话记录。
 	relay.mu.Lock()
 	defer relay.mu.Unlock()
-	t.Logf("模型请求：Claude=%d（接力步骤=%v，会话标题=%d），Codex=%d；会话 ID 来源=%s，接力会话=%v，标题会话数=%d",
-		relay.claude, relay.stepCalls, relay.titleCalls, relay.codex, relay.sessionHint, relay.sessions, len(relay.titleSessions))
+	t.Logf("模型请求：Claude=%d（接力步骤=%v，Worker 标题=%d，CLI 原生标题=%d），Codex=%d；会话 ID 来源=%s，接力会话=%v，标题会话数=%d",
+		relay.claude, relay.stepCalls, relay.titleCalls, relay.nativeTitleCalls, relay.codex, relay.sessionHint, relay.sessions, len(relay.titleSessions))
 	require.Empty(t, relay.unscoped)
 	for _, step := range relay.steps {
 		require.True(t, step.sent, "%s 回合必须由模型发起真实 Bash", step.surface)
@@ -492,7 +497,7 @@ func TestWorkerControlChannelsRelayRealSSH(t *testing.T) {
 		require.True(t, step.historyComplete, "%s 回合的模型上下文必须包含前序入口的输入与工具调用", step.surface)
 		require.Equal(t, 2, relay.stepCalls[step.surface], "%s 回合恰好一次工具请求与一次结果请求", step.surface)
 	}
-	require.Equal(t, 6+relay.titleCalls, relay.claude, "除会话标题任务外不能有额外模型请求")
+	require.Equal(t, 6+relay.titleCalls+relay.nativeTitleCalls, relay.claude, "除已识别的标题任务外不能有额外模型请求")
 	require.Equal(t, channelsTitleRequests, relay.titleCalls, "会话标题任务只执行一次")
 	require.Equal(t, "header", relay.sessionHint, "必须从 Claude CLI 的会话头取得原生会话 ID")
 	require.Len(t, relay.sessions, 1, "三回合必须使用同一 Claude 原生会话，不能分叉")
@@ -541,6 +546,7 @@ func TestWorkerControlChannelsRelayRealSSH(t *testing.T) {
 		"claudeSessionIds": relay.sessions, "sessionIdSource": relay.sessionHint, "nativeTranscript": main,
 		"fileContent": want, "claudeModelRequests": relay.claude, "relayStepRequests": relay.stepCalls,
 		"sessionTitleRequests": relay.titleCalls, "codexModelRequests": relay.codex, "codexRuns": codexRuns,
+		"nativeTitleRequests": relay.nativeTitleCalls,
 	})
 }
 

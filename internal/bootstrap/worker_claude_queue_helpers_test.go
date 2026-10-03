@@ -30,9 +30,12 @@ func queueStateRoot(f controlRuntimeFixture, engine runtimeidentity.Engine) stri
 	return f.cfg.WorkerDataRoot
 }
 
-// 标题生成也使用真实 SDK，按其结构化工具区分，不能计入业务模型次数。
+// 原生标题与 Worker 的结构化标题都使用真实 SDK，不能计入业务模型次数。
 func claudeQueueTitleResponse(t *testing.T, w http.ResponseWriter, body []byte) bool {
 	t.Helper()
+	if bootstrapClaudeNativeTitleResponse(w, body) {
+		return true
+	}
 	var payload controlAutomationPayload
 	require.NoError(t, json.Unmarshal(body, &payload))
 	for _, tool := range payload.Tools {
