@@ -59,6 +59,7 @@ jobs:
         working-directory: browser-bridge
         run: |
           npm ci
+          npm install --no-save --package-lock=false --ignore-scripts ../browser-core/out/tyrs-browser/playwright-core.tgz
           npm run bridge:test
           npm run build-tyrs-bundle -- ../browser-core/out/tyrs-browser/playwright-core.tgz ../browser-artifacts
       - name: Fetch pinned extension and record build inputs

@@ -1,6 +1,6 @@
 {
   "playwrightCommit": "a4d592ea2c4e70cd6426ba1195541c09c1e3bd46",
-  "bridgeCommit": "c0ac7d2862cbdd1ac705b092c398bbf99a6f4b87",
+  "bridgeCommit": "2ebfce3ef5c47afcdf2c29570661ec6ed72d6eb2",
   "extensionUrl": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.3.26/tyrs-browser-extension.crx",
   "extensionSHA256": "2d211a505f6ab8a56bbe6c87357bd39f4a2c51127055430ce1f88c06abafe8a4"
 }
