@@ -113,6 +113,18 @@ func runWorkerBootstrapSharedBudget(t *testing.T, queuedCodex bool) {
 			http.NotFound(w, r)
 			return
 		}
+		// 原生 CLI 的后台标题请求没有工具，不能消耗主回合的工具响应与并发预算门闩。
+		var auxiliary struct {
+			System []struct{ Text string } `json:"system"`
+		}
+		if json.Unmarshal(body, &auxiliary) == nil {
+			for _, block := range auxiliary.System {
+				if strings.Contains(block.Text, "You are naming a coding session") {
+					bootstrapModelText(w, true)
+					return
+				}
+			}
+		}
 		if recoveryGate.active.Load() {
 			recoveryGate.once.Do(func() { close(recoveryGate.entered) })
 			select {

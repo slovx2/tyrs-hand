@@ -66,11 +66,13 @@ test('运行时扩展必须校验真实身份字段与版本，不能仅凭方�
   assert.throws(() => validate('runtime/info', 'response', { ...claude, cliSha256: 'unverified' }))
   assert.throws(() => validate('runtime/info', 'response', { ...claude, sdkVersion: '0.3.283' }))
   assert.throws(() => validate('runtime/info', 'response', { ...claude, sdkVersion: '0.99.1' }))
+  assert.throws(() => validate('runtime/info', 'response', { ...claude, nodeVersion: '24.14.1' }))
   const pi = { engine: 'pi', protocolVersion: '0.157.1', cliBuild: '0.99.1',
     capabilities: [], releaseReady: false, nodeVersion: '24.14.0', sdkVersion: '0.99.1',
     pluginVersions: { '@narumitw/pi-plan-mode': '0.58.3', '@narumitw/pi-tui-kit': '0.59.0', '@gotgenes/pi-subagents': '21.8.1' } }
   validate('runtime/info', 'response', pi)
-  for (const change of [{ sdkVersion: '0.3.282' }, { cliBuild: '0.99.2' }, { pluginVersions: {} }])
+  for (const change of [{ sdkVersion: '0.3.282' }, { cliBuild: '0.99.2' }, { pluginVersions: {} },
+    { pluginVersions: { ...pi.pluginVersions, '@narumitw/pi-plan-mode': '0.58.4' } }])
     assert.throws(() => validate('runtime/info', 'response', { ...pi, ...change }))
 })
 function fixtures() {

@@ -47,6 +47,23 @@ export function schemaIndex(root, extensionsRoot) {
   }
   if (extensionsRoot) for (const file of readdirSync(extensionsRoot).filter(name => name.endsWith('.json'))) {
     const extension = JSON.parse(readFileSync(join(extensionsRoot, file), 'utf8'))
+    if (extension.method === 'runtime/info') {
+      // 通用适配协议允许版本字符串，本体消费必须另外满足精确的依赖锁。
+      const pin = JSON.parse(readFileSync(join(extensionsRoot, '../adapter-lock.json'), 'utf8'))
+      extension.response.properties.nodeVersion = { const: pin.node }
+      for (const variant of extension.response.oneOf) {
+        const engine = variant.properties.engine.const
+        if (engine === 'claude-code') variant.properties.sdkVersion = { const: pin.claudeAgentSdk }
+        if (engine === 'pi') {
+          variant.properties.sdkVersion = { const: pin.piCodingAgent }
+          variant.properties.cliBuild = { const: pin.piCli }
+        }
+      }
+      const plugins = extension.response.properties.pluginVersions.properties
+      plugins['@narumitw/pi-plan-mode'] = { const: pin.piPlanMode }
+      plugins['@narumitw/pi-tui-kit'] = { const: pin.piTuiKit }
+      plugins['@gotgenes/pi-subagents'] = { const: pin.piSubagents }
+    }
     if (index.has(extension.method)) throw new Error(`扩展不能覆盖原生 schema: ${extension.method}`)
     index.set(extension.method, { ...extension,
       response: extension.responseFile
