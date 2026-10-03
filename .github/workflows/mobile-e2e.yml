@@ -81,7 +81,8 @@ jobs:
           npm ci --prefix .local/mobile-adapter/packages/pi
           sh tools/install-test-claude.sh
           # GITHUB_ENV 只影响后续 step，同一步的运行时预检需显式导出。
-          export TYRS_HAND_TEST_CLAUDE_CLI="${GITHUB_WORKSPACE}/.local/toolchains/claude-$(node -p 'require("./protocol/adapter-lock.json").claudeCli')/node_modules/.bin/claude"
+          TYRS_HAND_TEST_CLAUDE_CLI="${GITHUB_WORKSPACE}/.local/toolchains/claude-$(node -p 'require("./protocol/adapter-lock.json").claudeCli')/node_modules/.bin/claude"
+          export TYRS_HAND_TEST_CLAUDE_CLI
           npm ci --prefix tools/protocol-inventory
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update
