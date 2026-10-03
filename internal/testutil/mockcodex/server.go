@@ -69,7 +69,7 @@ type Server struct {
 	// 并保护各连接的 subscriptions。
 	outbound sync.Mutex
 	// 仅供包内测试在响应写出后、后续通知写出前观察并发输出。
-	afterRespond atomic.Pointer[func()]
+	afterRespond atomic.Pointer[func(json.RawMessage)]
 
 	mu               sync.Mutex
 	connections      map[int64]*connection
@@ -421,7 +421,7 @@ func threadSettings(thread Thread) map[string]any {
 func (c *connection) respond(id json.RawMessage, result any) {
 	c.write(map[string]any{"id": json.RawMessage(id), "result": result})
 	if hook := c.server.afterRespond.Load(); hook != nil {
-		(*hook)()
+		(*hook)(id)
 	}
 }
 

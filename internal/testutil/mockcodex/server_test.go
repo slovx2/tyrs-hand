@@ -2,6 +2,7 @@ package mockcodex
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -81,6 +82,15 @@ func TestEmitCannotInterleaveResponseAndFollowUpNotification(t *testing.T) {
 	require.NoError(t, err)
 	_ = response.Body.Close()
 	t.Cleanup(func() { _ = ws.Close() })
+	require.NoError(t, ws.SetReadDeadline(time.Now().Add(5*time.Second)))
+	await := func(done <-chan struct{}) {
+		t.Helper()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("等待响应与通知顺序验收超时")
+		}
+	}
 	read := func() Message {
 		t.Helper()
 		var message Message
@@ -91,7 +101,13 @@ func TestEmitCannotInterleaveResponseAndFollowUpNotification(t *testing.T) {
 	require.Equal(t, json.RawMessage("1"), read().ID)
 
 	responded, release := make(chan struct{}), make(chan struct{})
-	hook := func() {
+	unblock := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(unblock)
+	hook := func(id json.RawMessage) {
+		// 读到 initialize 响应不代表服务端已执行完 respond；钩子只能暂停目标请求。
+		if string(id) != "2" {
+			return
+		}
 		close(responded)
 		<-release
 	}
@@ -99,7 +115,7 @@ func TestEmitCannotInterleaveResponseAndFollowUpNotification(t *testing.T) {
 	params, err := json.Marshal(map[string]string{"cwd": t.TempDir()})
 	require.NoError(t, err)
 	require.NoError(t, ws.WriteJSON(Message{ID: json.RawMessage("2"), Method: "thread/start", Params: params}))
-	<-responded
+	await(responded)
 	server.afterRespond.Store(nil)
 	created := read()
 	require.Equal(t, json.RawMessage("2"), created.ID)
@@ -116,8 +132,8 @@ func TestEmitCannotInterleaveResponseAndFollowUpNotification(t *testing.T) {
 		t.Fatal("外部通知插入到创建响应与 thread/started 之间")
 	case <-time.After(50 * time.Millisecond):
 	}
-	close(release)
-	<-emitted
+	unblock()
+	await(emitted)
 	require.Equal(t, "thread/started", read().Method)
 	require.Equal(t, "thread/deleted", read().Method)
 }

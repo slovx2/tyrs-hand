@@ -12,6 +12,7 @@ import { MigrationWorker } from './protocol-migration-worker.mjs'
 import { startMigrationModels } from './protocol-migration-models.mjs'
 import { MigrationFaultProxy, pendingJournal, verifyMigratedJournal, waitJournalDelivered } from './protocol-migration-journal.mjs'
 import { prepareMobileMigration, verifyLegacyMobileSchema, verifyMobileMigration } from './protocol-mobile-migration.mjs'
+import { completedTitleProjection } from './protocol-recovery-title.mjs'
 
 // --rollback 使用真实旧数据库快照隔离 Worker 回滚再升级；不宣称同库降级兼容。
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -75,6 +76,24 @@ async function waitControlTurn(turnId) {
   })
 }
 
+async function waitSessionTitle(engine, threadId) {
+  assert.match(threadId, /^[a-zA-Z0-9_-]+$/)
+  assert.ok(['codex', 'claude-code'].includes(engine))
+  // 业务 Turn 完成时后台标题仍可能在创建线程；停机前必须等到真实回写响应。
+  return until(engine + ' 迁移前后台标题及原生回写完成', async () => {
+    const tasks = JSON.parse(control.sql(`SELECT COALESCE(json_agg(row_to_json(x)),'[]') FROM (
+      SELECT task.status,session.generated_title AS title
+      FROM workspace_session_title_tasks task
+      JOIN workspace_sessions session ON session.id=task.session_id
+      JOIN codex_thread_controls control ON control.session_id=session.id
+      WHERE control.external_thread_id='${threadId}') x`))
+    if (tasks.length !== 1 || tasks[0].status !== 'completed' || !tasks[0].title) return undefined
+    const rows = (await readFile(resolve(evidence, `wire-${engine}.jsonl`), 'utf8'))
+      .trim().split('\n').map(JSON.parse)
+    return completedTitleProjection(rows, threadId, tasks[0].title)
+  })
+}
+
 try {
   assert.equal(process.versions.node, '24.14.0')
   const pin = JSON.parse(await readFile(resolve(repo, 'protocol/adapter-lock.json')))
@@ -115,6 +134,7 @@ try {
   assert.equal(report.oldControl.workspace_id, control.workspace.id)
   report.oldTurn = await runTurn(old, thread.id, 'MIGRATION_OLD_WRITE')
   report.oldRun = await waitControlTurn(report.oldTurn.turnId)
+  report.oldTitle = await waitSessionTitle('codex', thread.id)
   if (!journalMode) {
     await verifyLegacyMobileSchema(resolve(build.oldSource, 'client/src/db/database.ts'), OLD_COMMIT)
     const history = await old.request('thread/read', { threadId: thread.id, includeTurns: true })
@@ -199,6 +219,7 @@ try {
   })
   report.claudeTurn = await runTurn(claude, started.thread.id, 'MIGRATION_CLAUDE_WRITE')
   report.claudeRun = await waitControlTurn(report.claudeTurn.turnId)
+  report.claudeTitle = await waitSessionTitle('claude-code', started.thread.id)
   assert.notEqual(claudeRows[0].session_id, report.oldControl.session_id)
   assert.equal(claudeRows[0].workspace_id, report.oldControl.workspace_id)
   assert.equal(control.sql(`SELECT engine FROM codex_thread_controls WHERE id='${claudeRows[0].id}'`), 'claude-code')
