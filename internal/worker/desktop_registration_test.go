@@ -19,6 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// 每次保存 Journal 都要 fsync 文件和目录；CI 磁盘繁忙时单次 fsync 可达数百毫秒，
+// 多次落盘的流程会超过几秒。这只是失败兜底上限，正常流程完成即返回，不会拖慢测试。
+const durableJournalTestTimeout = 30 * time.Second
+
 func blockJournalDirectory(t *testing.T, store *journalStore) func() {
 	t.Helper()
 	backup := store.directory + "-fixture"
@@ -51,7 +55,7 @@ func TestDesktopTurnRegistrationWaitsForDurableJournal(t *testing.T) {
 		http.Error(w, "fixture stop", http.StatusNotFound)
 	}))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), durableJournalTestTimeout)
 	defer cancel()
 	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second}, logger: zap.NewNop(), journals: store,
 		client: workerprotocol.NewClient(server.URL, "test", time.Second)}

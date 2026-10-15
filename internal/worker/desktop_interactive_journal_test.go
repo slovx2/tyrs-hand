@@ -188,7 +188,7 @@ func TestOfflineApprovalReloadReportsConflictAndDeliversRealResult(t *testing.T)
 				client: workerprotocol.NewClient(server.URL, "test-only", time.Second),
 				logger: zap.NewNop(), journals: store}
 			// 没有 Processor 或 SDK 的恢复器只能补报，任何模型重放都会立即失败。
-			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), durableJournalTestTimeout)
 			defer cancel()
 			runner.deliverTerminal(ctx, journal, zap.NewNop())
 			mu.Lock()
