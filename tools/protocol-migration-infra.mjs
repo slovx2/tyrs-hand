@@ -37,7 +37,7 @@ export async function buildMigrationBinaries(repo, root) {
   output('tar', ['-xf', archive, '-C', oldSource])
   const goroot = output('go', ['env', 'GOROOT'], { cwd: repo })
   const go = resolve(goroot, 'bin/go')
-  assert.equal(output(go, ['version']).split(' ')[2], 'go1.26.6')
+  assert.equal(output(go, ['version']).split(' ')[2], 'go1.26.9')
   const versions = { old: OLD_COMMIT, new: output('git', ['rev-parse', 'HEAD'], { cwd: repo }) }
   const binaries = {}, manifests = {}
   for (const generation of ['old', 'new']) {

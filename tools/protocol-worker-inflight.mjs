@@ -34,7 +34,7 @@ const quote = text => "'" + text.replaceAll("'", "'\\''") + "'"
 async function buildCurrent() {
   const goroot = output('go', ['env', 'GOROOT'], { cwd: repo })
   const go = resolve(goroot, 'bin/go')
-  assert.equal(output(go, ['version']).split(' ')[2], 'go1.26.6')
+  assert.equal(output(go, ['version']).split(' ')[2], 'go1.26.9')
   assert.match(await readFile(resolve(repo, 'internal/workerprotocol/types.go'), 'utf8'), /const Version = 33/)
   const binaries = {}, hashes = {}
   for (const name of ['admin', 'server', 'worker']) {
