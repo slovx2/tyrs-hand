@@ -2,11 +2,13 @@ import type { ServerRequest } from "@codex-app-server/ServerRequest";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { mcpToolApproval } from "@/app-server/mcpToolApproval";
 import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 import { traceInteraction } from "@/preview/perf";
 
-import { approvalActions, approvalDescription } from "./approvalActions";
+import { approvalActions, approvalDescription, mcpToolApprovalActions,
+  mcpToolApprovalDescription } from "./approvalActions";
 import { McpElicitationCard } from "./McpElicitationCard";
 
 export function ServerRequestCard({ request, onAnswer }: {
@@ -27,7 +29,23 @@ function ActiveServerRequest({ request, onAnswer }: {
     return <QuestionRequest request={request} onAnswer={onAnswer} />;
   }
   if (request.method === "mcpServer/elicitation/request") {
-    return <McpElicitationCard request={request} onAnswer={onAnswer} />;
+    // MCP 工具调用的审批以征询形式到达，表单为空，按审批卡片展示。
+    const toolApproval = mcpToolApproval(request);
+    if (!toolApproval) return <McpElicitationCard request={request} onAnswer={onAnswer} />;
+    const { title, detail, serverName, params } = mcpToolApprovalDescription(toolApproval);
+    return <Card testID={`interactive:${String(request.id)}`} style={styles.card}>
+      <Title>{title}</Title><Muted selectable>{detail}</Muted>
+      <Muted selectable>服务：{serverName}</Muted>
+      {params.map((param, index) => <Muted key={index} selectable>{param}</Muted>)}
+      <View style={styles.actions}>
+        {mcpToolApprovalActions(toolApproval).map((action) => <View key={action.id} style={styles.approvalAction}>
+          {action.detail && <Muted selectable>{action.detail}</Muted>}
+          <Button testID={`interactive:${String(request.id)}:${action.id}`} title={action.title}
+            variant={action.id === "accept" ? "primary" : "secondary"}
+            onPress={() => onAnswer(action.answer)} />
+        </View>)}
+      </View>
+    </Card>;
   }
   const approval = request.method === "item/commandExecution/requestApproval" ||
     request.method === "item/fileChange/requestApproval";

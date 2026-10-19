@@ -20,6 +20,7 @@ import type { TurnSteerResponse } from "@codex-app-server/v2/TurnSteerResponse";
 import type { UserInput } from "@codex-app-server/v2/UserInput";
 
 import { JsonRpcRequestError } from "./jsonRpc";
+import { mcpToolApproval, mcpToolApprovalResponse } from "./mcpToolApproval";
 import { decodeModelCatalogEntry } from "./modelCatalog";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import { DEFAULT_PERMISSION_PROFILE, normalizePermissionProfile,
@@ -825,7 +826,9 @@ function dismissalResult(request: ServerRequest): unknown | undefined {
   case "item/commandExecution/requestApproval": return { decision: "decline" };
   case "item/fileChange/requestApproval": return { decision: "decline" };
   case "item/tool/requestUserInput": return { answers: {} };
-  case "mcpServer/elicitation/request": return { action: "cancel", content: null, _meta: null };
+  // 工具审批与命令、文件审批一样只拒绝本次；取消会连同回合一起停止。
+  case "mcpServer/elicitation/request": return mcpToolApproval(request)
+    ? mcpToolApprovalResponse("decline") : { action: "cancel", content: null, _meta: null };
   case "item/permissions/requestApproval": return { permissions: {}, scope: "turn" };
   case "applyPatchApproval": return { decision: "abort" };
   case "execCommandApproval": return { decision: "abort" };

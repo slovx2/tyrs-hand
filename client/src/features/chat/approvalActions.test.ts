@@ -1,7 +1,11 @@
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { JsonValue } from "@codex-app-server/serde_json/JsonValue";
 import { describe, expect, it } from "vitest";
 
-import { approvalActions, approvalDescription } from "./approvalActions";
+import { mcpToolApproval } from "@/app-server/mcpToolApproval";
+
+import { approvalActions, approvalDescription, mcpToolApprovalActions,
+  mcpToolApprovalDescription } from "./approvalActions";
 
 type CommandRequest = Extract<ServerRequest, { method: "item/commandExecution/requestApproval" }>;
 function command(params: Partial<CommandRequest["params"]> = {}): CommandRequest {
@@ -64,3 +68,55 @@ describe("手机原生审批选择", () => {
       detail: "网络规则：localhost", decision: allowed }]);
   });
 });
+
+describe("手机 MCP 工具审批", () => {
+  it("展示服务、问话，并按引擎排好的参数逐项列出", () => {
+    expect(mcpToolApprovalDescription(toolApproval({ persist: "session",
+      tool_params: { path: "/tmp/a.txt", options: { depth: 2 }, recursive: true },
+      tool_params_display: [
+        { name: "path", value: "/tmp/a.txt", display_name: "路径" },
+        { name: "options", value: { depth: 2 }, display_name: "options" },
+        { name: "recursive", value: true, display_name: "recursive" },
+      ] }))).toEqual({ title: "MCP 工具审批", detail: "允许 MCP 服务 fixture 运行工具“echo”吗？",
+      serverName: "fixture",
+      params: ["路径：/tmp/a.txt", 'options：\n{\n  "depth": 2\n}', "recursive：true"] });
+  });
+
+  it("没有展示参数时展示完整参数 JSON，没有参数和问话时使用默认说明", () => {
+    expect(mcpToolApprovalDescription(toolApproval({ tool_params: { path: "/tmp/a.txt" } })).params)
+      .toEqual(['参数：\n{\n  "path": "/tmp/a.txt"\n}']);
+    expect(mcpToolApprovalDescription(toolApproval({ tool_params: {} })).params).toEqual(["参数：{}"]);
+    expect(mcpToolApprovalDescription(toolApproval({}, ""))).toMatchObject({
+      detail: "AI 请求调用 MCP 工具", params: [] });
+  });
+
+  it("沿用命令审批的按钮文案，只展示引擎声明的记住范围", () => {
+    const titles = (persist?: JsonValue) => mcpToolApprovalActions(toolApproval(
+      persist === undefined ? {} : { persist })).map((action) => action.title);
+    expect(titles()).toEqual(["允许本次", "拒绝", "取消回合"]);
+    expect(titles("session")).toEqual(["允许本次", "允许本会话", "拒绝", "取消回合"]);
+    expect(titles(["session", "always"]))
+      .toEqual(["允许本次", "允许本会话", "允许并记住此工具", "拒绝", "取消回合"]);
+  });
+
+  it("每个按钮返回对应的征询应答", () => {
+    expect(mcpToolApprovalActions(toolApproval({ persist: ["session", "always"] }))).toEqual([
+      { id: "accept", title: "允许本次", answer: { action: "accept", content: {}, _meta: null } },
+      { id: "acceptForSession", title: "允许本会话",
+        answer: { action: "accept", content: {}, _meta: { persist: "session" } } },
+      { id: "acceptAlways", title: "允许并记住此工具", detail: "今后调用此工具不再询问",
+        answer: { action: "accept", content: {}, _meta: { persist: "always" } } },
+      { id: "decline", title: "拒绝", answer: { action: "decline", content: null, _meta: null } },
+      { id: "cancel", title: "取消回合", answer: { action: "cancel", content: null, _meta: null } },
+    ]);
+  });
+});
+
+function toolApproval(meta: { [key in string]?: JsonValue },
+  message = "允许 MCP 服务 fixture 运行工具“echo”吗？") {
+  return mcpToolApproval({ id: "approval-1", method: "mcpServer/elicitation/request", params: {
+    threadId: "thread", turnId: "turn", serverName: "fixture", mode: "form", message,
+    _meta: { codex_approval_kind: "mcp_tool_call", ...meta },
+    requestedSchema: { type: "object", properties: {} },
+  } })!;
+}

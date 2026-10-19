@@ -1,8 +1,10 @@
 import type { RequestId } from "@codex-app-server/RequestId";
 import type { ServerNotification } from "@codex-app-server/ServerNotification";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { JsonValue } from "@codex-app-server/serde_json/JsonValue";
 import { describe, expect, it } from "vitest";
 
+import { mcpToolApproval, mcpToolApprovalResponse } from "./mcpToolApproval";
 import { OfficialAppServerClient, type OfficialRpcClient } from "./officialClient";
 import type { SubmissionJournal } from "./submissions";
 
@@ -102,5 +104,53 @@ describe.each(["codex", "claude-code"] as const)("%s 原生交互身份", (engin
     expect(client.pendingRequests()[0]).toBe(currentRequest);
     expect(rpc.responses).toEqual([]);
     expect(client.answerRequest(currentRequest, denial(kind))).toBe(true);
+  });
+});
+
+function toolApprovalRequest(id: RequestId, meta: { [key in string]?: JsonValue } = {
+  codex_approval_kind: "mcp_tool_call", persist: ["session", "always"], tool_params: { text: "hi" },
+}): ServerRequest {
+  return { id, method: "mcpServer/elicitation/request", params: {
+    threadId: "thread-1", turnId: "turn-1", serverName: "fixture", mode: "form", _meta: meta,
+    message: "允许 MCP 服务 fixture 运行工具“echo”吗？",
+    requestedSchema: { type: "object", properties: {} },
+  } };
+}
+
+describe.each(["codex", "claude-code"] as const)("%s MCP 工具审批", (engine) => {
+  it("允许本次、记住、拒绝、取消按原生征询应答发回", () => {
+    const rpc = new InteractionRpc();
+    const client = new OfficialAppServerClient("profile", engine, rpc, journal);
+    const decisions = mcpToolApproval(toolApprovalRequest("probe"))!.decisions;
+    decisions.forEach((decision, id) => {
+      const request = toolApprovalRequest(id);
+      rpc.requestListener!(request);
+      expect(client.answerRequest(request, mcpToolApprovalResponse(decision))).toBe(true);
+    });
+    expect(client.pendingRequests()).toEqual([]);
+    expect(rpc.responses).toEqual([
+      { id: 0, result: { action: "accept", content: {}, _meta: null } },
+      { id: 1, result: { action: "accept", content: {}, _meta: { persist: "session" } } },
+      { id: 2, result: { action: "accept", content: {}, _meta: { persist: "always" } } },
+      { id: 3, result: { action: "decline", content: null, _meta: null } },
+      { id: 4, result: { action: "cancel", content: null, _meta: null } },
+    ]);
+  });
+
+  it("发送新消息前撤销时只拒绝本次工具调用，其他征询仍取消", async () => {
+    const rpc = new InteractionRpc();
+    const client = new OfficialAppServerClient("profile", engine, rpc, journal);
+    rpc.requestListener!(toolApprovalRequest("tool"));
+    rpc.requestListener!(toolApprovalRequest("auth", { codex_approval_kind: "browser_auth" }));
+    rpc.requestListener!(toolApprovalRequest("form", {}));
+    rpc.requestListener!(nativeRequest("mcp", "url"));
+    await client.dismissPendingRequests("thread-1");
+    expect(client.pendingRequests()).toEqual([]);
+    expect(rpc.responses).toEqual([
+      { id: "tool", result: { action: "decline", content: null, _meta: null } },
+      { id: "auth", result: { action: "cancel", content: null, _meta: null } },
+      { id: "form", result: { action: "cancel", content: null, _meta: null } },
+      { id: "url", result: { action: "cancel", content: null, _meta: null } },
+    ]);
   });
 });

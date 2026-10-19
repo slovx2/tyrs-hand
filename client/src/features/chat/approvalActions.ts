@@ -1,5 +1,10 @@
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { JsonValue } from "@codex-app-server/serde_json/JsonValue";
 import type { CommandExecutionApprovalDecision } from "@codex-app-server/v2/CommandExecutionApprovalDecision";
+import type { McpServerElicitationRequestResponse } from "@codex-app-server/v2/McpServerElicitationRequestResponse";
+
+import { mcpToolApprovalResponse, type McpToolApproval,
+  type McpToolApprovalDecision } from "@/app-server/mcpToolApproval";
 
 type ApprovalRequest = Extract<ServerRequest, { method:
   "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" }>;
@@ -8,9 +13,37 @@ export type ApprovalAction = {
   decision: CommandExecutionApprovalDecision;
 };
 
+export type McpToolApprovalAction = {
+  id: McpToolApprovalDecision; title: string; detail?: string;
+  answer: McpServerElicitationRequestResponse;
+};
+
 const titles = {
   accept: "允许本次", acceptForSession: "允许本会话", decline: "拒绝", cancel: "取消回合",
 } as const;
+
+function paramLine(label: string, value: JsonValue): string {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return `${label}：${text.includes("\n") ? "\n" : ""}${text}`;
+}
+
+export function mcpToolApprovalDescription(approval: McpToolApproval) {
+  return {
+    title: "MCP 工具审批",
+    detail: approval.message || "AI 请求调用 MCP 工具",
+    serverName: approval.serverName,
+    // 优先按引擎排好的参数逐项展示；没有时展示完整参数 JSON。
+    params: approval.displayParams?.map((param) => paramLine(param.displayName, param.value)) ??
+      (approval.params === null ? [] : [paramLine("参数", approval.params)]),
+  };
+}
+
+export function mcpToolApprovalActions(approval: McpToolApproval): McpToolApprovalAction[] {
+  return approval.decisions.map((decision): McpToolApprovalAction => decision === "acceptAlways"
+    ? { id: decision, title: "允许并记住此工具", detail: "今后调用此工具不再询问",
+      answer: mcpToolApprovalResponse(decision) }
+    : { id: decision, title: titles[decision], answer: mcpToolApprovalResponse(decision) });
+}
 
 export function approvalDescription(request: ApprovalRequest) {
   if (request.method === "item/fileChange/requestApproval") {
